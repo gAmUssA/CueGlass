@@ -1,0 +1,69 @@
+name: CueFlow
+options:
+  defaultConfig: DebugLocal
+  deploymentTarget:
+    macOS: '14.0'
+  xcodeVersion: '27.0'
+configs:
+  DebugLocal: debug
+  ReleaseLocal: release
+  DebugICloud: debug
+  ReleaseICloud: release
+packages:
+  CueFlowCore:
+    path: Packages/CueFlowCore
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    MACOSX_DEPLOYMENT_TARGET: '14.0'
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Automatic
+    PRODUCT_BUNDLE_IDENTIFIER: com.example.cueflow
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+targets:
+  CueFlow:
+    type: application
+    platform: macOS
+    sources:
+      - path: CueFlow
+        excludes: [Resources]
+    dependencies:
+      - package: CueFlowCore
+    configFiles:
+      DebugLocal: Configuration/Local.xcconfig
+      ReleaseLocal: Configuration/Local.xcconfig
+      DebugICloud: Configuration/ICloud.xcconfig
+      ReleaseICloud: Configuration/ICloud.xcconfig
+    settings:
+      base:
+        INFOPLIST_FILE: CueFlow/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/../Frameworks'
+  CueFlowTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [CueFlowTests]
+    dependencies:
+      - target: CueFlow
+      - package: CueFlowCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.cueflow.tests
+        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow'
+        BUNDLE_LOADER: '$(TEST_HOST)'
+schemes:
+  CueFlow:
+    build:
+      targets:
+        CueFlow: all
+        CueFlowTests: [test]
+    run:
+      config: DebugLocal
+    test:
+      config: DebugLocal
+      targets: [CueFlowTests]
+    archive:
+      config: ReleaseLocal

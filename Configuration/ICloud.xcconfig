@@ -1,0 +1,3 @@
+#include? "Owner.xcconfig"
+CODE_SIGN_ENTITLEMENTS = CueFlow/Resources/CueFlow-iCloud.entitlements
+INFOPLIST_FILE = Configuration/Info-iCloud.plist
