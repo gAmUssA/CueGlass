@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-13T20:40:51Z
-updated_at: 2026-10-13T21:42:47Z
+updated_at: 2026-10-13T22:27:13Z
 parent: cueglass-aeqt
 ---
 
@@ -29,3 +29,5 @@ MVP remains in-progress. Full WindowServer capture permission is unavailable; no
 Source-checked root sandbox improvements were incorporated and completed with balanced 420/578/280 panes, aspect-fit preview, compact percentage inspector, Off guide segment, native toolbar tracking and visible Present, semantic state pill, source-safe paragraph decoration, Stop Take banner and matching HUD/grip. The normal DebugLocal scheme now runs all 19 app-linked native tests via the proven unhosted debug-dylib remedy; no tests were removed. Owner specs are unchanged.
 
 Updated Ready/Paused concept-sample native caches and direct editor/take-bar caches were inspected at 1280×800, 1002×800 and 980×640 in light/dark. Caches are supporting evidence only. Final activation attempts report key=false; composite layer/appearance omissions and asynchronous screen-layout frame restoration remain explicit limitations. Screen capture preflight false; no permission request. Independent visual/accessibility/key-window/macOS 14 acceptance remains unchecked. Signed two-Mac identifiers are explicitly deferred by owner. Developer corrections do not accept this polish task or MVP.
+
+Independent review r2 (3569432) requires correction R2-1: fullscreen output has opaque white NSWindow backing outside clear viewport text panel, unlike dark preview. Source and actual native window properties reproduce; preserve floating/text-panel alpha semantics. Reviewer foreground gates incomplete because tester focus marker was absent; no independent visual acceptance. Evidence: /Users/vikgamov/.local/state/cueglass/r2.md.
