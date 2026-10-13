@@ -1,0 +1,27 @@
+# Architecture
+
+NSDocument is the only owner of document lifecycle, coordinated saves, autosave, Versions and change tracking. `ScriptDocument` holds authored attributed content and a version-1 core model. The editor has its own text storage; normal editing reports immutable content back to the document. The document/controller owns the operator window; there is no DocumentGroup or filesystem save watcher.
+
+| Producer | Consumer | Contract | Verification |
+|---|---|---|---|
+| Foundation core | document/import/session/viewport | Versioned RTF JSON, bounded finite style, host-time timeline, UTF-16 anchors | `swift test --package-path Packages/CueFlowCore --scratch-path .build/core` |
+| ScriptDocument | editor and session | Source revisions; copied immutable snapshots; explicit replacement notification | `scripts/test-app.sh` |
+| PlaybackSession | output and preview | One pure shared timeline; only authoritative viewport records presented targets | Integration transport/stall/output-loss tests |
+| PrompterViewport | preview/output | TextKit 2 logical layout, guide anchor, fractional scrolling | Anchor/long-script tests and hardware plan |
+| FileManager resource APIs | document/operator | Actual container/download/resource states only | Local metadata tests; signed two-Mac plan |
+
+All AppKit types, rendering and session commands are main-actor isolated. A storage actor performs potentially blocking container/resource/download calls away from UI. Presenter metadata callbacks are nonisolated, call super, then schedule an asynchronous metadata read/main-actor update. Concurrent NSDocument reads and asynchronous writes are disabled explicitly. A narrow `MainActor.assumeIsolated` in `read(from:ofType:)` relies on that documented synchronous read contract. The save-block flag uses `OSAllocatedUnfairLock` so the nonisolated framework write hook can read it safely without an unchecked Sendable conformance.
+
+The snapshot's attributed string, ID, document identity and source revision never change during pause/resume, editor or cloud replacements. An explicit paused load installs a new snapshot. Typography is separate derived session state, persisted as document reading preferences; presentation attributes preserve bold/italic, strip links/attachments and simplify table blocks. Reflection and display preferences are UserDefaults values on this Mac. No playback position is saved or published through SwiftUI each frame.
+
+Timeline inputs use CACurrentMediaTime / CADisplayLink targetTimestamp, never Date. Commands rebase at max(current host time, last presented target). Only output is authoritative when present; otherwise preview is. A gap over 0.5 seconds pauses at the last safely presented point. Ordinary dropped frames sample elapsed time. End uses an actually laid-out final fragment rather than estimated total usage bounds.
+
+Each viewport owns a driver → display link → proxy, whose pointer back to the driver is weak. Run-loop mode is common. Idle stops/invalidate links; pause pauses them; removal from a window/output closure invalidates them. No frame callback reads files, rebuilds attributed strings or dirties the document. Layout lookahead advances in viewport-size chunks. Layer translation carries the remainder after clip-view pixel alignment; physical smoothness still needs measurement. TextKit 1 fallback asserts in Debug. No legacy layoutManager is accessed.
+
+Anchor offsets use UTF-16 at grapheme boundaries plus intra-line fraction and snapshot ID. TextKit fragment geometry excludes the text-container inset; capture/restore use the equivalent unpadded coordinate. Initial top padding puts the first line at the guide, and trailing document space lets the final line reach it. Layout changes pause, capture, rebuild, restore and rebase. New text resets the anchor instead of fuzzy-matching edits.
+
+Output is a borderless noninteractive screen-frame window. Display selection is persisted as UUID/name, never array position. Missing/ambiguous matches do not silently move output. Preview uses AppKit bounds scaling over the output's logical dimensions. Reflections apply a center-based affine transform to viewport and guide, never string reversal or controls. Disconnect pauses and closes output; there is no automatic fallback.
+
+Cloud saves remain NSDocument saves. FileManager discovers the entitled container off main. Metadata vocabulary distinguishes uploading, uploaded, downloading, conflicts and unknown. Account changes preserve edits and offer local copying. Cloud-only opens request download and require retry after availability. NSDocument Versions and Save a Copy are the first conflict recovery tools; no automatic winner, destructive version removal or timestamp merge exists. The actual system conflict UI is a manual validation gate.
+
+Material deviations from the architecture consultation: XcodeGen is used as explicitly required by the developer brief, with project and shared scheme committed. Several related components share files. Snapshot styling is intentionally held separately as editable derived session state, while snapshot source remains immutable. No progress timer is needed: the UI shows transport status without position updates. The project scheme hosts app integration tests; core tests are run by the separate package command. Full scheme execution remains affected by the observed Xcode launcher assertion.
