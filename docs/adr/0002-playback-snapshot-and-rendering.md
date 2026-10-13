@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
-- **Related:** [0001](README.md) (pending), [0003](0003-icloud-document-storage.md), `CueFlow-Codex-Handoff.md` §4 and §6, requirements R05–R07
+- **Related:** [0001](0001-native-document-and-immutable-take.md), [0003](0003-icloud-document-storage.md), `CueFlow-Codex-Handoff.md` §4 and §6, requirements R05–R07
 
 ## Context
 
@@ -27,6 +27,6 @@ Options considered: frame-count or fixed-step timers (rejected: depend on refres
 
 ### Implementation status (2026-10-13)
 
-- **Implemented and tested:** items 1–2 and the core-pure anchor, grapheme and carry-over helpers in `Packages/CueFlowCore` at `fdbffc2` (7 Swift Testing tests passing).
-- **Implemented, not accepted:** items 3–6 exist in the primary developer's uncommitted native work, with anchors inside `PrompterViewport` rather than a separate resolver type.
-- **Recommended, not implemented:** a typed `PlaybackInstant` and the narrower `TimelineError` taxonomy from the architect note (core uses plain `Double` and `invalidTime` / `invalidPosition` / `invalidVelocity`); a `ScrollStrategy` switch (current code has a boolean fractional-translation flag); a ≤ 4 Hz progress-label timer. The scrolling strategy and smoothness are unverified on hardware — bean `cueglass-feeg`; profiling — bean `cueglass-c1kt`.
+- **Committed, developer-tested; independent acceptance pending:** items 1–6 are implemented through `d278e16ae6b91f2f7684a3a2649aa756924fa578` on `feat/cueflow-native`. Core validation/timeline hardening is at `e797e57`; native snapshot, display link and viewport integration is at `e92ffc5`. Existing developer logs report 9 core Swift Testing tests and 11 direct AppKit bundle tests passing; these are not independent review/test verdicts. See [implementation status](../IMPLEMENTATION_STATUS.md) and [MVP acceptance](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md).
+- **Implementation shape:** the package declares `PlaybackClock` and `ManualClock`; the app injects host media time through `PlaybackSession.clock`, a `() -> Double` closure. Time values remain `Double` with `invalidTime` / `invalidPosition` / `invalidVelocity`. Anchors live in `PrompterViewport`; fractional scrolling uses the `fractionalTranslation` boolean instead of a separate ScrollStrategy type. No progress-position label timer is needed by the delivered transport-status UI. These are implementation facts, not changes to the accepted Decision above.
+- **Unverified:** physical scrolling strategy/smoothness, mixed refresh and visual behavior — [cueglass-feeg](../../.beans/cueglass-feeg--physical-display-and-visual-verification.md); sustained hardware profiling — [cueglass-c1kt](../../.beans/cueglass-c1kt--performance-profiling-on-hardware.md). The cached NSView bitmap is limited evidence with incomplete SwiftUI layer controls; it is not a complete real-window screen capture or hardware visual pass. Screen-capture permission is unavailable. Xcode's hosted test launcher assertion remains; the direct bundle runner does not establish sandbox proof.

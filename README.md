@@ -44,7 +44,7 @@ xcrun swift-format lint --strict --recursive CueFlow Packages/CueFlowCore/Source
 swift scripts/make-fixtures.swift
 ```
 
-Executed on the toolchain above: core Swift Testing tests pass (9 tests, including 3 velocity cases); hosted AppKit Swift Testing bundle passes (11 tests); local app/build-for-testing compile with Swift warnings as errors. Integration tests exercise actual RTF decode, import originals/mtime, native round trips, malformed and future-version refusal, save protection, derived styling/anchor restoration, immutable takes/stalls, link teardown, operator rendering and editor key events, output-loss retention, undo, local metadata and long-script layout. They generate `.build/operator-window.png` for inspection.
+Executed on the toolchain above: core Swift Testing tests pass (9 tests, including 3 velocity cases); hosted AppKit Swift Testing bundle passes (11 tests); local app/build-for-testing compile with Swift warnings as errors. Integration tests exercise actual RTF decode, import originals/mtime, native round trips, malformed and future-version refusal, save protection, derived styling/anchor restoration, immutable takes/stalls, link teardown, operator rendering and editor key events, output-loss retention, undo, local metadata and long-script layout. They generate `.build/operator-window.png`, a cached NSView bitmap with incomplete SwiftUI layer controls. This is limited visual evidence; screen-capture permission is unavailable, and no complete real-window screenshot or hardware visual pass is claimed.
 
 `xcodebuild … test` was also attempted, both unsigned and ad hoc signed. Xcode's LaunchServices test launcher aborted with `IDELaunchServicesLauncher.m:445`, `childPID > 0` (exit 134). This is **not a passing scheme test**. `scripts/test-app.sh` builds the same hosted test bundle, then invokes the installed `xctest` runner directly with its framework/dylib paths. Swift Testing's final nonzero test count is the result; the preceding XCTest “0 tests” line is not the verdict. This bypass does not prove sandbox or iCloud behavior.
 
@@ -52,6 +52,8 @@ No physical-output smoothness, mixed-refresh behavior, 60-minute profiling, opti
 
 ## Design and setup
 
-[Architecture](docs/ARCHITECTURE.md) · [ADR](docs/adr/0001-native-document-and-immutable-take.md) · [iCloud](docs/ICLOUD_SETUP.md) · [manual validation](docs/MANUAL_TEST_PLAN.md)
+[Architecture](docs/ARCHITECTURE.md) · [ADR index](docs/adr/README.md) · [iCloud](docs/ICLOUD_SETUP.md) · [manual validation](docs/MANUAL_TEST_PLAN.md)
+
+Work tracking: [Beans](.beans/) and [CueFlow v1 MVP milestone](.beans/cueglass-aeqt--cueflow-v1-mvp.md). Implementation is committed; every MVP acceptance checklist item remains open pending independent reviewer/tester reports. Owner iCloud, physical display and performance follow-ups remain pending.
 
 No notarized or distributable release was produced. Distribution requires the owner's signing identity, hardened runtime/archive review, Developer ID signing and notarization with `notarytool`, stapling, and a clean-machine Gatekeeper check. Do not distribute this private development branch as a verified release.

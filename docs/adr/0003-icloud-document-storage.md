@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
-- **Related:** [0001](README.md) (pending), [0002](0002-playback-snapshot-and-rendering.md), `CueFlow-Codex-Handoff.md` §5 and §8, requirement R04
+- **Related:** [0001](0001-native-document-and-immutable-take.md), [0002](0002-playback-snapshot-and-rendering.md), `CueFlow-Codex-Handoff.md` §5 and §8, requirement R04
 
 ## Context
 
@@ -26,7 +26,7 @@ Options considered: CloudKit database or a custom backend (rejected: out of scop
 
 ### Implementation status (2026-10-13)
 
-- **Implemented and tested:** format, codec guards, `CloudStatus` mapping and display matching in `Packages/CueFlowCore` at `fdbffc2`.
-- **Implemented, not accepted:** document save-block, presenter overrides, storage actor, account-change banner and local/iCloud configurations exist in the primary developer's uncommitted native work.
-- **Recommended, not implemented:** "Move to iCloud…" via `moveDocumentToUbiquityContainer(_:)` and a conflict banner offering "Browse Versions…" via `browseDocumentVersions(_:)` were not observed in the native source; a manual `NSFileVersion` resolver remains conditional on hardware findings.
-- **Unverified:** everything requiring a signed iCloud build and a second Mac — bean `cueglass-ykl0`.
+- **Committed, developer-tested; independent acceptance pending:** items 1–5 are implemented through `d278e16ae6b91f2f7684a3a2649aa756924fa578` on `feat/cueflow-native`. Core codec/status helpers are committed; native integration is at `e92ffc5`, and storage/recovery hardening is at `d278e16`. Existing developer logs report 9 core tests and 11 direct AppKit tests passing, including local/unconfigured metadata, take isolation, future-version save protection and recovery to a different path. They do not prove real iCloud delivery or conflict recovery. See [implementation status](../IMPLEMENTATION_STATUS.md) and [MVP acceptance](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md).
+- **Actual storage UI:** explicit Save to iCloud uses container discovery and NSDocument save. Browse Versions is implemented via the SDK Swift spelling `browseVersions(_:)` in File/controls; Save a Copy remains available and cannot overwrite the protected future-version original. The optional direct Move to iCloud command is not implemented; a manual NSFileVersion resolver remains conditional on real conflict-UI findings. There is no automatic conflict winner or version deletion.
+- **Owner configuration:** the committed per-config plist example uses an owner-edited literal NSUbiquitousContainers dictionary key, avoiding reliance on build-variable key expansion. Owner signing/configuration and actual signed plist/entitlement consistency remain unverified; see [iCloud setup](../ICLOUD_SETUP.md).
+- **Unverified:** signed iCloud build, two-Mac delivery/offline conflicts, dataless-file and account-change behavior — [cueglass-ykl0](../../.beans/cueglass-ykl0--owner-icloud-setup-and-two-mac-verification.md). Accepted architecture does not close these acceptance gates.
