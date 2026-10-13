@@ -5,7 +5,7 @@ status: in-progress
 type: milestone
 priority: high
 created_at: 2026-10-13T18:53:52Z
-updated_at: 2026-10-13T21:42:47Z
+updated_at: 2026-10-13T23:11:38Z
 ---
 
 Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md` (owner-expanded mandatory R01–R16).
@@ -25,7 +25,7 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 ## Milestones — independent acceptance pending
 
 - [ ] M0a — Foundation-only core timeline with deterministic timing tests (implemented; 14 core tests in developer evidence)
-- [ ] M0 — App shell, operator UI, in-memory sample in presentation viewport (implemented; independent acceptance pending)
+- [x] M0 — App shell, operator UI, in-memory sample in presentation viewport (implemented; independent acceptance pending)
 - [ ] M1 — TXT/RTF import, diagnostics, editing, native `.cueflow` round trip, undo, autosave, local Open/Save, derived styling (implemented)
 - [ ] M2 — Display-linked playback, live speed, pause/resume/restart, reading anchors, layout controls, cleanup, stall handling (implemented; hardware smoothness pending)
 - [ ] M3 — Output display selection, separate output window, scaled preview, both reflection axes, calibration, disconnect handling (implemented; physical validation pending)
@@ -64,3 +64,5 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - cueglass-8ngi — ADR for LPM/reverse/timing, superseding ADR 0002 speed contract
 
 Cumulative fix3 correction is tracked in `cueglass-f1i6`; independent design acceptance remains in `cueglass-7bw1`. Current key-window/composite-cache limitations remain open. All MVP requirement acceptance boxes stay unchecked.
+
+Independent current-source acceptance: core foundation14 tests and app/sample foundation are proven by r3/r4 native gates and actual unlocked r3 window/AX/cache evidence. This accepts M0a/M0 only. Full MVP remains open: r4 confirms long-script anchor loss and countdown replay after asynchronous preparation; actual native Undo/four-window/resize acceptance remains incomplete. Existing GUI session availability attention is reopened after graphical login disappeared.
