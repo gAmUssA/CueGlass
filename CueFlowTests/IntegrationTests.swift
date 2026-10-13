@@ -69,12 +69,20 @@ import Testing
       try doc.read(from: Data(contentsOf: future), ofType: ScriptDocument.nativeType)
     }
     #expect(doc.source == previous)
+    doc.fileURL = future
     #expect(doc.saveBlockedReason != nil)
     #expect(throws: (any Error).self) { try doc.checkAutosavingSafety() }
     #expect(throws: (any Error).self) {
       try doc.writeSafely(
         to: future, ofType: ScriptDocument.nativeType, for: .autosaveInPlaceOperation)
     }
+    #expect(throws: (any Error).self) {
+      try doc.writeSafely(to: future, ofType: ScriptDocument.nativeType, for: .saveToOperation)
+    }
+    let recovered = root.appendingPathComponent("recovery.cueflow")
+    defer { cleanup(recovered) }
+    try doc.writeSafely(to: recovered, ofType: ScriptDocument.nativeType, for: .saveToOperation)
+    #expect(try ScriptFileCodec.decode(Data(contentsOf: recovered)).model.formatVersion == 1)
     #expect(try Data(contentsOf: future) == Data("{\"formatVersion\":2}".utf8))
   }
   @Test func immutableTakeAndStall() throws {
@@ -296,7 +304,7 @@ import Testing
     #expect(try session.position(at: 30) == end)
   }
   @Test func localCloudAndSingleSession() async throws {
-    #expect(await DocumentStorageService.shared.container(identifier: "") == nil)
+    #expect(try await DocumentStorageService.shared.container(identifier: "") == nil)
     let url = try fixture("local.txt", Data("local".utf8))
     defer { cleanup(url) }
     #expect(try await CloudStatus.map(DocumentStorageService.shared.metadata(url)) == .local)

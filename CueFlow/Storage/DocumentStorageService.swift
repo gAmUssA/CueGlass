@@ -3,10 +3,14 @@ import Foundation
 
 actor DocumentStorageService {
   static let shared = DocumentStorageService()
-  func container(identifier: String) -> URL? {
+  func container(identifier: String) throws -> URL? {
     guard !identifier.isEmpty, FileManager.default.ubiquityIdentityToken != nil else { return nil }
-    return FileManager.default.url(forUbiquityContainerIdentifier: identifier)?
-      .appendingPathComponent("Documents", isDirectory: true)
+    guard let root = FileManager.default.url(forUbiquityContainerIdentifier: identifier) else {
+      return nil
+    }
+    let documents = root.appendingPathComponent("Documents", isDirectory: true)
+    try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+    return documents
   }
   func metadata(_ url: URL) throws -> CloudResourceSnapshot { try CloudMetadata.read(url) }
   func download(_ url: URL) throws {

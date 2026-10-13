@@ -445,7 +445,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func saveICloud() {
     Task { [weak self] in
       guard let self else { return }
-      guard let directory = await DocumentStorageService.shared.container(identifier: containerID)
+      let container: URL?
+      do {
+        container = try await DocumentStorageService.shared.container(identifier: containerID)
+      } catch let error as NSError {
+        present(error)
+        return
+      }
+      guard let directory = container
       else {
         state.status =
           containerID.isEmpty

@@ -96,7 +96,9 @@ import os
   override func writeSafely(
     to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType
   ) throws {
-    if let reason = saveBlockedReason, saveOperation != .saveToOperation {
+    let overwritesOriginal =
+      fileURL.map { $0.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() } ?? false
+    if let reason = saveBlockedReason, saveOperation != .saveToOperation || overwritesOriginal {
       throw NSError(domain: "CueFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }
     try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
