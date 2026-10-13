@@ -5,10 +5,10 @@ status: in-progress
 type: milestone
 priority: high
 created_at: 2026-10-13T18:53:52Z
-updated_at: 2026-10-13T18:53:57Z
+updated_at: 2026-10-13T19:06:06Z
 ---
 
-Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md`.
+Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md` (R01–R16 since PR #1, merged as `ad4b495`).
 
 Stays `in-progress` until the full implementation is accepted by independent review and test. Checked items below carry committed evidence; unchecked items are not accepted yet.
 
@@ -24,7 +24,8 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - [ ] M0 — App shell, operator UI, in-memory sample in presentation viewport (built; not accepted)
 - [ ] M1 — TXT/RTF import, diagnostics, editing, native `.cueflow` round trip, undo, autosave, local Open/Save, derived styling
 - [ ] M2 — Display-linked playback, live speed, pause/resume/restart, reading anchors, layout controls, cleanup, stall handling
-- [ ] M3 — Output display selection, separate output window, scaled preview, both reflection axes, calibration, disconnect handling
+- [ ] M2.5 — Operator controls: SpeedModel (lines/min), CommandMap defaults and remapping, paragraph step, restart, reverse, scrub, end-of-script hold, countdown, Timed Scrolling, elapsed/remaining time, compact control panel
+- [ ] M3 — Output display selection, separate output window, scaled preview, both reflection axes, calibration, disconnect handling, floating prompter window (R10), reading aids (R16)
 - [ ] M4 — iCloud configurations, container discovery, storage choice, truthful status, offline/account handling, conflicts, take isolation
 - [ ] M5 — Focus-safe shortcuts, accessibility, recovery, fixtures, README / ICLOUD_SETUP / MANUAL_TEST_PLAN / IMPLEMENTATION_STATUS docs
 
@@ -39,6 +40,13 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - [ ] R07 Smooth scrolling — needs hardware evidence (follow-up bean)
 - [ ] R08 Independent horizontal/vertical reflection — needs optical check (follow-up bean)
 - [ ] R09 Present on another screen — needs physical display check (follow-up bean)
+- [ ] R10 Floating always-on-top prompter window — needs hardware check over a full-screen call app (follow-up bean)
+- [ ] R11 Compact control panel usable with the operator window hidden
+- [ ] R12 Font-independent reading pace in lines/minute, estimated WPM
+- [ ] R13 Restart, paragraph step, reverse direction, pause-and-scrub
+- [ ] R14 Clicker and foot-pedal keys: app-local, remappable, editor-safe
+- [ ] R15 Elapsed/remaining time, start countdown, Timed Scrolling, end-of-script hold
+- [ ] R16 Reading-guide style, edge fade, side margins, text-panel opacity, hide controls while playing
 
 ## Follow-up beans
 
@@ -46,3 +54,4 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - cueglass-ykl0 — Owner iCloud setup and two-Mac verification (R04)
 - cueglass-feeg — Physical display and visual verification (R07, R08, R09)
 - cueglass-c1kt — Performance profiling on hardware (R07)
+- cueglass-8ngi — ADR: lines-per-minute speed model and reverse direction (R12, R13, R15; supersedes part of ADR 0002)

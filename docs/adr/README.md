@@ -5,7 +5,7 @@ One file per decision, named `NNNN-<kebab-title>.md`. Each record carries Title,
 | ADR | Title | Status |
 |---|---|---|
 | 0001 | Native application architecture (NSDocument, AppKit + SwiftUI) | pending — reserved for the primary app developer (bean `cueglass-xfha`) |
-| [0002](0002-playback-snapshot-and-rendering.md) | Deterministic playback timeline, immutable take snapshot, TextKit 2 display-linked rendering | accepted |
+| [0002](0002-playback-snapshot-and-rendering.md) | Deterministic playback timeline, immutable take snapshot, TextKit 2 display-linked rendering | accepted — speed and scrolling parts to be superseded for R12/R13/R15 (bean `cueglass-8ngi`) |
 | [0003](0003-icloud-document-storage.md) | iCloud Drive storage of self-contained `.cueflow` documents | accepted |
 
 Sources: `CueFlow-Codex-Handoff.md` (product specification) and the architect decision note for task `cueglass-v1` (kept outside the repository). Work tracking lives in `.beans/` (milestone `cueglass-aeqt`).
