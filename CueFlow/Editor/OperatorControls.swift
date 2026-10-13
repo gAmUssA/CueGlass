@@ -5,7 +5,13 @@ import SwiftUI
 struct OperatorControls: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
-  private func styleBinding<T>(_ path: WritableKeyPath<ReadingStyle, T>) -> Binding<T> {
+  @State private var selectedCommand = PlaybackCommand.toggle
+  @AppStorage("layoutExpanded") private var layoutExpanded = false
+  @AppStorage("colorsExpanded") private var colorsExpanded = false
+  @AppStorage("timingExpanded") private var timingExpanded = false
+  @AppStorage("keysExpanded") private var keysExpanded = false
+  @AppStorage("floatingExpanded") private var floatingExpanded = false
+  private func binding<T>(_ path: WritableKeyPath<ReadingStyle, T>) -> Binding<T> {
     Binding(
       get: { state.style[keyPath: path] },
       set: { value in
@@ -14,106 +20,191 @@ struct OperatorControls: View {
         controller.changeStyle(style)
       })
   }
-  private func colorBinding(_ path: WritableKeyPath<ReadingStyle, [Double]>) -> Binding<Color> {
+  private func color(_ path: WritableKeyPath<ReadingStyle, [Double]>) -> Binding<Color> {
     Binding(
       get: { Color(nsColor: PresentationBuilder.color(state.style[keyPath: path])) },
       set: { value in
-        guard let color = NSColor(value).usingColorSpace(.sRGB) else { return }
+        guard let c = NSColor(value).usingColorSpace(.sRGB) else { return }
         var style = state.style
         style[keyPath: path] = [
-          color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent,
+          c.redComponent, c.greenComponent, c.blueComponent, c.alphaComponent,
         ]
         controller.changeStyle(style)
       })
   }
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Button(state.running ? "Pause" : "Play") { controller.toggle() }.accessibilityLabel(
-          "Play or pause")
-        Button("Stop Take") { controller.stop() }
-        Button("Restart") { controller.restart() }
-        Button("Load Latest") { controller.loadLatest() }.disabled(!state.pending || state.running)
-        Text("Speed")
-        Slider(value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }), in: 1...300)
-          .accessibilityLabel("Scroll speed").frame(maxWidth: 180)
-        TextField(
-          "Speed", value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
-          format: .number.precision(.fractionLength(1))
-        ).frame(width: 65).accessibilityLabel("Speed in points per second")
-        Stepper(
-          "pt/s", onIncrement: { controller.adjustSpeed(1) },
-          onDecrement: { controller.adjustSpeed(-1) })
-      }
-      HStack {
-        Picker("Style", selection: styleBinding(\.mode)) {
-          Text("Normalized").tag(ReadingStyle.Mode.normalized)
-          Text("Preserve Source").tag(ReadingStyle.Mode.preserveSource)
-        }.frame(width: 230)
+    Form {
+      Section("Text") {
         Picker(
           "Font",
           selection: Binding(
-            get: { state.style.fontIdentifier ?? "" },
-            set: { name in
+            get: {
+              state.style.fontIdentifier
+                ?? (state.style.systemDesign == .serif ? "serif" : "system")
+            },
+            set: { value in
               var style = state.style
-              style.fontIdentifier = name.isEmpty ? nil : name
+              style.fontIdentifier = ["system", "serif"].contains(value) ? nil : value
+              style.systemDesign = value == "serif" ? .serif : .default
               controller.changeStyle(style)
             })
         ) {
-          Text("System").tag("")
-          ForEach(NSFontManager.shared.availableFontFamilies.sorted(), id: \.self) {
-            Text($0).tag($0)
+          Text("Studio Sans · System").tag("system")
+          Text("Manuscript · Serif").tag("serif")
+          Text("Charter").tag("Charter")
+          Text("Iowan").tag("IowanOldStyle-Roman")
+          Text("Avenir").tag("AvenirNext-DemiBold")
+          if let name = state.style.fontIdentifier,
+            !["Charter", "IowanOldStyle-Roman", "AvenirNext-DemiBold"].contains(name)
+          {
+            Text(name).tag(name)
           }
-        }.frame(width: 240)
-        Text("Size")
-        Slider(value: styleBinding(\.fontSize), in: 18...180).frame(width: 150).accessibilityLabel(
-          "Presentation font size")
-        TextField("Size", value: styleBinding(\.fontSize), format: .number).frame(width: 60)
+        }.disabled(state.style.mode == .preserveSource)
+        Button("Other Fonts…") { controller.otherFonts() }.disabled(
+          state.style.mode == .preserveSource)
+        Picker("Weight", selection: binding(\.fontWeight)) {
+          ForEach(ReadingStyle.Weight.allCases, id: \.self) {
+            Text($0.rawValue.capitalized).tag($0)
+          }
+        }.disabled(state.style.mode == .preserveSource)
+        if state.style.mode == .preserveSource {
+          Text("Source fonts and emphasis are retained; Size scales the source.").font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        TextField("Size (pt)", value: binding(\.fontSize), format: .number)
+        valueSlider("Line height", path: \.lineHeightMultiplier, range: 1...2)
       }
-      HStack {
-        Text("Line height")
-        Slider(value: styleBinding(\.lineHeightMultiplier), in: 1...2).frame(width: 100)
-          .accessibilityLabel("Line height")
-        Text("Spacing")
-        Slider(value: styleBinding(\.paragraphSpacing), in: 0...200).frame(width: 100)
-          .accessibilityLabel("Paragraph spacing")
-        Text("Column")
-        Slider(value: styleBinding(\.columnWidthFraction), in: 0.25...1).frame(width: 100)
-          .accessibilityLabel("Column width")
-        Text("Guide")
-        Slider(value: styleBinding(\.readingGuideFraction), in: 0...1).frame(width: 100)
-          .accessibilityLabel("Reading guide position")
-        Toggle("Show guide", isOn: styleBinding(\.showsReadingGuide))
+      Section("Reading Guide") {
+        Toggle("Show guide", isOn: binding(\.showsReadingGuide))
+        Picker("Style", selection: binding(\.readingGuideStyle)) {
+          Text("Line").tag(ReadingStyle.GuideStyle.line)
+          Text("Triangle").tag(ReadingStyle.GuideStyle.triangle)
+          Text("Both").tag(ReadingStyle.GuideStyle.triangleAndLine)
+        }
+        valueSlider("Position", path: \.readingGuideFraction, range: 0...1)
+        valueSlider("Guide opacity", path: \.readingGuideOpacity, range: 0...1)
+        valueSlider("Edge fade", path: \.edgeFadeFraction, range: 0...0.3)
       }
-      HStack {
-        Picker("Output", selection: $state.selectedDisplay) {
+      Section("Output") {
+        Picker("Display", selection: $state.selectedDisplay) {
           ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key) }
-        }.frame(width: 310)
-        Button(controller.output == nil ? "Show Output" : "Stop Output") { controller.showOutput() }
-        Toggle("Horizontal", isOn: $state.horizontal).onChange(of: state.horizontal) {
+        }
+        Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(of: state.horizontal) {
           controller.reflect()
         }
-        Toggle("Vertical", isOn: $state.vertical).onChange(of: state.vertical) {
+        Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
           controller.reflect()
         }
-        Toggle("Show as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
+        Toggle("Preview as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
           controller.reflect()
         }
-        Button("Calibration") { controller.calibration() }
+        Button("Calibration Pattern…") { controller.calibration() }
       }
+      DisclosureGroup("Layout", isExpanded: $layoutExpanded) {
+        Picker("Typography", selection: binding(\.mode)) {
+          Text("Normalized").tag(ReadingStyle.Mode.normalized)
+          Text("Preserve Source").tag(ReadingStyle.Mode.preserveSource)
+        }
+        valueSlider("Column width", path: \.columnWidthFraction, range: 0.25...1)
+        valueSlider("Side margins", path: \.sideMarginFraction, range: 0...0.25)
+        valueSlider("Paragraph spacing", path: \.paragraphSpacing, range: 0...200)
+      }
+      DisclosureGroup("Colors", isExpanded: $colorsExpanded) {
+        ColorPicker("Text", selection: color(\.foregroundRGBA))
+        ColorPicker("Background", selection: color(\.backgroundRGBA))
+        valueSlider("Text panel opacity", path: \.textPanelOpacity, range: 0...1)
+        if !state.contrastWarning.isEmpty {
+          Text(state.contrastWarning).font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      DisclosureGroup("Floating Window", isExpanded: $floatingExpanded) {
+        Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {
+          controller.updateFloatingOptions()
+          controller.saveOperatorPreferences()
+        }.accessibilityLabel("Whole floating window opacity")
+        Text("Whole window: \(Int(state.floatingOpacity*100))%").font(.caption)
+        Toggle("Over full-screen apps", isOn: $state.overFullScreen).onChange(
+          of: state.overFullScreen
+        ) {
+          controller.updateFloatingOptions()
+          controller.saveOperatorPreferences()
+        }
+        Toggle("Click-through while playing", isOn: $state.clickThrough).onChange(
+          of: state.clickThrough
+        ) {
+          controller.refresh()
+          controller.saveOperatorPreferences()
+        }
+        if !state.contrastWarning.isEmpty { Text(state.contrastWarning).font(.caption) }
+      }
+      DisclosureGroup("Timing", isExpanded: $timingExpanded) {
+        Picker("Start countdown", selection: $state.countdown) {
+          Text("Off").tag(0)
+          ForEach([3, 5, 10], id: \.self) { Text("\($0) seconds").tag($0) }
+        }
+        TextField("Finish in seconds", value: $state.duration, format: .number)
+        Button("Enable Timed Scrolling") {
+          controller.perform {
+            if controller.session.state == .idle {
+              try controller.session.prepare(controller.script)
+              controller.render()
+            }
+            try controller.session.enableTimed(seconds: state.duration)
+            controller.refresh()
+          }
+        }
+        Toggle("Hide controls while playing", isOn: $state.hideControls)
+      }
+      DisclosureGroup("Controls & Keys", isExpanded: $keysExpanded) {
+        Text("App must be frontmost, or the clicker must target CueGlass. No global monitoring.")
+          .font(.caption)
+        Picker("Command", selection: $selectedCommand) {
+          ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }
+        Text(
+          CommandRouter.map.bindings.filter { $0.command == selectedCommand }.map { $0.chord.label }
+            .joined(separator: " · ")
+        ).font(.caption)
+        Button("Record Shortcut…") { controller.recordShortcut(selectedCommand) }
+        Button("Reset Defaults") {
+          CommandRouter.map = CommandMap()
+          controller.perform {
+            try CommandRouter.save()
+            controller.refresh()
+            state.status = "Default shortcuts restored"
+          }
+        }
+        Slider(value: $state.maximum, in: 10...240, step: 1).onChange(of: state.maximum) {
+          controller.session.configuredMax = state.maximum
+          controller.perform {
+            try controller.session.updateLayout(
+              end: controller.session.timeline.upperBound,
+              paragraphs: controller.session.paragraphPositions,
+              wordCount: controller.session.words, lineCount: controller.session.lines)
+          }
+          controller.saveOperatorPreferences()
+        }.accessibilityLabel("Maximum lines per minute")
+        Text("Maximum \(Int(state.maximum)) lpm").font(.caption)
+        Stepper("Fine step \(Int(state.fineStep)) lpm", value: $state.fineStep, in: 1...10)
+          .onChange(of: state.fineStep) { controller.saveOperatorPreferences() }
+        Stepper("Jump step \(Int(state.jumpStep)) lpm", value: $state.jumpStep, in: 1...60)
+          .onChange(of: state.jumpStep) { controller.saveOperatorPreferences() }
+      }
+    }.formStyle(.grouped).tint(.gray).onChange(of: state.countdown) {
+      controller.saveOperatorPreferences()
+    }.onChange(of: state.hideControls) { controller.saveOperatorPreferences() }
+  }
+  private func valueSlider(
+    _ label: String, path: WritableKeyPath<ReadingStyle, Double>, range: ClosedRange<Double>
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
       HStack {
-        ColorPicker("Text", selection: colorBinding(\.foregroundRGBA)).frame(width: 110)
-        ColorPicker("Background", selection: colorBinding(\.backgroundRGBA)).frame(width: 160)
-        Button("Save On This Mac…") { controller.script.save(nil) }
-        Button("Save to iCloud…") { controller.saveICloud() }
-        Button("Save a Copy…") { controller.script.saveTo(nil) }
-        Button("Browse Versions…") { controller.script.browseVersions(nil) }
-        Button("Download") { controller.requestDownload() }
-        Button("Refresh Status") { Task { await controller.script.refreshCloudStatus() } }
+        Text(label)
+        Spacer()
+        Text(state.style[keyPath: path], format: .number.precision(.fractionLength(2)))
+          .foregroundStyle(.secondary).monospacedDigit()
       }
-      Text(state.status).font(.callout).lineLimit(2).accessibilityLabel("Transport status")
-      Text(state.cloud).font(.caption).foregroundStyle(.secondary).accessibilityLabel(
-        "Storage status")
-    }.padding(12)
+      Slider(value: binding(path), in: range).accessibilityLabel(label)
+    }
   }
 }

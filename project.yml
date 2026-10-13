@@ -37,8 +37,16 @@ targets:
       DebugICloud: Configuration/ICloud.xcconfig
       ReleaseICloud: Configuration/ICloud.xcconfig
     settings:
+      configs:
+        DebugLocal:
+          INFOPLIST_FILE: CueFlow/Resources/Info.plist
+        ReleaseLocal:
+          INFOPLIST_FILE: CueFlow/Resources/Info.plist
+        DebugICloud:
+          INFOPLIST_FILE: Configuration/Info-iCloud.plist
+        ReleaseICloud:
+          INFOPLIST_FILE: Configuration/Info-iCloud.plist
       base:
-        INFOPLIST_FILE: CueFlow/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/../Frameworks'
   CueFlowTests:
@@ -65,5 +73,9 @@ schemes:
     test:
       config: DebugLocal
       targets: [CueFlowTests]
+    profile:
+      config: ReleaseLocal
+    analyze:
+      config: DebugLocal
     archive:
       config: ReleaseLocal

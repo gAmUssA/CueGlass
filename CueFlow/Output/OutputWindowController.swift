@@ -19,11 +19,23 @@ import CueFlowCore
   }
 }
 @MainActor final class OutputWindow: NSWindow {
+  weak var operatorController: OperatorWindowController?
   var exit: (() -> Void)?
   override var canBecomeKey: Bool { true }
   override func keyDown(with event: NSEvent) {
-    if event.keyCode == 53 { exit?() } else { super.keyDown(with: event) }
+    if !CommandRouter.route(event, window: self, controller: operatorController) {
+      super.keyDown(with: event)
+    }
   }
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    if event.modifierFlags.contains(.command),
+      CommandRouter.route(event, window: self, controller: operatorController)
+    {
+      return true
+    }
+    return super.performKeyEquivalent(with: event)
+  }
+
 }
 @MainActor final class OutputWindowController: NSWindowController, NSWindowDelegate {
   let reflection = ReflectionContainerView(frame: .zero)
@@ -39,7 +51,7 @@ import CueFlowCore
     window.hidesOnDeactivate = false
     window.collectionBehavior = [.fullScreenAuxiliary, .stationary]
     window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
-    window.ignoresMouseEvents = true
+    window.ignoresMouseEvents = false
     window.contentView = reflection
     window.setFrame(display.screen.frame, display: true)
     window.delegate = self

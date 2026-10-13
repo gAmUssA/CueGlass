@@ -8,13 +8,17 @@ import AppKit
   }
   func applicationDidFinishLaunching(_ notification: Notification) {
     if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-      || ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] == "1"
+      || (ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] == "1"
+        && ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_CHECK"] != "1")
     {
       return
     }
     NSApp.activate(ignoringOtherApps: true)
     if NSDocumentController.shared.documents.isEmpty {
       NSDocumentController.shared.newDocument(nil)
+    }
+    if ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_CHECK"] == "1" {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.captureVisualEvidence() }
     }
   }
   func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
@@ -36,17 +40,17 @@ import AppKit
       item.keyEquivalentModifierMask = modifiers
       menu.addItem(item)
     }
-    let app = menu("CueFlow")
-    add(app, "About CueFlow", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+    let app = menu("CueGlass")
+    add(app, "About CueGlass", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
     app.addItem(.separator())
-    add(app, "Hide CueFlow", #selector(NSApplication.hide(_:)), "h")
-    add(app, "Quit CueFlow", #selector(NSApplication.terminate(_:)), "q")
+    add(app, "Hide CueGlass", #selector(NSApplication.hide(_:)), "h")
+    add(app, "Quit CueGlass", #selector(NSApplication.terminate(_:)), "q")
     let file = menu("File")
     add(file, "New", #selector(NSDocumentController.newDocument(_:)), "n")
     add(file, "Open…", #selector(NSDocumentController.openDocument(_:)), "o")
     let recentsItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
     let recents = NSMenu(title: "Open Recent")
-    recents.identifier = NSUserInterfaceItemIdentifier("CueFlowRecents")
+    recents.identifier = NSUserInterfaceItemIdentifier("CueGlassRecents")
     recents.delegate = self
     recentsItem.submenu = recents
     file.addItem(recentsItem)
@@ -57,6 +61,9 @@ import AppKit
       file, "Save a Copy…", #selector(NSDocument.saveTo(_:)), "s", modifiers: [.command, .option])
     add(file, "Move To…", #selector(NSDocument.move(_:)))
     add(file, "Browse Versions…", #selector(NSDocument.browseVersions(_:)))
+    add(file, "Save to iCloud…", #selector(saveCloudAction))
+    add(file, "Request iCloud Download", #selector(downloadAction))
+    add(file, "Refresh iCloud Status", #selector(refreshCloudAction))
     let edit = menu("Edit")
     add(edit, "Undo", Selector(("undo:")), "z")
     add(edit, "Redo", Selector(("redo:")), "z", modifiers: [.command, .shift])
@@ -82,13 +89,27 @@ import AppKit
       modifiers: [.command, .option])
     add(playback, "Show / Hide Output", #selector(output), "o", modifiers: [.command, .option])
     add(playback, "Restart", #selector(restart), "r", modifiers: [.command, .option])
+    add(playback, "Previous Paragraph", #selector(previousParagraph))
+    add(playback, "Next Paragraph", #selector(nextParagraph))
+    add(playback, "Reverse Direction", #selector(reverse))
+    add(playback, "Stop Take", #selector(stopTakeAction))
+    let view = menu("View")
+    add(
+      view, "Controls", #selector(controlsAction), "k",
+      modifiers: [.command, .option])
+    add(
+      view, "Floating Prompter", #selector(floatingAction), "f",
+      modifiers: [.command, .option])
+    add(
+      view, "Show Inspector", #selector(toggleInspector), "i",
+      modifiers: [.command, .control])
     let window = menu("Window")
     add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
     NSApp.windowsMenu = window
     NSApp.mainMenu = main
   }
   func menuNeedsUpdate(_ menu: NSMenu) {
-    guard menu.identifier?.rawValue == "CueFlowRecents" else { return }
+    guard menu.identifier?.rawValue == "CueGlassRecents" else { return }
     menu.removeAllItems()
     for url in NSDocumentController.shared.recentDocumentURLs {
       let item = NSMenuItem(
@@ -112,11 +133,76 @@ import AppKit
   }
   var current: OperatorWindowController? {
     NSApp.keyWindow?.windowController as? OperatorWindowController
+      ?? (NSApp.keyWindow as? PresentationPanel)?.operatorController
+      ?? (NSApp.keyWindow as? OutputWindow)?.operatorController
       ?? PresentationCoordinator.shared.owner
   }
+  @objc func saveCloudAction() { current?.saveCloudAction() }
+  @objc func downloadAction() { current?.downloadAction() }
+  @objc func refreshCloudAction() { current?.refreshCloudAction() }
+  @objc func stopTakeAction() { current?.stopTakeAction() }
+  @objc func controlsAction() { current?.controlsAction() }
+  @objc func floatingAction() { current?.floatingAction() }
+  @objc func toggleInspector() { current?.toggleInspector() }
   @objc func toggle() { current?.toggle() }
-  @objc func faster() { current?.adjustSpeed(5) }
-  @objc func slower() { current?.adjustSpeed(-5) }
+  @objc func faster() { current?.adjustSpeed(1) }
+  @objc func slower() { current?.adjustSpeed(-1) }
   @objc func output() { current?.showOutput() }
+  @objc func previousParagraph() { current?.execute(.previousParagraph) }
+  @objc func nextParagraph() { current?.execute(.nextParagraph) }
+  @objc func reverse() { current?.execute(.reverse) }
   @objc func restart() { current?.restart() }
+}
+
+extension AppDelegate {
+  /// Explicit developer diagnostic: cached AppKit rendering, never screen-capture proof.
+  func captureVisualEvidence() {
+    guard let directory = ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_ARTIFACTS"],
+      let controller = NSDocumentController.shared.documents.first?.windowControllers.first
+        as? OperatorWindowController, let window = controller.window
+    else {
+      print("VISUAL no document window")
+      NSApp.terminate(nil)
+      return
+    }
+    do {
+      for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        window.appearance = NSAppearance(named: appearance)
+        for width in [980.0, 1002, 1280] {
+          window.setContentSize(CGSize(width: width, height: 740))
+          controller.windowDidResize(
+            Notification(name: NSWindow.didResizeNotification, object: window))
+          if width >= 1002, controller.inspectorItem?.isCollapsed == true {
+            controller.toggleInspector()
+          }
+          window.contentView?.layoutSubtreeIfNeeded()
+          window.displayIfNeeded()
+          guard let view = window.contentView?.superview,
+            let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+          else { throw CocoaError(.fileWriteUnknown) }
+          if let appearance = window.appearance {
+            appearance.performAsCurrentDrawingAppearance {
+              view.cacheDisplay(in: view.bounds, to: bitmap)
+            }
+          } else {
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+          }
+          guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+          }
+          try png.write(
+            to: URL(fileURLWithPath: directory).appendingPathComponent(
+              "actual-launched-cache-\(Int(width))-\(name).png"))
+          print(
+            "VISUAL cached-only width=\(Int(width)) appearance=\(name) visible=\(window.isVisible) key=\(window.isKeyWindow) editor=\(Int(controller.editor.enclosingScrollView?.frame.width ?? 0)) stage=\(Int(controller.stageView.frame.width)) inspectorCollapsed=\(controller.inspectorItem?.isCollapsed == true)"
+          )
+        }
+      }
+      controller.close()
+      NSApp.terminate(nil)
+    } catch let error as NSError {
+      print("VISUAL capture error code \(error.code)")
+      NSApp.terminate(nil)
+    }
+  }
 }

@@ -34,7 +34,7 @@ import Testing
 @Test func invalidTimelineDoesNotMutate() throws {
   var t = PlaybackTimeline()
   let copy = t
-  for speed in [Double.nan, .infinity, 0, 301] {
+  for speed in [Double.nan, .infinity, 0.05, 2001] {
     #expect(throws: TimelineError.self) { try t.setVelocity(speed, at: 0) }
     #expect(t == copy)
   }
@@ -42,7 +42,7 @@ import Testing
     #expect(throws: TimelineError.self) { try t.play(at: time) }
     #expect(t == copy)
   }
-  #expect(throws: TimelineError.self) { try t.seek(to: -1, at: 0) }
+  #expect(throws: Never.self) { try t.seek(to: -1, at: 0) }
 }
 @Test func codecRoundTripAndGuards() throws {
   let id = try #require(UUID(uuidString: "11111111-2222-3333-4444-555555555555"))
@@ -120,7 +120,7 @@ import Testing
       .utf8)
   let decoded = try ScriptFileCodec.decode(data)
   #expect(decoded.model.readingStyle.fontSize == 64)
-  #expect(decoded.model.preferredSpeedPointsPerSecond == 40)
+  #expect(decoded.model.preferredSpeedLinesPerMinute == 30)
   var style = ReadingStyle()
   style.columnWidthFraction = -10
   style.readingGuideFraction = 100

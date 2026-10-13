@@ -3,13 +3,27 @@ import Foundation
 public struct ReadingStyle: Codable, Sendable, Equatable {
   public enum Mode: String, Codable, Sendable { case normalized, preserveSource }
   public var mode: Mode = .normalized
+  public enum Weight: String, Codable, Sendable, CaseIterable {
+    case regular, medium, semibold, bold
+  }
+  public enum SystemDesign: String, Codable, Sendable, CaseIterable { case `default`, serif }
+  public enum GuideStyle: String, Codable, Sendable, CaseIterable {
+    case line, triangle, triangleAndLine
+  }
+  public var fontWeight: Weight = .medium
+  public var systemDesign: SystemDesign = .default
+  public var readingGuideStyle: GuideStyle = .triangleAndLine
+  public var readingGuideOpacity = 0.6
+  public var edgeFadeFraction = 0.0
+  public var sideMarginFraction = 0.05
+  public var textPanelOpacity = 1.0
   public var fontIdentifier: String? = nil
   public var fontSize: Double = 64
   public var lineHeightMultiplier: Double = 1.3
   public var paragraphSpacing: Double = 16
   public var columnWidthFraction: Double = 0.7
-  public var foregroundRGBA: [Double] = [1, 1, 1, 1]
-  public var backgroundRGBA: [Double] = [0.025, 0.025, 0.025, 1]
+  public var foregroundRGBA: [Double] = [0.949, 0.949, 0.933, 1]
+  public var backgroundRGBA: [Double] = [0.039, 0.039, 0.043, 1]
   public var readingGuideFraction: Double = 0.35
   public var showsReadingGuide = true
   public init() {}
@@ -25,7 +39,7 @@ public struct ScriptDocumentModel: Codable, Sendable, Equatable {
   public var title: String
   public var content: Content
   public var readingStyle = ReadingStyle()
-  public var preferredSpeedPointsPerSecond: Double = 40
+  public var preferredSpeedLinesPerMinute: Double = 30
   public init(documentID: UUID = UUID(), title: String = "Untitled", rtf: Data) {
     self.documentID = documentID
     self.title = title
@@ -58,15 +72,27 @@ public enum ScriptFileCodec {
       ?? [:]
     var style = object["readingStyle"] as? [String: Any] ?? [:]
     for (key, value) in defaults where style[key] == nil { style[key] = value }
+    var enumAdjustments: [String] = []
+    for (key, valid) in [
+      ("mode", ["normalized", "preserveSource"]),
+      ("fontWeight", ["regular", "medium", "semibold", "bold"]),
+      ("systemDesign", ["default", "serif"]),
+      ("readingGuideStyle", ["line", "triangle", "triangleAndLine"]),
+    ] {
+      if let token = style[key] as? String, !valid.contains(token) {
+        style[key] = defaults[key]
+        enumAdjustments.append(key)
+      }
+    }
     object["readingStyle"] = style
-    if object["preferredSpeedPointsPerSecond"] == nil {
-      object["preferredSpeedPointsPerSecond"] = 40
+    if object["preferredSpeedLinesPerMinute"] == nil {
+      object["preferredSpeedLinesPerMinute"] = 30
     }
     if object["title"] == nil { object["title"] = "Untitled" }
     var model = try JSONDecoder().decode(
       ScriptDocumentModel.self, from: JSONSerialization.data(withJSONObject: object))
     let adjusted = try validate(&model)
-    return DecodedScript(model: model, adjustedFields: adjusted)
+    return DecodedScript(model: model, adjustedFields: enumAdjustments + adjusted)
   }
   public static func encode(_ model: ScriptDocumentModel) throws -> Data {
     var checked = model
@@ -97,7 +123,11 @@ public enum ScriptFileCodec {
         value = next
       }
     }
-    try clamp(&model.preferredSpeedPointsPerSecond, 1...300, "speed")
+    try clamp(&model.preferredSpeedLinesPerMinute, 2...240, "speed")
+    try clamp(&model.readingStyle.readingGuideOpacity, 0...1, "guide opacity")
+    try clamp(&model.readingStyle.edgeFadeFraction, 0...0.3, "edge fade")
+    try clamp(&model.readingStyle.sideMarginFraction, 0...0.25, "side margins")
+    try clamp(&model.readingStyle.textPanelOpacity, 0...1, "panel opacity")
     try clamp(&model.readingStyle.fontSize, 18...180, "font size")
     try clamp(&model.readingStyle.lineHeightMultiplier, 1...2, "line height")
     try clamp(&model.readingStyle.paragraphSpacing, 0...200, "paragraph spacing")
@@ -125,11 +155,11 @@ public enum ScriptFileCodec {
 extension ScriptFileError: LocalizedError {
   public var errorDescription: String? {
     switch self {
-    case .tooLarge: "The CueFlow document exceeds 32 MiB. Split the script before importing."
+    case .tooLarge: "The CueGlass document exceeds 32 MiB. Split the script before importing."
     case .futureVersion(let version):
-      "This file uses CueFlow format \(version). Update CueFlow or save the current work as a copy. The newer file will not be overwritten."
+      "This file uses CueGlass format \(version). Update CueGlass or save the current work as a copy. The newer file will not be overwritten."
     case .invalidVersion, .malformed:
-      "The CueFlow document is invalid. Choose a valid script; the previous document is kept."
+      "The CueGlass document is invalid. Choose a valid script; the previous document is kept."
     case .invalidPayload:
       "The script does not contain a supported RTF payload. Export a TXT or RTF copy and import it."
     case .invalidNumber(let field):

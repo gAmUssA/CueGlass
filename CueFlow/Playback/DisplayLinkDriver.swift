@@ -33,7 +33,7 @@ import QuartzCore
       stop()
       return
     }
-    if session.state != .running {
+    if session.state != .running && session.state != .countingDown {
       link?.isPaused = true
       return
     }
@@ -51,12 +51,13 @@ import QuartzCore
     }
     do {
       if authoritative { try session.noteFrame(target: target, end: viewport.endPosition) }
+      viewport.showCountdown(session.countdownDigit)
       viewport.apply(position: try session.position(at: target))
       if session.state == .idle {
         stop()
         return
       }
-      if session.state != .running { link?.isPaused = true }
+      if session.state != .running && session.state != .countingDown { link?.isPaused = true }
     } catch let error as TimelineError {
       stop()
       onError?(error)

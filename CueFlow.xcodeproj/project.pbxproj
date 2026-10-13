@@ -8,19 +8,25 @@
 
 /* Begin PBXBuildFile section */
 		1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */; };
+		2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */; };
+		2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */; };
 		4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B7911264ADD238A803806 /* ScriptDocument.swift */; };
 		521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E203A73B8791176DFFD9E89B /* AppDelegate.swift */; };
 		55ABDC67343D25B772455596 /* OperatorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */; };
 		599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E331330CF345B398B53267B /* OperatorControls.swift */; };
 		6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3798F2E904FA73605AD7462F /* IntegrationTests.swift */; };
 		737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */; };
+		7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E59D28065A1EC8A518D087C /* PresentationFont.swift */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
+		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
+		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
 		C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91658B74825E5235177DFB /* PresentationBuilder.swift */; };
 		DE8D542994984AEF0BE9852A /* CueFlowCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8F38C200B6595D9AE760A456 /* CueFlowCore */; };
 		E06E357BAE5ACB0062280C66 /* CueFlowCore in Frameworks */ = {isa = PBXBuildFile; productRef = 336F5FCAF8862155E7272AEE /* CueFlowCore */; };
 		E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */; };
 		E6B3C29D97AFA68D70E6514B /* PrompterViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */; };
 		E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27F804C248326C3E21AB38F /* main.swift */; };
+		F19343DC6229C8218BB0A154 /* FloatingPrompterWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */; };
 		F81C082342E0653C5172F6A3 /* OutputWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */; };
 /* End PBXBuildFile section */
 
@@ -41,16 +47,22 @@
 		4B91658B74825E5235177DFB /* PresentationBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationBuilder.swift; sourceTree = "<group>"; };
 		5E331330CF345B398B53267B /* OperatorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorControls.swift; sourceTree = "<group>"; };
 		5F5BF751BC3355979A5962EB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
+		65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPrompterWindowController.swift; sourceTree = "<group>"; };
+		6E59D28065A1EC8A518D087C /* PresentationFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationFont.swift; sourceTree = "<group>"; };
 		7572426652BF4AE04C6AA016 /* CueFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CueFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorFeatureTests.swift; sourceTree = "<group>"; };
 		914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStorageService.swift; sourceTree = "<group>"; };
 		96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CueFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeStudio.swift; sourceTree = "<group>"; };
 		A8EB5B56A2B619627027FFC1 /* CueFlowCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CueFlowCore; path = Packages/CueFlowCore; sourceTree = SOURCE_ROOT; };
 		AA1B7911264ADD238A803806 /* ScriptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptDocument.swift; sourceTree = "<group>"; };
 		B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptImporter.swift; sourceTree = "<group>"; };
 		C27F804C248326C3E21AB38F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		DA806692FFD5885EB30FF35C /* PlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
+		DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelController.swift; sourceTree = "<group>"; };
 		E203A73B8791176DFFD9E89B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E421E25C07455FA3D80DC323 /* ICloud.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ICloud.xcconfig; sourceTree = "<group>"; };
+		E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
 		F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayLinkDriver.swift; sourceTree = "<group>"; };
 		F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorWindowController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -96,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				4B91658B74825E5235177DFB /* PresentationBuilder.swift */,
+				6E59D28065A1EC8A518D087C /* PresentationFont.swift */,
 				1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */,
 			);
 			path = Presentation;
@@ -105,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				3798F2E904FA73605AD7462F /* IntegrationTests.swift */,
+				8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */,
 			);
 			path = CueFlowTests;
 			sourceTree = "<group>";
@@ -136,6 +150,8 @@
 		9D64533D012300428F683DB7 /* Output */ = {
 			isa = PBXGroup;
 			children = (
+				DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */,
+				65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */,
 				282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */,
 			);
 			path = Output;
@@ -189,8 +205,10 @@
 		E9D6B41FBA755BF59B8C7365 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
+				98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */,
 				5E331330CF345B398B53267B /* OperatorControls.swift */,
 				F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */,
+				E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */,
 			);
 			path = Editor;
 			sourceTree = "<group>";
@@ -291,16 +309,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */,
+				AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */,
 				1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */,
 				737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */,
+				F19343DC6229C8218BB0A154 /* FloatingPrompterWindowController.swift in Sources */,
+				2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */,
 				599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */,
 				55ABDC67343D25B772455596 /* OperatorWindowController.swift in Sources */,
 				F81C082342E0653C5172F6A3 /* OutputWindowController.swift in Sources */,
 				98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */,
 				C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */,
+				7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */,
 				E6B3C29D97AFA68D70E6514B /* PrompterViewport.swift in Sources */,
 				4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */,
 				E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */,
+				B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */,
 				E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -310,6 +333,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */,
+				2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,7 +355,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
+				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				SDKROOT = macosx;
 			};
@@ -344,7 +368,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
+				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				SDKROOT = macosx;
 			};

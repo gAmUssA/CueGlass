@@ -91,6 +91,7 @@ import Testing
     var time = 0.0
     session.clock = { time }
     try session.toggle(doc)
+    let expectedPosition = session.timeline.velocity * 0.2
     let id = session.snapshot?.id
     let text = session.snapshot?.attributed.string
     try session.noteFrame(target: 0.2, end: nil)
@@ -102,11 +103,11 @@ import Testing
     #expect(throws: (any Error).self) { try session.loadLatest(doc) }
     try session.noteFrame(target: 0.8, end: nil)
     #expect(session.state == .paused)
-    #expect(try session.position(at: 0.8) == 8)
+    #expect(try session.position(at: 0.8) == expectedPosition)
     time = 30
     try session.toggle(doc)
     #expect(session.snapshot?.id == id)
-    #expect(try session.position(at: 30) == 8)
+    #expect(try session.position(at: 30) == expectedPosition)
     try session.pause()
     try session.loadLatest(doc)
     #expect(session.snapshot?.attributed.string == "New text")
@@ -179,7 +180,7 @@ import Testing
     let window = try #require(controller.window)
     window.makeKeyAndOrderFront(nil)
     window.contentView?.layoutSubtreeIfNeeded()
-    #expect(controller.preview.reflection.viewport.text.string.contains("Welcome to CueFlow"))
+    #expect(controller.preview.reflection.viewport.text.string.contains("Welcome to CueGlass"))
     let view = try #require(window.contentView)
     let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
     view.cacheDisplay(in: view.bounds, to: bitmap)
@@ -229,11 +230,12 @@ import Testing
     controller.session.logicalSize = display.screen.frame.size
     controller.render()
     try controller.session.toggle(doc)
+    let expectedPosition = controller.session.timeline.velocity * 0.2
     try controller.session.noteFrame(target: 0.2, end: nil)
     controller.handleAvailableDisplayIDs([])
     #expect(controller.output == nil)
     #expect(controller.session.state == .paused)
-    #expect(try controller.session.position(at: 30) == 8)
+    #expect(try controller.session.position(at: 30) == expectedPosition)
     controller.close()
   }
   @Test func richDiagnosticsAndNativeUndo() throws {
@@ -300,7 +302,7 @@ import Testing
       if session.state == .paused { break }
     }
     #expect(session.state == .paused)
-    #expect(session.message == "End of script")
+    #expect(session.message.contains("End of script"))
     #expect(try session.position(at: 30) == end)
   }
   @Test func localCloudAndSingleSession() async throws {

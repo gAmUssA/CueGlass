@@ -7,8 +7,8 @@ import os
   static let replaced = Notification.Name("CueFlowDocumentReplaced")
   var source = NSAttributedString(
     string:
-      "Welcome to CueFlow\n\nImport a TXT or RTF script, choose a display, then press Play.\n\nLEFT ← 1. Read at your own pace. → RIGHT\nUP ↑ 2. Adjust speed while playing. ↓ DOWN",
-    attributes: [.font: NSFont.systemFont(ofSize: 18)])
+      "Welcome to CueGlass\n\nImport a TXT or RTF script, choose a display, then press Play.\n\nLEFT ← 1. Read at your own pace. → RIGHT\nUP ↑ 2. Adjust speed while playing. ↓ DOWN",
+    attributes: [.font: NSFont.systemFont(ofSize: 15)])
   var model = ScriptDocumentModel(rtf: Data("{\\rtf1 }".utf8))
   private(set) var revision = 0
   private nonisolated let saveSafety = OSAllocatedUnfairLock<String?>(initialState: nil)
@@ -53,13 +53,22 @@ import os
       documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
     return try ScriptFileCodec.encode(next)
   }
+  private nonisolated func protectRejectedRead(_ error: Error) {
+    saveBlockedReason =
+      "The on-disk revision could not be loaded. This take and source are kept. Save a Copy to another path before recovering the original."
+  }
   nonisolated override func read(from url: URL, ofType typeName: String) throws {
-    let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-    guard values.isRegularFile == true else { throw ImportError.unsupported }
-    guard let bytes = values.fileSize, bytes <= ScriptFileCodec.maximumBytes else {
-      throw ScriptFileError.tooLarge
+    do {
+      let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+      guard values.isRegularFile == true else { throw ImportError.unsupported }
+      guard let bytes = values.fileSize, bytes <= ScriptFileCodec.maximumBytes else {
+        throw ScriptFileError.tooLarge
+      }
+      try super.read(from: url, ofType: typeName)
+    } catch let error as NSError {
+      protectRejectedRead(error)
+      throw error
     }
-    try super.read(from: url, ofType: typeName)
   }
   nonisolated override func read(from data: Data, ofType typeName: String) throws {
     do {
@@ -72,18 +81,12 @@ import os
         saveBlockedReason = nil
         notice =
           (decoded.adjustedFields.isEmpty
-          ? []
-          : ["Adjusted out-of-range values: " + decoded.adjustedFields.joined(separator: ", ")])
-          .joined() + result.warnings.joined(separator: " ")
+          ? [] : ["Adjusted fields: " + decoded.adjustedFields.joined(separator: ", ")]).joined()
+          + result.warnings.joined(separator: " ")
         NotificationCenter.default.post(name: Self.replaced, object: self)
       }
-    } catch let error as ScriptFileError {
-      if case .futureVersion = error {
-        MainActor.assumeIsolated {
-          saveBlockedReason =
-            "A newer document version is on disk. Save a Copy or update CueFlow before saving."
-        }
-      }
+    } catch let error as NSError {
+      protectRejectedRead(error)
       throw error
     }
   }

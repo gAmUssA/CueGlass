@@ -92,7 +92,7 @@
       </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
-      buildConfiguration = "ReleaseICloud"
+      buildConfiguration = "ReleaseLocal"
       shouldUseLaunchSchemeArgsEnv = "YES"
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
@@ -107,9 +107,11 @@
             ReferencedContainer = "container:CueFlow.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "DebugICloud">
+      buildConfiguration = "DebugLocal">
    </AnalyzeAction>
    <ArchiveAction
       buildConfiguration = "ReleaseLocal"

@@ -13,13 +13,22 @@ import CueFlowCore
         style.mode == .normalized ? style.fontSize : original.pointSize * style.fontSize / 18
       var font =
         style.mode == .normalized
-        ? (style.fontIdentifier.flatMap { NSFont(name: $0, size: size) }
-          ?? NSFont.systemFont(ofSize: size))
+        ? PresentationFont.resolve(style)
         : NSFont(descriptor: original.fontDescriptor, size: size) ?? NSFont.systemFont(ofSize: size)
       let traits = NSFontManager.shared.traits(of: original).intersection([
         .boldFontMask, .italicFontMask,
       ])
-      font = NSFontManager.shared.convert(font, toHaveTrait: traits)
+      if style.mode == .normalized && traits.contains(.boldFontMask) {
+        var emphasized = style
+        emphasized.fontWeight = .bold
+        font = PresentationFont.resolve(emphasized)
+      }
+      if traits.contains(.italicFontMask) {
+        font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+      }
+      if style.mode == .preserveSource {
+        font = NSFontManager.shared.convert(font, toHaveTrait: traits)
+      }
       let paragraph =
         (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
         ?? NSMutableParagraphStyle()

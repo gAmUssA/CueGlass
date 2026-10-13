@@ -1,11 +1,22 @@
 import AppKit
 import CueFlowCore
+import QuartzCore
 import SwiftUI
 
 @MainActor final class OperatorState: ObservableObject {
   @Published var status = "Ready"
   @Published var cloud = "iCloud not configured in this build"
-  @Published var speed = 40.0
+  @Published var speed = 30.0
+  @Published var maximum = 240.0
+  @Published var fineStep = 1.0
+  @Published var jumpStep = 10.0
+  @Published var countdown = 0
+  @Published var duration = 300.0
+  @Published var hideControls = false
+  @Published var floatingOpacity = 0.85
+  @Published var clickThrough = false
+  @Published var overFullScreen = true
+  @Published var contrastWarning = ""
   @Published var style = ReadingStyle()
   @Published var horizontal = UserDefaults.standard.bool(forKey: "reflectHorizontal")
   @Published var vertical = UserDefaults.standard.bool(forKey: "reflectVertical")
@@ -31,34 +42,29 @@ import SwiftUI
     return true
   }
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
-    if event.keyCode == 53, controller?.output != nil {
+    if event.modifierFlags.contains(.command),
+      CommandRouter.route(event, window: self, controller: controller)
+    {
+      return true
+    }
+    if event.keyCode == 53, controller?.output != nil || controller?.floating != nil {
       controller?.hideOutput()
       return true
     }
     return super.performKeyEquivalent(with: event)
   }
-  override func keyDown(with event: NSEvent) {
-    if event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
-      Self.acceptsTransport(firstResponder)
-    {
-      switch event.keyCode {
-      case 49:
-        controller?.toggle()
-        return
-      case 126:
-        controller?.adjustSpeed(5)
-        return
-      case 125:
-        controller?.adjustSpeed(-5)
-        return
-      case 53:
-        controller?.hideOutput()
-        return
-      default: break
-      }
+  override func orderOut(_ sender: Any?) {
+    if let controller, controller.output == nil, controller.floating == nil {
+      controller.perform { try controller.session.pauseSafely("Local preview hidden — paused") }
     }
-    super.keyDown(with: event)
+    super.orderOut(sender)
   }
+  override func keyDown(with event: NSEvent) {
+    if !CommandRouter.route(event, window: self, controller: controller) {
+      super.keyDown(with: event)
+    }
+  }
+
 }
 @MainActor final class DropEditor: NSTextView {
   var onDrop: ((URL) -> Void)?
@@ -79,73 +85,134 @@ import SwiftUI
   }
 }
 @MainActor
-final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate {
+final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate,
+  NSToolbarDelegate
+{
   let script: ScriptDocument
   let state = OperatorState()
   let session = PlaybackSession()
   let editor = DropEditor(usingTextLayoutManager: true)
   let preview = ScaledPreviewContainer(frame: .zero)
   var output: OutputWindowController?
+  var floating: FloatingPrompterWindowController?
+  var panel: ControlPanelController?
+  let readout = TakeReadout()
+  let splitController = NSSplitViewController()
+  var inspectorPopover: NSPopover?
+  var inspectorItem: NSSplitViewItem?
+  weak var playToolbarButton: NSButton?
+  var stageView = NSView()
+  var transportChrome = NSView()
+  var progressTimer: Timer?
+  var pendingPlay = false
+  var renderGeneration = 0
+  var lastPointerTime = CACurrentMediaTime()
+  var lastPointer = NSEvent.mouseLocation
+
   private var replacingEditor = false
   private var sample: ScriptSnapshot?
   init(document: ScriptDocument) {
     script = document
     let window = OperatorWindow(
-      contentRect: NSRect(x: 100, y: 100, width: 1160, height: 850),
+      contentRect: NSRect(x: 100, y: 100, width: 1280, height: 800),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
     )
     super.init(window: window)
     window.controller = self
     window.delegate = self
-    window.title = "CueFlow"
-    window.minSize = NSSize(width: 950, height: 700)
-    window.setFrameAutosaveName("CueFlowOperator")
+    window.title = "CueGlass"
+    window.subtitle = "On This Mac"
+    window.minSize = CGSize(width: 980, height: 640)
+    window.toolbarStyle = .unified
     state.style = script.model.readingStyle
-    state.speed = script.model.preferredSpeedPointsPerSecond
-    let root = NSView()
-    root.translatesAutoresizingMaskIntoConstraints = false
-    root.wantsLayer = true
-    root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-    let scroll = NSScrollView()
-    scroll.hasVerticalScroller = true
-    scroll.borderType = .bezelBorder
-    scroll.documentView = editor
+    state.speed = script.model.preferredSpeedLinesPerMinute
+    if let value = UserDefaults.standard.object(forKey: "maximumLPM") as? Double {
+      state.maximum = min(240, max(10, value))
+    }
+    session.configuredMax = state.maximum
+    state.countdown = UserDefaults.standard.integer(forKey: "countdown")
+    if ![0, 3, 5, 10].contains(state.countdown) { state.countdown = 0 }
+    state.hideControls = UserDefaults.standard.bool(forKey: "hideControls")
+    if let value = UserDefaults.standard.object(forKey: "floatingOpacity") as? Double {
+      state.floatingOpacity = min(1, max(0.3, value))
+    }
+    state.clickThrough = UserDefaults.standard.bool(forKey: "clickThrough")
+    if let v = UserDefaults.standard.object(forKey: "fineStep") as? Double, v.isFinite {
+      state.fineStep = min(10, max(1, v))
+    }
+    if let v = UserDefaults.standard.object(forKey: "jumpStep") as? Double, v.isFinite {
+      state.jumpStep = min(60, max(1, v))
+    }
+    if UserDefaults.standard.object(forKey: "overFullScreen") != nil {
+      state.overFullScreen = UserDefaults.standard.bool(forKey: "overFullScreen")
+    }
     editor.isRichText = true
     editor.allowsUndo = true
     editor.isVerticallyResizable = true
     editor.isHorizontallyResizable = false
     editor.autoresizingMask = [.width]
     editor.textContainer?.widthTracksTextView = true
-    editor.textContainerInset = NSSize(width: 12, height: 12)
+    editor.textContainerInset = CGSize(width: 32, height: 24)
     editor.delegate = self
+    editor.font = .systemFont(ofSize: 15)
+    editor.typingAttributes = [.font: NSFont.systemFont(ofSize: 15)]
     editor.registerForDraggedTypes([.fileURL])
-    editor.onDrop = { [weak self] url in self?.openDrop(url) }
+    editor.onDrop = { [weak self] in self?.openDrop($0) }
     editor.setAccessibilityLabel("Script editor")
     editor.textStorage?.setAttributedString(script.source)
-    let controls = NSHostingView(rootView: OperatorControls(state: state, controller: self))
-    let split = NSSplitView()
-    split.isVertical = true
-    split.dividerStyle = .thin
-    split.addArrangedSubview(scroll)
-    split.addArrangedSubview(preview)
-    window.contentView = root
-    for child in [controls, split] {
-      child.translatesAutoresizingMaskIntoConstraints = false
-      root.addSubview(child)
+    let editorController = NSViewController()
+    let scroll = NSScrollView()
+    scroll.hasVerticalScroller = true
+    scroll.borderType = .noBorder
+    scroll.documentView = editor
+    editorController.view = scroll
+    let editorItem = NSSplitViewItem(viewController: editorController)
+    editorItem.minimumThickness = 320
+    let stage = NSViewController()
+    stage.view = stageView
+    stageView.wantsLayer = true
+    stageView.layer?.backgroundColor =
+      NSColor(srgbRed: 0.086, green: 0.086, blue: 0.094, alpha: 1).cgColor
+    let bar = NSHostingView(rootView: StageReadout(readout: readout))
+    let footer = NSHostingView(rootView: StageFooter(state: state, controller: self))
+    transportChrome = footer
+    for view in [bar, preview, footer] {
+      view.translatesAutoresizingMaskIntoConstraints = false
+      stageView.addSubview(view)
     }
     NSLayoutConstraint.activate([
-      controls.topAnchor.constraint(equalTo: root.topAnchor),
-      controls.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-      controls.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-      controls.heightAnchor.constraint(equalToConstant: 310),
-      split.topAnchor.constraint(equalTo: controls.bottomAnchor),
-      split.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-      split.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-      split.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-      scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 300),
-      preview.widthAnchor.constraint(greaterThanOrEqualToConstant: 350),
+      bar.topAnchor.constraint(equalTo: stageView.topAnchor),
+      bar.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
+      bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
+      bar.heightAnchor.constraint(equalToConstant: 56),
+      footer.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
+      footer.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
+      footer.bottomAnchor.constraint(equalTo: stageView.bottomAnchor),
+      footer.heightAnchor.constraint(equalToConstant: 96),
+      preview.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 12),
+      preview.leadingAnchor.constraint(equalTo: stageView.leadingAnchor, constant: 12),
+      preview.trailingAnchor.constraint(equalTo: stageView.trailingAnchor, constant: -12),
+      preview.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -12),
     ])
-    split.setPosition(480, ofDividerAt: 0)
+    let stageItem = NSSplitViewItem(viewController: stage)
+    stageItem.minimumThickness = 420
+    stageItem.holdingPriority = .defaultLow
+    let inspector = NSHostingController(rootView: OperatorControls(state: state, controller: self))
+    let item = NSSplitViewItem(inspectorWithViewController: inspector)
+    item.minimumThickness = 260
+    item.maximumThickness = 320
+    item.canCollapse = true
+    item.canCollapseFromWindowResize = true
+    inspectorItem = item
+    splitController.addSplitViewItem(editorItem)
+    splitController.addSplitViewItem(stageItem)
+    splitController.addSplitViewItem(item)
+    window.contentViewController = splitController
+    item.isCollapsed = UserDefaults.standard.bool(forKey: "inspectorCollapsed")
+    let toolbar = NSToolbar(identifier: "CueGlassToolbar")
+    toolbar.delegate = self
+    toolbar.displayMode = .iconOnly
+    window.toolbar = toolbar
     preview.reflection.viewport.driver = DisplayLinkDriver(
       viewport: preview.reflection.viewport, session: session)
     preview.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
@@ -161,28 +228,51 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       NSWorkspace.shared.notificationCenter.addObserver(
         self, selector: #selector(sleeping), name: name, object: nil)
     }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(editorUndoChanged),
+      name: Notification.Name.NSUndoManagerDidUndoChange, object: editor.undoManager)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(editorUndoChanged),
+      name: Notification.Name.NSUndoManagerDidRedoChange, object: editor.undoManager)
+    CommandRouter.load()
     refreshScreens()
     render()
     refresh()
     Task { await script.refreshCloudStatus() }
   }
   required init?(coder: NSCoder) { fatalError("Use init(document:)") }
-  func present(_ error: Error) { script.presentError(error) }
+  func present(_ error: Error) { state.status = error.localizedDescription }
   func perform(_ work: () throws -> Void) {
     do { try work() } catch let error as NSError { present(error) }
   }
   func toggle() {
+    guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      state.status = "Type, paste or drop a TXT or RTF script to begin."
+      return
+    }
     perform {
       try PresentationCoordinator.shared.claim(self)
-      let wasIdle = session.state == .idle
+      if session.state == .idle {
+        try session.prepare(script)
+        render()
+      }
+      if session.measuring {
+        pendingPlay.toggle()
+        state.status =
+          pendingPlay
+          ? "Measuring script… will start when ready" : "Measuring script… start cancelled"
+        return
+      }
+      session.countdownSeconds = state.countdown
       try session.toggle(script)
-      if wasIdle { render() }
       refresh()
     }
   }
   func stop() {
-    output?.close()
-    output = nil
+    hideOutput()
+    panel?.close()
+    panel = nil
+    pendingPlay = false
     session.stop()
     PresentationCoordinator.shared.release(self)
     render()
@@ -190,33 +280,56 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func restart() {
     perform {
-      try session.pause()
-      try session.seek(0)
+      try session.restart()
       applyCurrentPosition()
+      refresh()
     }
   }
-  func adjustSpeed(_ delta: Double) { setSpeed(min(300, max(1, state.speed + delta))) }
+  func adjustSpeed(_ delta: Double) { setSpeed(min(state.maximum, max(2, state.speed + delta))) }
   func setSpeed(_ value: Double) {
     perform {
       try session.speed(value)
-      state.speed = value
-      let previous = script.model.preferredSpeedPointsPerSecond
+      state.speed = session.preferredLPM
+      let previous = script.model.preferredSpeedLinesPerMinute
       script.undoManager?.registerUndo(withTarget: script) { doc in
-        doc.model.preferredSpeedPointsPerSecond = previous
+        doc.model.preferredSpeedLinesPerMinute = previous
         doc.updateChangeCount(.changeDone)
       }
-      script.model.preferredSpeedPointsPerSecond = value
+      script.model.preferredSpeedLinesPerMinute = session.preferredLPM
       script.updateChangeCount(.changeDone)
     }
   }
   func changeStyle(_ style: ReadingStyle) {
     perform {
       let style = try ScriptFileCodec.validatedStyle(style)
+      let old = state.style
+      let affectsLayout =
+        old.mode != style.mode || old.fontIdentifier != style.fontIdentifier
+        || old.fontWeight != style.fontWeight || old.systemDesign != style.systemDesign
+        || old.fontSize != style.fontSize || old.lineHeightMultiplier != style.lineHeightMultiplier
+        || old.paragraphSpacing != style.paragraphSpacing
+        || old.columnWidthFraction != style.columnWidthFraction
+        || old.sideMarginFraction != style.sideMarginFraction
+        || old.readingGuideFraction != style.readingGuideFraction
+      if !affectsLayout {
+        state.style = style
+        session.style = style
+        replacingEditor = true
+        script.setStyle(style)
+        replacingEditor = false
+        for viewport in [
+          preview.reflection.viewport, output?.reflection.viewport, floating?.reflection.viewport,
+        ] { viewport?.updateAids(style) }
+        refresh()
+        return
+      }
       try session.pause()
       let anchor = authoritative.captureAnchor()
       state.style = style
       session.style = style
+      replacingEditor = true
       script.setStyle(style)
+      replacingEditor = false
       render()
       if let anchor, let position = authoritative.restore(anchor) {
         try session.seek(position)
@@ -229,8 +342,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
     }
   }
-  var authoritative: PrompterViewport { output?.reflection.viewport ?? preview.reflection.viewport }
+  var authoritative: PrompterViewport {
+    output?.reflection.viewport ?? floating?.reflection.viewport ?? preview.reflection.viewport
+  }
   func render() {
+    renderGeneration += 1
+    let generation = renderGeneration
     let snapshot: ScriptSnapshot
     if let take = session.snapshot {
       snapshot = take
@@ -246,35 +363,117 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       snapshot: snapshot, style: style, size: session.logicalSize)
     output?.reflection.viewport.configure(
       snapshot: snapshot, style: style, size: session.logicalSize)
+    floating?.root?.logicalSize = session.logicalSize
+    floating?.reflection.viewport.configure(
+      snapshot: snapshot, style: style, size: session.logicalSize)
+    for (viewport, reflection) in [
+      (preview.reflection.viewport, preview.reflection),
+      (output?.reflection.viewport, output?.reflection),
+      (floating?.reflection.viewport, floating?.reflection),
+    ] {
+      viewport?.onScrub = { [weak self, weak viewport, weak reflection] event in
+        guard let self, let viewport else { return }
+        let scale = viewport.convert(CGSize(width: 1, height: 1), to: nil).height
+        self.perform {
+          try self.session.scrub(
+            delta: ScrubGate.delta(
+              rawY: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas,
+              lineAdvance: self.session.lineAdvance, scale: abs(scale),
+              verticalReflection: reflection?.vertical == true),
+            momentum: !event.momentumPhase.isEmpty)
+          self.applyCurrentPosition()
+        }
+      }
+    }
     reflect()
     applyCurrentPosition()
+    if session.snapshot != nil {
+      session.measuring = true
+      authoritative.measure { [weak self] end, paragraphs, words, lines in
+        guard let self, self.renderGeneration == generation else { return }
+        self.session.measuring = false
+        self.perform {
+          try self.session.updateLayout(
+            end: end, paragraphs: paragraphs, wordCount: words, lineCount: lines)
+        }
+        if self.pendingPlay {
+          self.pendingPlay = false
+          self.toggle()
+        }
+        self.refresh()
+      }
+    }
   }
   func applyCurrentPosition() {
     perform {
       let p = try session.position(at: session.effectiveTime)
       preview.reflection.viewport.apply(position: p)
       output?.reflection.viewport.apply(position: p)
+      floating?.reflection.viewport.apply(position: p)
     }
   }
   func refresh() {
     state.active = session.state != .idle
-    state.running = session.state == .running
+    state.running = session.state == .running || session.state == .countingDown
     state.pending = session.pendingRevision
     editor.isEditable = !state.active
+    editor.alphaValue = state.active ? 0.75 : 1
+    for button in [playToolbarButton, panel?.playButton].compactMap({ $0 }) {
+      button.image = NSImage(
+        systemSymbolName: session.state == .countingDown
+          ? "xmark" : state.running ? "pause.fill" : "play.fill",
+        accessibilityDescription: "Play or pause")
+      button.toolTip =
+        "Play / Pause · "
+        + CommandRouter.map.bindings.filter { $0.command == .toggle }.map { $0.chord.label }.joined(
+          separator: " · ")
+    }
     state.status =
       session.message + (state.active ? " · Editing locked; Stop to edit." : "")
       + (script.notice.isEmpty ? "" : " · " + script.notice)
+    if let notice = PresentationFont.notice(state.style) { state.status += " · " + notice }
     state.cloud =
       containerID.isEmpty ? "iCloud not configured in this build" : script.cloudStatus.rawValue
-    preview.reflection.viewport.driver?.authoritative = output == nil
+    preview.reflection.viewport.driver?.authoritative = output == nil && floating == nil
     preview.reflection.viewport.driver?.update()
     output?.reflection.viewport.driver?.update()
+    floating?.reflection.viewport.driver?.update()
+    floating?.window?.ignoresMouseEvents = state.clickThrough && session.state == .running
+    state.speed = min(
+      state.maximum,
+      session.state == .idle ? script.model.preferredSpeedLinesPerMinute : session.preferredLPM)
+    window?.subtitle = state.cloud
+    if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier.rawValue == "present" })
+      as? NSMenuToolbarItem
+    {
+      item.label =
+        output != nil
+        ? "Presenting · Output" : floating != nil ? "Presenting · Floating" : "Present"
+      item.menu = presentationMenu()
+    }
+    let toolbarButtons =
+      window?.toolbar?.items.flatMap {
+        ($0.view as? NSStackView)?.arrangedSubviews.compactMap { $0 as? ActionButton } ?? []
+      } ?? []
+    for button in toolbarButtons + (panel?.transportButtons ?? []) {
+      if let command = button.playbackCommand {
+        button.toolTip =
+          command.rawValue + " · "
+          + CommandRouter.map.bindings.filter { $0.command == command }.map { $0.chord.label }
+          .joined(separator: " · ")
+      }
+    }
+    updateReadout()
+    updateProgressTimer()
+    updateFloatingOptions()
   }
   func reflect() {
     if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
       UserDefaults.standard.set(state.horizontal, forKey: "reflectHorizontal")
       UserDefaults.standard.set(state.vertical, forKey: "reflectVertical")
     }
+    floating?.reflection.horizontal = state.horizontal
+    floating?.reflection.vertical = state.vertical
     output?.reflection.horizontal = state.horizontal
     output?.reflection.vertical = state.vertical
     preview.reflection.horizontal = state.calibrated && state.horizontal
@@ -307,7 +506,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     script.replaceSource(
       NSAttributedString(
         string:
-          "UP ↑\nLEFT ← 1. CueFlow → RIGHT\n2. Read this asymmetric line\n3. ABC 123 →\nDOWN ↓",
+          "UP ↑\nLEFT ← 1. CueGlass → RIGHT\n2. Read this asymmetric line\n3. ABC 123 →\nDOWN ↓",
         attributes: [.font: NSFont.systemFont(ofSize: 18)]))
   }
   func showOutput() {
@@ -336,11 +535,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     perform {
       try PresentationCoordinator.shared.claim(self)
       try session.prepare(script)
+      let wasRunning = session.state == .running
       try session.pause()
       let anchor = authoritative.captureAnchor()
+      floating?.onClose = nil
+      floating?.close()
+      floating = nil
       session.logicalSize = display.screen.frame.size
       let next = OutputWindowController(display: display)
       output = next
+      (next.window as? OutputWindow)?.operatorController = self
       next.reflection.viewport.driver = DisplayLinkDriver(
         viewport: next.reflection.viewport, session: session)
       next.reflection.viewport.driver?.authoritative = true
@@ -351,15 +555,24 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         try session.seek(position)
         applyCurrentPosition()
       }
+      if wasRunning { resumeAfterMeasurement() }
       next.showWindow(nil)
       next.window?.orderFrontRegardless()
       window?.makeKeyAndOrderFront(nil)
-      UserDefaults.standard.set(
-        try JSONEncoder().encode(display.preference), forKey: "displayPreference")
+      if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
+        UserDefaults.standard.set(
+          try JSONEncoder().encode(display.preference), forKey: "displayPreference")
+      }
+      showControls()
       refresh()
     }
   }
-  func hideOutput() { output?.close() }
+  func hideOutput() {
+    output?.close()
+    floating?.close()
+    floating = nil
+    refresh()
+  }
   func outputClosed() {
     perform { try session.pauseSafely("Output stopped — position retained") }
     output?.reflection.viewport.driver?.stop()
@@ -371,6 +584,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     refreshScreens()
   }
   func handleAvailableDisplayIDs(_ ids: [CGDirectDisplayID]) {
+    if let floating, let id = floating.displayID, !ids.contains(id) {
+      perform { try session.pauseSafely("Floating display disconnected — position retained") }
+      if let screen = window?.screen ?? NSScreen.main, let frame = floating.window?.frame {
+        floating.window?.setFrame(FrameClamp.clamp(frame, to: screen.visibleFrame), display: true)
+        floating.displayID = DisplayDescriptor.all().first { $0.screen == screen }?.id
+        floatingResized()
+      }
+    }
     if let output, !ids.contains(output.displayID) {
       perform { try session.pauseSafely("Output display disconnected — choose a display") }
       hideOutput()
@@ -405,6 +626,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     else { return "Disconnected" }
     return d.preference.name + (d.screen == window?.screen ? " (operator screen)" : "")
   }
+  func windowDidMiniaturize(_ notification: Notification) {
+    if output == nil && floating == nil {
+      perform { try session.pauseSafely("Local preview hidden — paused") }
+    }
+  }
   @objc func sleeping() { perform { try session.pauseSafely("Paused for sleep") } }
   @objc func accountChanged() {
     script.notice =
@@ -422,7 +648,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         NSRange(location: min(selected.location, editor.string.utf16.count), length: 0))
       replacingEditor = false
     }
-    if session.state == .idle {
+    if session.state == .idle && !replacingEditor {
       state.style = script.model.readingStyle
       render()
     }
@@ -482,8 +708,342 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func windowWillClose(_ notification: Notification) {
+    progressTimer?.invalidate()
+    progressTimer = nil
     stop()
     NotificationCenter.default.removeObserver(self)
     NSWorkspace.shared.notificationCenter.removeObserver(self)
   }
+}
+
+extension OperatorWindowController {
+  func execute(_ command: PlaybackCommand) {
+    lastPointerTime = session.clock()
+    restoreChrome()
+    switch command {
+    case .toggle: toggle()
+    case .faster: adjustSpeed(state.fineStep)
+    case .slower: adjustSpeed(-state.fineStep)
+    case .jumpFaster: adjustSpeed(state.jumpStep)
+    case .jumpSlower: adjustSpeed(-state.jumpStep)
+    case .restart: restart()
+    case .nextParagraph:
+      perform {
+        try session.step(forward: true)
+        applyCurrentPosition()
+      }
+    case .previousParagraph:
+      perform {
+        try session.step(forward: false)
+        applyCurrentPosition()
+      }
+    case .reverse:
+      perform {
+        try session.reverse()
+        refresh()
+      }
+    case .exit: hideOutput()
+    }
+  }
+  func showControls() {
+    if panel == nil { panel = ControlPanelController(controller: self) }
+    panel?.placeSafely()
+    refresh()
+  }
+  func showFloating() {
+    perform {
+      try PresentationCoordinator.shared.claim(self)
+      try session.prepare(script)
+      let running = session.state == .running
+      try session.pause()
+      let anchor = authoritative.captureAnchor()
+      output?.onClose = nil
+      output?.close()
+      output = nil
+      floating?.onClose = nil
+      floating?.close()
+      guard let screen = window?.screen ?? NSScreen.main else { return }
+      let next = FloatingPrompterWindowController(screen: screen, controller: self)
+      floating = next
+      session.logicalSize = next.window?.contentView?.bounds.size ?? CGSize(width: 800, height: 400)
+      next.reflection.viewport.driver = DisplayLinkDriver(
+        viewport: next.reflection.viewport, session: session)
+      next.reflection.viewport.driver?.authoritative = true
+      next.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
+      next.onClose = { [weak self] in
+        guard let self else { return }
+        self.perform { try self.session.pauseSafely("Floating prompter stopped") }
+        self.floating = nil
+        self.refresh()
+      }
+      render()
+      if let anchor, let p = authoritative.restore(anchor) {
+        try session.seek(p)
+        applyCurrentPosition()
+      }
+      next.showWindow(nil)
+      showControls()
+      if running { resumeAfterMeasurement() }
+      refresh()
+    }
+  }
+  func resumeAfterMeasurement() {
+    if session.measuring {
+      pendingPlay = true
+    } else {
+      perform {
+        let saved = session.countdownSeconds
+        session.countdownSeconds = 0
+        try session.toggle(script)
+        session.countdownSeconds = saved
+      }
+    }
+  }
+  func floatingResized() {
+    guard let floating, let size = floating.window?.contentView?.bounds.size else { return }
+    perform {
+      let running = session.state == .running
+      try session.pause()
+      let anchor = authoritative.captureAnchor()
+      session.logicalSize = size
+      render()
+      if let anchor, let p = authoritative.restore(anchor) {
+        try session.seek(p)
+        applyCurrentPosition()
+      }
+      if running { resumeAfterMeasurement() }
+    }
+  }
+  func updateFloatingOptions() {
+    floating?.root?.grip.alphaValue = session.state == .running ? 0 : 1
+    floating?.window?.backgroundColor = NSColor.black.withAlphaComponent(
+      state.clickThrough && session.state == .running ? 0 : 0.02)
+    floating?.window?.alphaValue = min(1, max(0.3, state.floatingOpacity))
+    floating?.window?.collectionBehavior =
+      state.overFullScreen ? [.canJoinAllSpaces, .fullScreenAuxiliary] : []
+    var inks = [state.style.foregroundRGBA]
+    if state.style.mode == .preserveSource {
+      inks = []
+      let source = session.snapshot?.attributed ?? script.source
+      source.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: source.length)) {
+        value, _, _ in
+        let color = (value as? NSColor ?? .black).usingColorSpace(.sRGB)
+        if let color {
+          inks.append([
+            color.redComponent, color.greenComponent, color.blueComponent, color.alphaComponent,
+          ])
+        }
+      }
+    }
+    let ratio =
+      inks.map {
+        Contrast.worst(
+          text: $0, background: state.style.backgroundRGBA, windowAlpha: state.floatingOpacity,
+          panelAlpha: state.style.textPanelOpacity)
+      }.min() ?? 1
+    state.contrastWarning =
+      ratio < 4.5
+      ? String(
+        format: "Low contrast (%.1f:1 over some backgrounds). Increase opacity or change colors.",
+        ratio) : ""
+  }
+  func updateReadout() {
+    func stamp(_ seconds: Double) -> String {
+      let value = max(0, Int(seconds))
+      return String(format: "%02d:%02d", value / 60, value % 60)
+    }
+    readout.elapsed = stamp(session.elapsedSeconds)
+    readout.remaining = session.remainingSeconds.map { stamp($0) } ?? "—"
+    readout.status =
+      session.measuring
+      ? "Measuring…"
+      : session.state == .countingDown
+        ? "Starting · \(session.countdownDigit ?? 0)"
+        : session.state == .running ? "Playing" : session.state == .idle ? "Ready" : "Paused"
+    let lpm = session.state == .idle ? state.speed : session.effectiveLPM
+    readout.pace =
+      String(format: "%.0f lpm", lpm)
+      + (abs(lpm - session.preferredLPM) > 0.05 && session.state != .idle ? " (limited)" : "")
+    readout.wpm =
+      session.lines > 0
+      ? String(format: "≈ %.0f wpm", lpm * Double(session.words) / Double(session.lines))
+      : "≈ — wpm"
+    if let end = session.timeline.upperBound, end > 0 {
+      readout.progress = min(1, max(0, session.timeline.anchorPosition / end))
+    }
+  }
+  func updateProgressTimer() {
+    let active = session.state == .running || session.state == .countingDown
+    if active, progressTimer == nil {
+      progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        MainActor.assumeIsolated { self?.progressTick() }
+      }
+      if let progressTimer { RunLoop.main.add(progressTimer, forMode: .common) }
+    }
+    if !active {
+      progressTimer?.invalidate()
+      progressTimer = nil
+      restoreChrome()
+    }
+  }
+  func progressTick() {
+    updateReadout()
+    if let end = session.timeline.upperBound, end > 0 {
+      perform { readout.progress = try session.position(at: session.effectiveTime) / end }
+    }
+    let point = NSEvent.mouseLocation
+    let overApp = [window, output?.window, floating?.window, panel?.window].compactMap { $0 }
+      .contains { $0.isVisible && $0.frame.contains(point) }
+    if overApp, point != lastPointer {
+      lastPointerTime = session.clock()
+      restoreChrome()
+    }
+    lastPointer = point
+    if state.hideControls, session.state == .running, session.clock() - lastPointerTime >= 2 {
+      let alpha = 0.08
+      if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        transportChrome.alphaValue = alpha
+        panel?.window?.alphaValue = alpha
+      } else {
+        NSAnimationContext.runAnimationGroup { context in
+          context.duration = 0.2
+          transportChrome.animator().alphaValue = alpha
+          panel?.window?.animator().alphaValue = alpha
+        }
+      }
+      window?.toolbar?.isVisible = false
+      for item in window?.toolbar?.items ?? [] { item.view?.alphaValue = alpha }
+    }
+  }
+  func restoreChrome() {
+    window?.toolbar?.isVisible = true
+    transportChrome.alphaValue = 1
+    panel?.window?.alphaValue = 1
+    for item in window?.toolbar?.items ?? [] { item.view?.alphaValue = 1 }
+  }
+  @objc func editorUndoChanged() {
+    guard session.state == .idle, !replacingEditor, editor.string != script.source.string else {
+      return
+    }
+    replacingEditor = true
+    script.replaceSource(editor.attributedString(), registerUndo: false)
+    replacingEditor = false
+  }
+  @objc func toggleInspector() {
+    guard let item = inspectorItem, let window else { return }
+    if item.isCollapsed, window.frame.width < 1002, let screen = window.screen {
+      if screen.visibleFrame.width < 1002, let content = window.contentView {
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentSize = CGSize(width: 300, height: min(640, screen.visibleFrame.height - 60))
+        popover.contentViewController = NSHostingController(
+          rootView: OperatorControls(state: state, controller: self))
+        inspectorPopover = popover
+        popover.show(
+          relativeTo: CGRect(
+            x: content.bounds.maxX - 32, y: content.bounds.maxY - 32, width: 24, height: 24),
+          of: content, preferredEdge: .minX)
+        return
+      }
+      var frame = window.frame
+      frame.size.width = min(1002, screen.visibleFrame.width)
+      window.setFrame(FrameClamp.clamp(frame, to: screen.visibleFrame), display: true)
+    }
+    item.isCollapsed.toggle()
+    if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
+      UserDefaults.standard.set(item.isCollapsed, forKey: "inspectorCollapsed")
+    }
+  }
+  func windowDidResize(_ notification: Notification) {
+    if let window, window.contentLayoutRect.width < 1002 { inspectorItem?.isCollapsed = true }
+  }
+  func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    [.init("transport"), .init("present"), .init("inspector"), .flexibleSpace]
+  }
+  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    [.flexibleSpace, .init("transport"), .flexibleSpace, .init("present"), .init("inspector")]
+  }
+  func toolbar(
+    _ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+    willBeInsertedIntoToolbar flag: Bool
+  ) -> NSToolbarItem? {
+    if id.rawValue == "transport" {
+      let item = NSToolbarItemGroup(itemIdentifier: id)
+      item.label = "Playback"
+      let row = NSStackView()
+      row.spacing = 6
+      for (symbol, label, command) in [
+        ("backward.end.fill", "Restart · Home", PlaybackCommand.restart),
+        ("chevron.up", "Previous paragraph · Page Up", .previousParagraph),
+        ("play.fill", "Play or pause · Space", .toggle),
+        ("chevron.down", "Next paragraph · Page Down", .nextParagraph),
+        ("arrow.up.arrow.down", "Reverse direction · R", .reverse),
+      ] {
+        let button = ActionButton(symbol: symbol, label: label) { [weak self] in
+          self?.execute(command)
+        }
+        button.playbackCommand = command
+        button.widthAnchor.constraint(equalToConstant: command == .toggle ? 42 : 28).isActive = true
+        if command == .toggle {
+          playToolbarButton = button
+          button.bezelStyle = .rounded
+          button.bezelColor = .controlAccentColor
+          button.contentTintColor = .white
+        }
+        row.addArrangedSubview(button)
+      }
+      item.view = row
+      return item
+    }
+    if id.rawValue == "present" {
+      let item = NSMenuToolbarItem(itemIdentifier: id)
+      item.label = "Present"
+      item.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Present")
+      item.menu = presentationMenu()
+      return item
+    }
+    let item = NSToolbarItem(itemIdentifier: id)
+    item.label = "Inspector"
+    item.view = ActionButton(symbol: "sidebar.right", label: "Toggle Inspector · ⌃⌘I") {
+      [weak self] in self?.toggleInspector()
+    }
+    return item
+  }
+  func presentationMenu() -> NSMenu {
+    let menu = NSMenu(title: "Present")
+    for display in DisplayDescriptor.all() {
+      let item = NSMenuItem(
+        title: "Present on \(display.preference.name)", action: #selector(presentOnDisplay(_:)),
+        keyEquivalent: "")
+      item.target = self
+      item.representedObject = display.preference.uuid ?? display.preference.name
+      menu.addItem(item)
+    }
+    let floating = NSMenuItem(
+      title: "Floating Prompter", action: #selector(floatingAction), keyEquivalent: "")
+    floating.target = self
+    menu.addItem(floating)
+    let stop = NSMenuItem(
+      title: "Stop Presenting (Esc)", action: #selector(stopPresenting), keyEquivalent: "")
+    stop.target = self
+    menu.addItem(stop)
+    return menu
+  }
+  @objc func presentOnDisplay(_ sender: NSMenuItem) {
+    guard let key = sender.representedObject as? String else { return }
+    if output != nil {
+      output?.onClose = nil
+      output?.close()
+      output = nil
+    }
+    state.selectedDisplay = key
+    showOutput()
+  }
+  @objc func floatingAction() { showFloating() }
+  @objc func stopPresenting() { hideOutput() }
+  @objc func controlsAction() { showControls() }
+  @objc func saveCloudAction() { saveICloud() }
+  @objc func downloadAction() { requestDownload() }
+  @objc func refreshCloudAction() { Task { await script.refreshCloudStatus() } }
+  @objc func stopTakeAction() { stop() }
 }
