@@ -113,3 +113,34 @@ import Testing
   #expect(DisplayMatcher.match(.init(uuid: nil, name: "Screen"), in: [a, b]) == nil)
   #expect(DisplayMatcher.match(.init(uuid: nil, name: "Screen"), in: [a]) == 0)
 }
+
+@Test func optionalDefaultsAndStyleValidation() throws {
+  let data = Data(
+    "{\"formatVersion\":1,\"documentID\":\"11111111-2222-3333-4444-555555555555\",\"content\":{\"format\":\"rtf\",\"data\":\"e1xydGYxIH0=\"}}"
+      .utf8)
+  let decoded = try ScriptFileCodec.decode(data)
+  #expect(decoded.model.readingStyle.fontSize == 64)
+  #expect(decoded.model.preferredSpeedPointsPerSecond == 40)
+  var style = ReadingStyle()
+  style.columnWidthFraction = -10
+  style.readingGuideFraction = 100
+  let valid = try ScriptFileCodec.validatedStyle(style)
+  #expect(valid.columnWidthFraction == 0.25)
+  #expect(valid.readingGuideFraction == 1)
+  style.fontSize = .nan
+  #expect(throws: ScriptFileError.self) { try ScriptFileCodec.validatedStyle(style) }
+  style = ReadingStyle()
+  style.backgroundRGBA = [1, 2]
+  #expect(throws: ScriptFileError.self) { try ScriptFileCodec.validatedStyle(style) }
+}
+
+@Test func rejectsBooleanVersionAndOverflow() throws {
+  #expect(throws: ScriptFileError.malformed) {
+    try ScriptFileCodec.decode(Data("{\"formatVersion\":true}".utf8))
+  }
+  var timeline = PlaybackTimeline()
+  try timeline.play(at: 0)
+  #expect(throws: TimelineError.invalidPosition) {
+    try timeline.position(at: .greatestFiniteMagnitude)
+  }
+}

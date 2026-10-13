@@ -47,6 +47,7 @@ public enum ScriptFileCodec {
   public static func decode(_ data: Data) throws -> DecodedScript {
     guard data.count <= maximumBytes else { throw ScriptFileError.tooLarge }
     guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let number = object["formatVersion"] as? NSNumber, String(cString: number.objCType) != "c",
       let version = object["formatVersion"] as? Int
     else { throw ScriptFileError.malformed }
     guard version <= 1 else { throw ScriptFileError.futureVersion(version) }
@@ -75,6 +76,12 @@ public enum ScriptFileCodec {
     let data = try encoder.encode(checked)
     guard data.count <= maximumBytes else { throw ScriptFileError.tooLarge }
     return data
+  }
+  public static func validatedStyle(_ style: ReadingStyle) throws -> ReadingStyle {
+    var model = ScriptDocumentModel(rtf: Data("{\\rtf1 }".utf8))
+    model.readingStyle = style
+    _ = try validate(&model)
+    return model.readingStyle
   }
   private static func validate(_ model: inout ScriptDocumentModel) throws -> [String] {
     guard model.formatVersion == 1 else { throw ScriptFileError.invalidVersion }
@@ -112,5 +119,21 @@ public enum ScriptFileCodec {
     }
     model.title = String(model.title.unicodeScalars.filter { $0.value >= 32 }.prefix(512))
     return adjusted
+  }
+}
+
+extension ScriptFileError: LocalizedError {
+  public var errorDescription: String? {
+    switch self {
+    case .tooLarge: "The CueFlow document exceeds 32 MiB. Split the script before importing."
+    case .futureVersion(let version):
+      "This file uses CueFlow format \(version). Update CueFlow or save the current work as a copy. The newer file will not be overwritten."
+    case .invalidVersion, .malformed:
+      "The CueFlow document is invalid. Choose a valid script; the previous document is kept."
+    case .invalidPayload:
+      "The script does not contain a supported RTF payload. Export a TXT or RTF copy and import it."
+    case .invalidNumber(let field):
+      "The document has an invalid \(field) value. Correct the file or import its text into a new script."
+    }
   }
 }

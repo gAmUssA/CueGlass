@@ -17,7 +17,9 @@ public struct PlaybackTimeline: Sendable, Equatable {
   public init() {}
   public func position(at time: Double) throws -> Double {
     guard time.isFinite, time >= anchorTime else { throw TimelineError.invalidTime }
-    return anchorPosition + (running ? velocity * (time - anchorTime) : 0)
+    let value = anchorPosition + (running ? velocity * (time - anchorTime) : 0)
+    guard value.isFinite else { throw TimelineError.invalidPosition }
+    return value
   }
   public mutating func play(at time: Double) throws {
     try rebase(at: time)
