@@ -18,7 +18,9 @@ import AppKit
       NSDocumentController.shared.newDocument(nil)
     }
     if ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_CHECK"] == "1" {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.captureVisualEvidence() }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        Task { await self.captureVisualEvidence() }
+      }
     }
   }
   func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
@@ -156,7 +158,7 @@ import AppKit
 
 extension AppDelegate {
   /// Explicit developer diagnostic: cached AppKit rendering, never screen-capture proof.
-  func captureVisualEvidence() {
+  func captureVisualEvidence() async {
     guard let directory = ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_ARTIFACTS"],
       let controller = NSDocumentController.shared.documents.first?.windowControllers.first
         as? OperatorWindowController, let window = controller.window
@@ -166,36 +168,91 @@ extension AppDelegate {
       return
     }
     do {
+      controller.script.replaceSource(
+        NSAttributedString(
+          string:
+            "Good morning, and thank you all for being here. Today is about one simple idea: tools should get out of the way.\n\nWhen you record at your desk, the words should sit right under the camera — calm, legible, and at your pace.\n\nSo we built three things. First, a prompter that reads like a page. Second, controls you can reach without looking.\n\nThird, timing you can trust, so you always know how much is left.\n\nLet’s begin with the page itself.",
+          attributes: [
+            .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.textColor,
+            .paragraphStyle: ScriptDocument.newParagraphStyle(),
+          ]))
       for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
         window.appearance = NSAppearance(named: appearance)
-        for width in [980.0, 1002, 1280] {
-          window.setContentSize(CGSize(width: width, height: 740))
-          controller.windowDidResize(
-            Notification(name: NSWindow.didResizeNotification, object: window))
-          if width >= 1002, controller.inspectorItem?.isCollapsed == true {
-            controller.toggleInspector()
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(nil)
+        for take in ["ready", "paused"] {
+          controller.stop()
+          if take == "paused" {
+            try controller.session.prepare(controller.script)
+            controller.render()
+            try await Task.sleep(for: .milliseconds(300))
+            if controller.session.paragraphPositions.count > 1 {
+              try controller.session.seek(controller.session.paragraphPositions[1])
+              controller.applyCurrentPosition()
+            }
+            controller.refresh()
           }
-          window.contentView?.layoutSubtreeIfNeeded()
-          window.displayIfNeeded()
-          guard let view = window.contentView?.superview,
-            let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-          else { throw CocoaError(.fileWriteUnknown) }
-          if let appearance = window.appearance {
-            appearance.performAsCurrentDrawingAppearance {
+          for (width, height) in [(1280.0, 800.0), (1002, 800), (980, 640)] {
+            controller.inspectorItem?.isCollapsed = width < 1002
+            try await Task.sleep(for: .milliseconds(100))
+            var frame = window.frame
+            frame.size = CGSize(width: width, height: height)
+            window.setFrame(frame, display: true)
+            controller.windowDidResize(
+              Notification(name: NSWindow.didResizeNotification, object: window))
+            if width >= 1002 { controller.inspectorItem?.isCollapsed = false }
+            controller.balancePanes()
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.makeKey()
+            try await Task.sleep(for: .milliseconds(300))
+            // Collapse/activation can finish a queued native window resize. Capture only
+            // after that turn, then apply the requested native dimensions again.
+            // This is a native view cache; WindowServer may later adjust the window.
+            window.setFrame(frame, display: true)
+            controller.balancePanes()
+            window.contentView?.layoutSubtreeIfNeeded()
+            controller.editor.needsDisplay = true
+            window.displayIfNeeded()
+            guard let view = window.contentView?.superview,
+              let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+            else { throw CocoaError(.fileWriteUnknown) }
+            window.effectiveAppearance.performAsCurrentDrawingAppearance {
               view.cacheDisplay(in: view.bounds, to: bitmap)
             }
-          } else {
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+              throw CocoaError(.fileWriteUnknown)
+            }
+            try png.write(
+              to: URL(fileURLWithPath: directory).appendingPathComponent(
+                "actual-launched-cache-\(Int(width))-\(name)-\(take).png"))
+            for (label, direct) in [
+              ("editor", controller.editor as NSView),
+              ("takebar", controller.takeBar ?? controller.stageView),
+            ] {
+              let rect = label == "takebar" ? direct.bounds : direct.visibleRect
+              if let rep = direct.bitmapImageRepForCachingDisplay(in: rect) {
+                direct.cacheDisplay(in: rect, to: rep)
+                if let data = rep.representation(using: .png, properties: [:]) {
+                  try data.write(
+                    to: URL(fileURLWithPath: directory).appendingPathComponent(
+                      "direct-\(label)-\(Int(width))-\(name)-\(take).png"))
+                }
+              }
+            }
+            print(
+              "EDITOR frame=\(controller.editor.frame) textLength=\(controller.editor.string.utf16.count) textColor=\(String(describing: controller.editor.textColor))"
+            )
+            print(
+              "VISUAL cached-only state=\(take) appearance=\(name) visible=\(window.isVisible) key=\(window.isKeyWindow) frame=\(window.frame) content=\(window.contentLayoutRect) editor=\(controller.editor.enclosingScrollView?.frame ?? .zero) stage=\(controller.stageView.frame) preview=\(controller.preview.frame) inspectorCollapsed=\(controller.inspectorItem?.isCollapsed == true) title=\(window.title)"
+            )
+            for item in window.toolbar?.items ?? [] {
+              print(
+                "TOOLBAR \(item.itemIdentifier.rawValue) frame=\(item.view.map { $0.convert($0.bounds, to: nil) } ?? .zero)"
+              )
+            }
           }
-          guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw CocoaError(.fileWriteUnknown)
-          }
-          try png.write(
-            to: URL(fileURLWithPath: directory).appendingPathComponent(
-              "actual-launched-cache-\(Int(width))-\(name).png"))
-          print(
-            "VISUAL cached-only width=\(Int(width)) appearance=\(name) visible=\(window.isVisible) key=\(window.isKeyWindow) editor=\(Int(controller.editor.enclosingScrollView?.frame.width ?? 0)) stage=\(Int(controller.stageView.frame.width)) inspectorCollapsed=\(controller.inspectorItem?.isCollapsed == true)"
-          )
         }
       }
       controller.close()

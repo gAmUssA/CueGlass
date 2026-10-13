@@ -46,20 +46,23 @@ Version 1 now reads/writes `preferredSpeedLinesPerMinute` only (missing = 30); t
 
 ```sh
 swift test --package-path Packages/CueFlowCore --scratch-path .build/core
-scripts/test-app.sh
+CUEFLOW_EPHEMERAL=1 xcodebuild -project CueFlow.xcodeproj -scheme CueFlow -configuration DebugLocal \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/Xcode \
+  -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+scripts/test-app.sh # optional direct-runner cross-check
 xcrun swift-format lint --strict --recursive CueFlow Packages/CueFlowCore/Sources \
   Packages/CueFlowCore/Tests CueFlowTests scripts/make-fixtures.swift Packages/CueFlowCore/Package.swift
 beans check --json
 swift scripts/make-fixtures.swift
 ```
 
-Developer evidence: **14 core Swift Testing tests and 18 native AppKit tests pass**. They cover LPM/schema/defaults, direction/bounds/pure sampling, command persistence/guards, timing/navigation/scrubbing, real line pitch, source-safe styling, transactional reloads, native save/undo, imports, native geometry at 980/1002/1280, hidden-operator panel commands, reading-aid relayout counts and chunked actual-end measurement. The adapted independent supplemental probe passes 39 assertions; its old hard-coded pt/s position oracle was changed only to retained-position comparison for the new LPM contract.
+Developer evidence: **14 core Swift Testing tests and 19 native AppKit tests pass**. They cover LPM/schema/defaults, direction/bounds/pure sampling, command persistence/guards, timing/navigation/scrubbing, real line pitch, source-safe styling, transactional reloads, native save/undo, imports, native geometry at 980/1002/1280, hidden-operator panel commands, reading-aid relayout counts and chunked actual-end measurement. The adapted independent supplemental probe passes 39 assertions; its old hard-coded pt/s position oracle was changed only to retained-position comparison for the new LPM contract. Aspect-fit geometry comparisons use a 1e-9 pt tolerance; the former exact-double checks differ by about 4e-13 pt while logical layout dimensions remain unchanged.
 
-A synthetic 100,000-word paused measurement took about 0.35–0.43 s in 157 chunks on this host, with observed worst chunks about 3–5 ms. This is preparation evidence, not a display callback or sustained-performance claim. Full-document measurement never runs in a display callback. The below-2-ms frame goal and 60-minute memory/reading tests remain open.
+A synthetic 100,000-word paused measurement took about 0.35–0.59 s in 157 chunks on this host, with observed worst chunks about 3–6.3 ms. This is preparation evidence, not a display callback or sustained-performance claim. Full-document measurement never runs in a display callback. The below-2-ms frame goal and 60-minute memory/reading tests remain open.
 
-`xcodebuild … test` and `test-without-building` both still abort with `IDELaunchServicesLauncher.m:445`, `childPID > 0` (exit 134). **The scheme has not passed.** `scripts/test-app.sh` builds and directly executes the actual hosted Swift Testing bundle through the installed xctest binary. Its final nonzero Swift Testing count is the verdict, not the preceding XCTest zero-test header. Direct execution is alternative evidence, not sandbox/scheme proof.
+The normal DebugLocal **scheme now passes all 19 native tests** through an unhosted app-linked integration target. It links the app's actual debug dylib and runtime paths; the test target has no second direct Core package dependency, which avoids duplicate Core type identities. This is a DebugLocal toolchain-specific runner configuration. The former hosted LaunchServices path still has the historical `childPID > 0` assertion; it is not relabelled a passing hosted launch. `scripts/test-app.sh` remains an optional direct execution cross-check using the same app-linked bundle. Neither path proves signed sandbox/iCloud behavior.
 
-An actual local app process was launched and cached native view renders were inspected in light/dark at all three widths. It reported visible windows and valid geometry but did not become key. Cached images can omit/misrepresent SwiftUI layers, material and appearance; no WindowServer screenshot, complete dark-mode fidelity, hardware visual pass or user-menu acceptance is claimed. No screen-capture permission was requested. The committed [concept board](docs/design/quiet-studio-concept.svg) is explicitly proposed art, not app evidence.
+Actual launch evidence covers the concept sample in Ready and Paused, light/dark, at 1280×800, 1002×800 and 980×640. Exact pane geometry and aspect-ratio checks are automated. Native composite caches can omit text/layers or misrepresent appearance: direct editor and take-bar caches are retained to distinguish that limitation from missing text or a light bar. Activation/key-window attempts and actual outcomes are logged; these remain supporting evidence, not WindowServer screenshots or independent visual acceptance. Screen capture preflight is false; no permission was requested. The committed [concept board](docs/design/quiet-studio-concept.svg) remains proposed art.
 
 Hardware/manual gates: physical low-speed/mixed-refresh/negative-origin rendering, fullscreen-call-app floating/click-through, optical reflection, real sleep/disconnect, VoiceOver/accessibility variants and macOS 14 runtime; signed iCloud delivery/offline conflicts/account/download on two Macs; sustained profiling. Each has procedures in [manual tests](docs/MANUAL_TEST_PLAN.md). No notarized/distributable release was produced.
 

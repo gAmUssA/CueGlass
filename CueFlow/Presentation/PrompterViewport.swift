@@ -292,7 +292,13 @@ import QuartzCore
 }
 @MainActor final class ScaledPreviewContainer: NSView {
   let reflection = ReflectionContainerView(frame: .zero)
-  var logicalSize = CGSize(width: 1280, height: 720) { didSet { needsLayout = true } }
+  var logicalSize = CGSize(width: 1280, height: 720) {
+    didSet {
+      reflection.bounds = CGRect(origin: .zero, size: logicalSize)
+      reflection.layoutSubtreeIfNeeded()
+      needsLayout = true
+    }
+  }
   override init(frame: NSRect) {
     super.init(frame: frame)
     addSubview(reflection)
@@ -307,8 +313,11 @@ import QuartzCore
     reflection.frame = CGRect(
       x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width,
       height: size.height)
-    reflection.setBoundsSize(logicalSize)
+    reflection.bounds = CGRect(origin: .zero, size: logicalSize)
     reflection.needsLayout = true
+    reflection.layoutSubtreeIfNeeded()
+    // Native clip views may reset their origin while their ancestor is scaled.
+    reflection.viewport.apply(position: reflection.viewport.currentPosition)
   }
 }
 

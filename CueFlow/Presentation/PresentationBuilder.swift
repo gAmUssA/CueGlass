@@ -33,6 +33,9 @@ import CueFlowCore
         (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
         ?? NSMutableParagraphStyle()
       paragraph.textBlocks = []
+      // Presentation line pitch is chosen independently of authored fixed heights.
+      paragraph.minimumLineHeight = 0
+      paragraph.maximumLineHeight = 0
       paragraph.lineHeightMultiple = style.lineHeightMultiplier
       paragraph.paragraphSpacing = style.paragraphSpacing
       result.addAttributes([.font: font, .paragraphStyle: paragraph], range: run)

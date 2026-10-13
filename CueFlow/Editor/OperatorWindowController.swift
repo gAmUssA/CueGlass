@@ -23,6 +23,7 @@ import SwiftUI
   @Published var calibrated = false
   @Published var selectedDisplay = ""
   @Published var displays: [String] = []
+  @Published var darkAppearance = false
   @Published var active = false
   @Published var running = false
   @Published var pending = false
@@ -67,7 +68,74 @@ import SwiftUI
 
 }
 @MainActor final class DropEditor: NSTextView {
+  var onAppearanceChange: ((Bool) -> Void)?
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    onAppearanceChange?(effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+  }
   var onDrop: ((URL) -> Void)?
+  lazy var decoration: EditorDecoration = {
+    let view = EditorDecoration()
+    view.editor = self
+    view.wantsLayer = true
+    view.layer?.zPosition = 100
+    addSubview(view)
+    return view
+  }()
+  var showsTake = false { didSet { decoration.needsDisplay = true } }
+  var currentTakeOffset: Int? { didSet { decoration.needsDisplay = true } }
+  private var paragraphStarts: [Int] = []
+  private var indexedText = ""
+  override func layout() {
+    super.layout()
+    let inset = CGSize(width: max(32, (bounds.width - 680) / 2), height: 24)
+    if textContainerInset != inset { textContainerInset = inset }
+    decoration.frame = bounds
+    decoration.needsDisplay = true
+  }
+
+  func drawDecorations(_ rect: NSRect) {
+    if indexedText != string {
+      indexedText = string
+      paragraphStarts = ParagraphIndex.starts(in: string)
+    }
+    guard let manager = textLayoutManager, let content = manager.textContentManager else { return }
+    let start =
+      manager.textViewportLayoutController.viewportRange?.location ?? content.documentRange.location
+    manager.enumerateTextLayoutFragments(from: start, options: []) { fragment in
+      var frame = fragment.layoutFragmentFrame.offsetBy(
+        dx: self.textContainerOrigin.x, dy: self.textContainerOrigin.y)
+      if frame.minY > rect.maxY { return false }
+      let offset = content.offset(
+        from: content.documentRange.location, to: fragment.rangeInElement.location)
+      guard let number = self.paragraphStarts.firstIndex(of: offset), frame.intersects(rect) else {
+        return true
+      }
+      let next =
+        number + 1 < self.paragraphStarts.count
+        ? self.paragraphStarts[number + 1] : self.string.utf16.count
+      let current =
+        self.showsTake && self.currentTakeOffset.map { $0 >= offset && $0 < next } == true
+      frame.origin.x = 28
+      frame.size.width = min(688, self.bounds.width - 32)
+      if current {
+        NSColor.controlAccentColor.withAlphaComponent(
+          NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 0.16 : 0.07
+        ).setFill()
+        NSBezierPath(roundedRect: frame.insetBy(dx: 0, dy: -3), xRadius: 4, yRadius: 4).fill()
+        NSColor.controlAccentColor.setFill()
+        NSRect(x: 28, y: frame.minY, width: 2, height: frame.height).fill()
+      }
+      (String(number + 1) as NSString).draw(
+        at: NSPoint(x: 8, y: frame.minY + 2),
+        withAttributes: [
+          .font: NSFont.monospacedDigitSystemFont(
+            ofSize: 10, weight: current ? .semibold : .regular),
+          .foregroundColor: current ? NSColor.labelColor : NSColor.tertiaryLabelColor,
+        ])
+      return true
+    }
+  }
   override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
     sender.draggingPasteboard.canReadObject(
       forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
@@ -100,9 +168,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let splitController = NSSplitViewController()
   var inspectorPopover: NSPopover?
   var inspectorItem: NSSplitViewItem?
+  var editorWidthConstraint: NSLayoutConstraint?
+  var inspectorWidthConstraint: NSLayoutConstraint?
   weak var playToolbarButton: NSButton?
-  var stageView = NSView()
+  var previewAspectConstraint: NSLayoutConstraint?
+  let previewCaption = NSTextField(labelWithString: "OUTPUT PREVIEW · 1280 × 720")
+  var stageView = StudioSurface()
   var transportChrome = NSView()
+  var takeBar: NSView?
   var progressTimer: Timer?
   var pendingPlay = false
   var renderGeneration = 0
@@ -152,10 +225,18 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     editor.isHorizontallyResizable = false
     editor.autoresizingMask = [.width]
     editor.textContainer?.widthTracksTextView = true
+    editor.textContainer?.heightTracksTextView = false
+    editor.onAppearanceChange = { [weak self] in self?.state.darkAppearance = $0 }
     editor.textContainerInset = CGSize(width: 32, height: 24)
     editor.delegate = self
     editor.font = .systemFont(ofSize: 15)
-    editor.typingAttributes = [.font: NSFont.systemFont(ofSize: 15)]
+    let typingParagraph = NSMutableParagraphStyle()
+    typingParagraph.minimumLineHeight = 22
+    typingParagraph.maximumLineHeight = 22
+    editor.typingAttributes = [
+      .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.textColor,
+      .paragraphStyle: typingParagraph,
+    ]
     editor.registerForDraggedTypes([.fileURL])
     editor.onDrop = { [weak self] in self?.openDrop($0) }
     editor.setAccessibilityLabel("Script editor")
@@ -168,6 +249,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     editorController.view = scroll
     let editorItem = NSSplitViewItem(viewController: editorController)
     editorItem.minimumThickness = 320
+    editorItem.holdingPriority = NSLayoutConstraint.Priority(750)
     let stage = NSViewController()
     stage.view = stageView
     stageView.wantsLayer = true
@@ -175,8 +257,25 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       NSColor(srgbRed: 0.086, green: 0.086, blue: 0.094, alpha: 1).cgColor
     let bar = NSHostingView(rootView: StageReadout(readout: readout))
     let footer = NSHostingView(rootView: StageFooter(state: state, controller: self))
+    takeBar = bar
+    bar.sizingOptions = []
+    footer.sizingOptions = [.intrinsicContentSize]
+    bar.appearance = NSAppearance(named: .darkAqua)
+    footer.appearance = NSAppearance(named: .darkAqua)
+    preview.wantsLayer = true
+    preview.layer?.cornerRadius = 8
+    preview.layer?.masksToBounds = true
     transportChrome = footer
-    for view in [bar, preview, footer] {
+    previewCaption.font = .systemFont(ofSize: 11, weight: .medium)
+    previewCaption.textColor = .secondaryLabelColor
+    previewCaption.appearance = NSAppearance(named: .darkAqua)
+    let aspect = preview.heightAnchor.constraint(
+      equalTo: preview.widthAnchor, multiplier: 9.0 / 16.0)
+    previewAspectConstraint = aspect
+    let preferredPreviewWidth = preview.widthAnchor.constraint(
+      equalTo: stageView.widthAnchor, constant: -32)
+    preferredPreviewWidth.priority = .defaultHigh
+    for view in [bar, preview, previewCaption, footer] {
       view.translatesAutoresizingMaskIntoConstraints = false
       stageView.addSubview(view)
     }
@@ -188,19 +287,46 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       footer.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
       footer.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
       footer.bottomAnchor.constraint(equalTo: stageView.bottomAnchor),
-      footer.heightAnchor.constraint(equalToConstant: 96),
-      preview.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 12),
-      preview.leadingAnchor.constraint(equalTo: stageView.leadingAnchor, constant: 12),
-      preview.trailingAnchor.constraint(equalTo: stageView.trailingAnchor, constant: -12),
-      preview.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -12),
+      footer.heightAnchor.constraint(greaterThanOrEqualToConstant: 82),
+      preview.topAnchor.constraint(greaterThanOrEqualTo: bar.bottomAnchor, constant: 16),
+      preview.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 16),
+      aspect,
+      previewCaption.topAnchor.constraint(equalTo: preview.bottomAnchor, constant: 10),
+      previewCaption.leadingAnchor.constraint(equalTo: preview.leadingAnchor),
+      previewCaption.trailingAnchor.constraint(lessThanOrEqualTo: preview.trailingAnchor),
+      preferredPreviewWidth,
+      preview.centerXAnchor.constraint(equalTo: stageView.centerXAnchor),
+      preview.leadingAnchor.constraint(greaterThanOrEqualTo: stageView.leadingAnchor, constant: 16),
+      preview.trailingAnchor.constraint(lessThanOrEqualTo: stageView.trailingAnchor, constant: -16),
+      preview.bottomAnchor.constraint(lessThanOrEqualTo: footer.topAnchor, constant: -32),
     ])
     let stageItem = NSSplitViewItem(viewController: stage)
     stageItem.minimumThickness = 420
     stageItem.holdingPriority = .defaultLow
-    let inspector = NSHostingController(rootView: OperatorControls(state: state, controller: self))
-    let item = NSSplitViewItem(inspectorWithViewController: inspector)
+    let inspector = NSViewController()
+    inspector.view = NSView()
+    let inspectorHost = NSHostingView(rootView: OperatorControls(state: state, controller: self))
+    inspectorHost.sizingOptions = []
+    inspectorHost.translatesAutoresizingMaskIntoConstraints = false
+    inspector.view.addSubview(inspectorHost)
+    NSLayoutConstraint.activate([
+      inspectorHost.leadingAnchor.constraint(equalTo: inspector.view.leadingAnchor),
+      inspectorHost.trailingAnchor.constraint(equalTo: inspector.view.trailingAnchor),
+      inspectorHost.topAnchor.constraint(equalTo: inspector.view.topAnchor),
+      inspectorHost.bottomAnchor.constraint(equalTo: inspector.view.bottomAnchor),
+    ])
+    let item = NSSplitViewItem(viewController: inspector)
     item.minimumThickness = 260
     item.maximumThickness = 320
+    let editorWidth = editorController.view.widthAnchor.constraint(equalToConstant: 420)
+    editorWidth.priority = NSLayoutConstraint.Priority(800)
+    editorWidth.isActive = true
+    editorWidthConstraint = editorWidth
+    let inspectorWidth = inspector.view.widthAnchor.constraint(equalToConstant: 280)
+    inspectorWidth.priority = NSLayoutConstraint.Priority(800)
+    inspectorWidth.isActive = true
+    inspectorWidthConstraint = inspectorWidth
+    item.collapseBehavior = .useConstraints
     item.canCollapse = true
     item.canCollapseFromWindowResize = true
     inspectorItem = item
@@ -208,11 +334,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     splitController.addSplitViewItem(stageItem)
     splitController.addSplitViewItem(item)
     window.contentViewController = splitController
+    window.minSize = CGSize(width: 980, height: 640)
     item.isCollapsed = UserDefaults.standard.bool(forKey: "inspectorCollapsed")
     let toolbar = NSToolbar(identifier: "CueGlassToolbar")
     toolbar.delegate = self
     toolbar.displayMode = .iconOnly
+    toolbar.centeredItemIdentifiers = [.init("transport")]
     window.toolbar = toolbar
+    window.minSize = CGSize(width: 980, height: 640)
+    window.setFrame(CGRect(x: 100, y: 100, width: 1280, height: 800), display: false)
+    window.contentView?.layoutSubtreeIfNeeded()
+    balancePanes()
     preview.reflection.viewport.driver = DisplayLinkDriver(
       viewport: preview.reflection.viewport, session: session)
     preview.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
@@ -359,6 +491,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     let style = session.state == .idle ? state.style : session.style
     preview.logicalSize = session.logicalSize
+    preview.layer?.backgroundColor = PresentationBuilder.color(style.backgroundRGBA).cgColor
+    if session.logicalSize.width > 0, session.logicalSize.height > 0 {
+      previewAspectConstraint?.isActive = false
+      previewAspectConstraint = preview.heightAnchor.constraint(
+        equalTo: preview.widthAnchor,
+        multiplier: session.logicalSize.height / session.logicalSize.width)
+      previewAspectConstraint?.isActive = true
+    }
+    previewCaption.stringValue =
+      "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
     preview.reflection.viewport.configure(
       snapshot: snapshot, style: style, size: session.logicalSize)
     output?.reflection.viewport.configure(
@@ -386,6 +528,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
     }
     reflect()
+    preview.layoutSubtreeIfNeeded()
     applyCurrentPosition()
     if session.snapshot != nil {
       session.measuring = true
@@ -417,7 +560,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     state.running = session.state == .running || session.state == .countingDown
     state.pending = session.pendingRevision
     editor.isEditable = !state.active
-    editor.alphaValue = state.active ? 0.75 : 1
+    editor.showsTake = state.active
+    editor.needsDisplay = true
     for button in [playToolbarButton, panel?.playButton].compactMap({ $0 }) {
       button.image = NSImage(
         systemSymbolName: session.state == .countingDown
@@ -429,7 +573,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
           separator: " · ")
     }
     state.status =
-      session.message + (state.active ? " · Editing locked; Stop to edit." : "")
+      session.message
       + (script.notice.isEmpty ? "" : " · " + script.notice)
     if let notice = PresentationFont.notice(state.style) { state.status += " · " + notice }
     state.cloud =
@@ -450,6 +594,13 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         output != nil
         ? "Presenting · Output" : floating != nil ? "Presenting · Floating" : "Present"
       item.menu = presentationMenu()
+      if let button = item.view as? NSPopUpButton {
+        let menu = presentationMenu()
+        let title = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
+        title.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
+        menu.insertItem(title, at: 0)
+        button.menu = menu
+      }
     }
     let toolbarButtons =
       window?.toolbar?.items.flatMap {
@@ -464,6 +615,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
     }
     updateReadout()
+    updateEditorParagraph()
     updateProgressTimer()
     updateFloatingOptions()
   }
@@ -478,6 +630,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     output?.reflection.vertical = state.vertical
     preview.reflection.horizontal = state.calibrated && state.horizontal
     preview.reflection.vertical = state.calibrated && state.vertical
+    previewCaption.stringValue =
+      "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
+      + (state.calibrated && (state.horizontal || state.vertical) ? " · MIRRORED" : "")
   }
   func loadLatest() {
     perform {
@@ -865,11 +1020,13 @@ extension OperatorWindowController {
       String(format: "%.0f lpm", lpm)
       + (abs(lpm - session.preferredLPM) > 0.05 && session.state != .idle ? " (limited)" : "")
     readout.wpm =
-      session.lines > 0
+      session.lines > 0 && session.state != .idle
       ? String(format: "≈ %.0f wpm", lpm * Double(session.words) / Double(session.lines))
       : "≈ — wpm"
     if let end = session.timeline.upperBound, end > 0 {
       readout.progress = min(1, max(0, session.timeline.anchorPosition / end))
+    } else {
+      readout.progress = 0
     }
   }
   func updateProgressTimer() {
@@ -888,6 +1045,7 @@ extension OperatorWindowController {
   }
   func progressTick() {
     updateReadout()
+    updateEditorParagraph()
     if let end = session.timeline.upperBound, end > 0 {
       perform { readout.progress = try session.position(at: session.effectiveTime) / end }
     }
@@ -949,24 +1107,63 @@ extension OperatorWindowController {
       frame.size.width = min(1002, screen.visibleFrame.width)
       window.setFrame(FrameClamp.clamp(frame, to: screen.visibleFrame), display: true)
     }
+    inspectorWidthConstraint?.isActive = item.isCollapsed
     item.isCollapsed.toggle()
+    balancePanes()
     if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
       UserDefaults.standard.set(item.isCollapsed, forKey: "inspectorCollapsed")
     }
   }
+  func balancePanes() {
+    guard let window else { return }
+    let width = window.contentLayoutRect.width
+    if width < 1002, inspectorItem?.isCollapsed == false {
+      inspectorWidthConstraint?.isActive = false
+      inspectorItem?.isCollapsed = true
+    }
+    inspectorWidthConstraint?.isActive = inspectorItem?.isCollapsed == false
+    let inspectorWidth = inspectorItem?.isCollapsed == true ? 0.0 : (width >= 1100 ? 280.0 : 260.0)
+    editorWidthConstraint?.constant = min(420, max(320, width - inspectorWidth - 422))
+    inspectorWidthConstraint?.constant = inspectorWidth > 0 ? inspectorWidth : 280
+    window.contentView?.layoutSubtreeIfNeeded()
+  }
+
+  func updateEditorParagraph() {
+    let offset = session.state == .idle ? nil : authoritative.captureAnchor()?.utf16Offset
+    if editor.currentTakeOffset != offset {
+      editor.currentTakeOffset = offset
+      editor.needsDisplay = true
+    }
+  }
   func windowDidResize(_ notification: Notification) {
-    if let window, window.contentLayoutRect.width < 1002 { inspectorItem?.isCollapsed = true }
+    balancePanes()
   }
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.init("transport"), .init("present"), .init("inspector"), .flexibleSpace]
+    [
+      .init("transport"), .init("present"), .init("inspector"), .init("editorSeparator"),
+      .init("inspectorSeparator"),
+      .flexibleSpace,
+    ]
   }
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .init("transport"), .flexibleSpace, .init("present"), .init("inspector")]
+    [
+      .init("editorSeparator"), .flexibleSpace, .init("transport"), .flexibleSpace,
+      .init("present"),
+      .init("inspectorSeparator"), .init("inspector"),
+    ]
   }
   func toolbar(
     _ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
     willBeInsertedIntoToolbar flag: Bool
   ) -> NSToolbarItem? {
+    if id.rawValue == "editorSeparator" {
+      return NSTrackingSeparatorToolbarItem(
+        identifier: id, splitView: splitController.splitView, dividerIndex: 0)
+    }
+    if id.rawValue == "inspectorSeparator" {
+      return NSTrackingSeparatorToolbarItem(
+        identifier: id, splitView: splitController.splitView, dividerIndex: 1)
+    }
     if id.rawValue == "transport" {
       let item = NSToolbarItemGroup(itemIdentifier: id)
       item.label = "Playback"
@@ -986,7 +1183,10 @@ extension OperatorWindowController {
         button.widthAnchor.constraint(equalToConstant: command == .toggle ? 42 : 28).isActive = true
         if command == .toggle {
           playToolbarButton = button
-          button.bezelStyle = .rounded
+          button.bezelStyle = .circular
+          button.wantsLayer = true
+          button.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+          button.layer?.cornerRadius = 12
           button.bezelColor = .controlAccentColor
           button.contentTintColor = .white
         }
@@ -1000,6 +1200,15 @@ extension OperatorWindowController {
       item.label = "Present"
       item.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Present")
       item.menu = presentationMenu()
+      let button = NSPopUpButton(frame: .zero, pullsDown: true)
+      let menu = presentationMenu()
+      let title = NSMenuItem(title: "Present", action: nil, keyEquivalent: "")
+      title.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
+      menu.insertItem(title, at: 0)
+      button.menu = menu
+      button.bezelStyle = .texturedRounded
+      button.setAccessibilityLabel("Present")
+      item.view = button
       return item
     }
     let item = NSToolbarItem(itemIdentifier: id)

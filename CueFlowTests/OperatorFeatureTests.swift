@@ -6,6 +6,60 @@ import Testing
 
 @Suite(.serialized) @MainActor struct OperatorFeatureTests {
   init() { _ = NSApplication.shared }
+  @Test func quietStudioCompositionPreservesSource() throws {
+    let doc = ScriptDocument()
+    let controller = OperatorWindowController(document: doc)
+    let window = try #require(controller.window)
+    window.setContentSize(CGSize(width: 1280, height: 748))
+    controller.inspectorItem?.isCollapsed = false
+    controller.balancePanes()
+    window.contentView?.layoutSubtreeIfNeeded()
+    #expect(abs((controller.editor.enclosingScrollView?.frame.width ?? 0) - 420) < 2)
+    #expect(abs(controller.stageView.frame.width - 578) < 2)
+    let ratio = controller.preview.bounds.width / controller.preview.bounds.height
+    #expect(
+      abs(ratio - controller.session.logicalSize.width / controller.session.logicalSize.height)
+        < 0.001)
+    let source = doc.source.copy() as! NSAttributedString
+    let derived = PresentationBuilder.build(source, style: controller.state.style)
+    let paragraph = try #require(
+      derived.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+    #expect(paragraph.minimumLineHeight == 0)
+    #expect(paragraph.maximumLineHeight == 0)
+    try controller.session.prepare(doc)
+    controller.render()
+    controller.refresh()
+    #expect(controller.editor.showsTake)
+    #expect(!controller.editor.isEditable)
+    controller.editor.currentTakeOffset = 10
+    controller.editor.displayIfNeeded()
+    #expect(doc.source == source)
+    #expect(controller.editor.attributedString() == source)
+    try controller.session.seek(100)
+    controller.applyCurrentPosition()
+    window.setContentSize(CGSize(width: 1002, height: 748))
+    controller.balancePanes()
+    controller.preview.layoutSubtreeIfNeeded()
+    #expect(controller.preview.reflection.viewport.currentPosition == 100)
+    #expect(abs(controller.preview.reflection.viewport.scroll.contentView.bounds.minY - 100) < 0.5)
+    controller.stop()
+    #expect(!controller.editor.showsTake)
+    #expect(controller.editor.isEditable)
+    let logical = controller.session.logicalSize
+    var narrow = window.frame
+    narrow.size = CGSize(width: 980, height: 640)
+    window.setFrame(narrow, display: false)
+    controller.balancePanes()
+    #expect(window.frame.width == 980)
+    #expect(window.frame.height == 640)
+    #expect(controller.inspectorItem?.isCollapsed == true)
+    #expect(controller.stageView.frame.width >= 420)
+    #expect(controller.editor.typingAttributes[.paragraphStyle] is NSParagraphStyle)
+    #expect(controller.preview.logicalSize == logical)
+    #expect(abs(controller.preview.reflection.bounds.width - logical.width) < 1e-9)
+    #expect(abs(controller.preview.reflection.viewport.frame.width - logical.width) < 1e-9)
+    controller.close()
+  }
   @Test func rejectedReloadAndAtomicReplacement() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
       .deletingLastPathComponent().appendingPathComponent(".build/d3/reload", isDirectory: true)

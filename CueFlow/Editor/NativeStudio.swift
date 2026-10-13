@@ -31,48 +31,103 @@ import SwiftUI
 struct StageReadout: View {
   @ObservedObject var readout: TakeReadout
   var body: some View {
-    HStack(spacing: 12) {
-      Text(readout.status).font(.caption.weight(.semibold)).padding(6).background(
-        .white.opacity(0.08), in: Capsule())
-      Text(readout.elapsed).monospacedDigit()
-      ProgressView(value: readout.progress).tint(.gray)
-      Text(readout.remaining).monospacedDigit()
-      VStack(alignment: .trailing) {
-        Text(readout.pace).font(.headline)
-        Text(readout.wpm).font(.caption2)
+    HStack(spacing: 16) {
+      HStack(spacing: 6) {
+        Circle().fill(statusColor)
+          .frame(width: 5, height: 5)
+        Text(readout.status).font(.system(size: 11, weight: .semibold))
+      }.padding(.horizontal, 8).padding(.vertical, 5).background(
+        statusColor.opacity(0.12), in: Capsule())
+      clock(readout.elapsed, label: "ELAPSED")
+      GeometryReader { geometry in
+        ZStack(alignment: .leading) {
+          Capsule().fill(.white.opacity(0.12))
+          Capsule().fill(.white.opacity(0.65))
+            .frame(width: geometry.size.width * min(1, max(0, readout.progress)))
+        }
+      }.frame(minWidth: 100, idealWidth: 140, maxWidth: 200).frame(height: 3)
+      clock(readout.remaining, label: "REMAINING")
+      VStack(alignment: .trailing, spacing: 2) {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+          Text(readout.pace.replacingOccurrences(of: " lpm", with: "")).font(
+            .system(size: 17, weight: .semibold))
+          Text("lpm").font(.system(size: 11))
+        }.monospacedDigit()
+        if !readout.wpm.contains("—") {
+          Text(readout.wpm).font(.system(size: 10)).foregroundStyle(.secondary)
+        }
       }
-    }.foregroundStyle(.white).padding(12).frame(height: 56).background(Color(white: 0.12))
+    }.padding(.horizontal, 16).frame(height: 56).foregroundStyle(.primary).background(
+      Color(red: 22 / 255, green: 22 / 255, blue: 24 / 255)
+    ).environment(\.colorScheme, .dark)
+  }
+  private var statusColor: Color {
+    if readout.status == "Playing" { return .green }
+    if readout.status == "Paused" || readout.status.hasPrefix("Starting") { return .orange }
+    return .secondary
+  }
+  private func clock(_ value: String, label: String) -> some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(value).font(.system(size: 13, weight: .medium)).monospacedDigit()
+      Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
+    }.fixedSize()
   }
 }
 struct StageFooter: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Image(systemName: "tortoise")
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 10) {
+        Text("Speed").font(.system(size: 11))
+        Image(systemName: "tortoise").foregroundStyle(.secondary)
         Slider(
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           in: 2...max(10, state.maximum)
         ).tint(.gray).accessibilityLabel("Reading pace in lines per minute")
-        Image(systemName: "hare")
+        Image(systemName: "hare").foregroundStyle(.secondary)
         TextField(
           "LPM", value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           format: .number.precision(.fractionLength(1))
-        ).frame(width: 52)
+        ).textFieldStyle(.roundedBorder).frame(width: 54)
+        Text("lpm").font(.system(size: 11)).foregroundStyle(.secondary)
       }
-      HStack {
-        Text(state.status).font(.caption).lineLimit(2)
-        Spacer()
-        if state.pending {
-          Button("Load Latest") { controller.loadLatest() }.disabled(state.running)
+      if state.active {
+        HStack(spacing: 8) {
+          Image(systemName: "lock.fill")
+          Text("Editing locked for this take").font(.system(size: 11))
+          Spacer(minLength: 0)
+          Button("Stop Take") { controller.stop() }.controlSize(.small)
+        }.padding(8).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+      }
+      if state.pending
+        || !["", "Ready", "Paused", "Playing", "Take prepared", "Stopped — editing enabled"]
+          .contains(state.status)
+      {
+        HStack {
+          Text(state.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+          Spacer()
+          if state.pending {
+            Button("Load Latest") { controller.loadLatest() }.disabled(state.running)
+          } else if state.active && !state.running {
+            Button(
+              controller.session.message.localizedCaseInsensitiveContains("end")
+                ? "Restart" : "Resume"
+            ) {
+              if controller.session.message.localizedCaseInsensitiveContains("end") {
+                controller.restart()
+              } else {
+                controller.toggle()
+              }
+            }.controlSize(.small)
+          }
         }
       }
       Text(
         "↑ ↓ \(Int(state.fineStep)) lpm · ⇧↑ ⇧↓ \(Int(state.jumpStep)) lpm · Scroll to pause and scrub"
-      ).font(.caption2).foregroundStyle(
-        .secondary)
-    }.foregroundStyle(.white).padding(12).background(Color(white: 0.09))
+      )
+      .font(.system(size: 10)).foregroundStyle(.tertiary)
+    }.padding(16).foregroundStyle(.primary).environment(\.colorScheme, .dark)
   }
 }
 @MainActor enum CommandRouter {
@@ -136,4 +191,18 @@ extension FrameClamp {
       to: Rect(x: visible.minX, y: visible.minY, width: visible.width, height: visible.height))
     return CGRect(x: value.x, y: value.y, width: value.width, height: value.height)
   }
+}
+
+@MainActor final class StudioSurface: NSView {
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor(srgbRed: 22.0 / 255, green: 22.0 / 255, blue: 24.0 / 255, alpha: 1).setFill()
+    dirtyRect.fill()
+  }
+}
+
+@MainActor final class EditorDecoration: NSView {
+  weak var editor: DropEditor?
+  override var isFlipped: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  override func draw(_ dirtyRect: NSRect) { editor?.drawDecorations(dirtyRect) }
 }

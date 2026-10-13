@@ -10,3 +10,6 @@
 - Extend the private prototype with mandatory R10–R16: floating presentation, compact Controls, LPM pace, paragraph/reverse/scrub navigation, remappable app-local commands, countdown/timed reading and static reading aids.
 - Replace dense control rows with the native Quiet Studio toolbar/stage/inspector hierarchy and persist source-backed research/concept. Adopt ADR 0004/0005 without rewriting earlier accepted decisions.
 - Protect every rejected native reload, make Load Latest transactional, disclose saved missing-font fallback and fix effective iCloud plist selection. Add current-contract regression/state/geometry tests; retain the explicit Xcode scheme-launcher and manual hardware/cloud gaps.
+
+- Correct Quiet Studio preview composition, compact inspector, balanced panes, semantic state pill, source-safe paragraph decoration and locked-editing action; match the native floating grip and HUD.
+- Run the full native integration suite through the normal DebugLocal scheme with an app-linked unhosted bundle, avoiding the hosted launcher assertion and duplicate Core package type identity.

@@ -5,7 +5,7 @@ status: in-progress
 type: milestone
 priority: high
 created_at: 2026-10-13T18:53:52Z
-updated_at: 2026-10-13T20:53:57Z
+updated_at: 2026-10-13T21:42:47Z
 ---
 
 Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md` (owner-expanded mandatory R01–R16).
@@ -15,9 +15,9 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 ## Developer implementation evidence (2026-10-13)
 
 - Cumulative R01–R16 implementation delivered on `feat/cueflow-native`; current-tip independent acceptance is pending. Owner specifications were merged unchanged; only the two assigned metadata commits were cherry-picked.
-- Core: 14 Swift Testing tests. Native direct hosted-bundle runner: 18 tests in two suites. Supplemental tester probe: 39 assertions, zero failures, with the old pt/s oracle adapted to retained position under required LPM semantics.
+- Core: 14 Swift Testing tests. Normal unhosted app-linked DebugLocal scheme: 19 tests in two suites; direct runner cross-check also passes. Supplemental tester probe: 39 assertions, zero failures, with the old pt/s oracle adapted to retained position under required LPM semantics.
 - DebugLocal/ReleaseLocal and unsigned DebugICloud/ReleaseICloud builds pass. Synthetic processed cloud plists validate configuration precedence, not signed owner synchronization.
-- Xcode scheme launcher still aborts `childPID > 0`, exit 134; direct runner is separate evidence.
+- Historical hosted LaunchServices launcher aborts `childPID > 0`, exit 134. The proven target-scoped unhosted app-dylib remedy now runs the full native suite through the normal scheme; no hosted-launch pass or signed sandbox proof is claimed.
 - Actual launched geometry verified at 980/1002/1280 pt. Cached view renders have incomplete layer/key-window limitations and are not complete screenshots or independent visual acceptance.
 - Accepted superseding ADR 0004/0005 and source-backed design research/concept are committed. See [implementation status](../docs/IMPLEMENTATION_STATUS.md), [design](../docs/design/README.md) and [manual plan](../docs/MANUAL_TEST_PLAN.md).
 - `cueglass-o9d1` tracks developer delivery; `cueglass-7bw1` remains in-progress for independent visual/accessibility acceptance. Owner cloud, physical/optical and sustained performance gates remain open.
@@ -62,3 +62,5 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - cueglass-c1kt — Performance profiling on hardware (R07), remains todo
 
 - cueglass-8ngi — ADR for LPM/reverse/timing, superseding ADR 0002 speed contract
+
+Cumulative fix3 correction is tracked in `cueglass-f1i6`; independent design acceptance remains in `cueglass-7bw1`. Current key-window/composite-cache limitations remain open. All MVP requirement acceptance boxes stay unchecked.

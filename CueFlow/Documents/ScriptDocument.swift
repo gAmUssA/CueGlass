@@ -8,7 +8,16 @@ import os
   var source = NSAttributedString(
     string:
       "Welcome to CueGlass\n\nImport a TXT or RTF script, choose a display, then press Play.\n\nLEFT ← 1. Read at your own pace. → RIGHT\nUP ↑ 2. Adjust speed while playing. ↓ DOWN",
-    attributes: [.font: NSFont.systemFont(ofSize: 15)])
+    attributes: [
+      .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.textColor,
+      .paragraphStyle: ScriptDocument.newParagraphStyle(),
+    ])
+  static func newParagraphStyle() -> NSParagraphStyle {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.minimumLineHeight = 22
+    paragraph.maximumLineHeight = 22
+    return paragraph
+  }
   var model = ScriptDocumentModel(rtf: Data("{\\rtf1 }".utf8))
   private(set) var revision = 0
   private nonisolated let saveSafety = OSAllocatedUnfairLock<String?>(initialState: nil)

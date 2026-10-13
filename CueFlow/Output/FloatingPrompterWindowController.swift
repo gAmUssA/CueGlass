@@ -99,14 +99,33 @@ import SwiftUI
 
 @MainActor final class FloatingRoot: NSView {
   let reflection: ReflectionContainerView
-  let grip: NSHostingView<FloatingGrip>
+  let grip: NSVisualEffectView
   weak var controller: OperatorWindowController?
   var logicalSize = CGSize(width: 800, height: 400) { didSet { needsLayout = true } }
   private var tracking: NSTrackingArea?
   init(reflection: ReflectionContainerView, controller: OperatorWindowController) {
     self.reflection = reflection
     self.controller = controller
-    grip = NSHostingView(rootView: FloatingGrip(state: controller.state, controller: controller))
+    grip = NSVisualEffectView()
+    grip.material = .hudWindow
+    grip.blendingMode = .withinWindow
+    grip.state = .active
+    grip.appearance = NSAppearance(named: .darkAqua)
+    if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+      grip.wantsLayer = true
+      grip.layer?.backgroundColor =
+        NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1).cgColor
+    }
+    let content = NSHostingView(
+      rootView: FloatingGrip(state: controller.state, controller: controller))
+    content.translatesAutoresizingMaskIntoConstraints = false
+    grip.addSubview(content)
+    NSLayoutConstraint.activate([
+      content.leadingAnchor.constraint(equalTo: grip.leadingAnchor),
+      content.trailingAnchor.constraint(equalTo: grip.trailingAnchor),
+      content.topAnchor.constraint(equalTo: grip.topAnchor),
+      content.bottomAnchor.constraint(equalTo: grip.bottomAnchor),
+    ])
     super.init(frame: .zero)
     addSubview(reflection)
     addSubview(grip)
@@ -120,7 +139,9 @@ import SwiftUI
     reflection.frame = bounds
     reflection.setBoundsSize(logicalSize)
     reflection.needsLayout = true
-    grip.frame = CGRect(x: 0, y: max(0, bounds.height - 72), width: bounds.width, height: 72)
+    let height = controller?.state.contrastWarning.isEmpty == false ? 52.0 : 28.0
+    grip.frame = CGRect(
+      x: 0, y: max(0, bounds.height - height), width: bounds.width, height: height)
   }
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
@@ -131,7 +152,7 @@ import SwiftUI
     tracking = area
   }
   override func mouseEntered(with event: NSEvent) {
-    if controller?.session.state != .running { grip.alphaValue = 1 }
+    grip.alphaValue = 1
   }
   override func mouseExited(with event: NSEvent) { grip.alphaValue = 0 }
 }
@@ -149,6 +170,7 @@ struct FloatingGrip: View {
         Image(systemName: "line.3.horizontal")
         Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {
           controller.updateFloatingOptions()
+          controller.saveOperatorPreferences()
         }.accessibilityLabel("Whole window opacity")
         Button {
           controller.state.horizontal.toggle()
@@ -159,11 +181,11 @@ struct FloatingGrip: View {
         Button {
           controller.toggle()
         } label: {
-          Image(systemName: "play.fill")
-        }.accessibilityLabel("Resume · Space")
-      }.buttonStyle(.borderless).padding(6)
+          Image(systemName: state.running ? "pause.fill" : "play.fill")
+          Text(state.running ? "Pause" : "Resume").font(.system(size: 11, weight: .medium))
+        }.accessibilityLabel("Play or Pause · Space")
+      }.buttonStyle(.borderless).controlSize(.small).frame(height: 28).padding(.horizontal, 6)
       if !state.contrastWarning.isEmpty { Text(state.contrastWarning).font(.caption2).lineLimit(2) }
-    }.foregroundStyle(.white).background(.black.opacity(0.75)).clipShape(
-      RoundedRectangle(cornerRadius: 8))
+    }.foregroundStyle(.primary)
   }
 }

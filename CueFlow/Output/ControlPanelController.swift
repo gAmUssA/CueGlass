@@ -20,6 +20,7 @@ import SwiftUI
     panel.isReleasedWhenClosed = false
     panel.becomesKeyOnlyIfNeeded = false
     let material = NSVisualEffectView()
+    material.appearance = NSAppearance(named: .darkAqua)
     material.material = .hudWindow
     material.blendingMode = .behindWindow
     material.state = .active
@@ -48,9 +49,10 @@ import SwiftUI
       button.playbackCommand = command
       transportButtons.append(button)
       button.widthAnchor.constraint(equalToConstant: command == .toggle ? 36 : 26).isActive = true
+      button.heightAnchor.constraint(equalToConstant: command == .toggle ? 36 : 24).isActive = true
       if command == .toggle {
         playButton = button
-        button.bezelStyle = .rounded
+        button.bezelStyle = .circular
         button.bezelColor = .controlAccentColor
         button.contentTintColor = .white
       }
@@ -110,7 +112,7 @@ struct PanelPace: View {
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? -state.jumpStep : -state.fineStep
           Button("\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.borderless)
-            .focusable(false)
+            .focusable(false).frame(minWidth: 24, minHeight: 24)
         }
         Slider(
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
@@ -119,10 +121,10 @@ struct PanelPace: View {
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? state.fineStep : state.jumpStep
           Button("+\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.borderless)
-            .focusable(false)
+            .focusable(false).frame(minWidth: 24, minHeight: 24)
         }
       }
-      Text(readout.pace + " · " + readout.wpm).font(.caption)
+      Text(readout.pace + (readout.wpm.contains("—") ? "" : " · " + readout.wpm)).font(.caption)
     }
   }
 }
