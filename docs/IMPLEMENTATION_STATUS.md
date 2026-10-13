@@ -27,7 +27,7 @@ T1: every rejected native read installs overwrite protection, including malforme
 
 The independent supplemental probe originally reported 39 assertions with 5 failures; its adapted LPM-era rerun reports zero failures. New core/native state tests are committed. The actual scheme launcher G1 still aborts (exit 134), including test-without-building; direct bundle tests are explicitly alternative evidence.
 
-Developer current suite: 14 core tests, 18 AppKit tests. Paused 100,000-word measurement is chunked across 157 main-loop turns; observed total ~0.35–0.43 s, worst chunks ~3–5 ms. This is not steady-state callback proof. Cached actual-launch light/dark renders at 980/1002/1280 show responsive geometry, but key=false and cache limitations preclude full window/appearance/menu acceptance. No physical/signed/two-Mac result is invented.
+Developer current suite: 14 core tests, 18 AppKit tests. Paused 100,000-word measurement is chunked across 157 main-loop turns; observed total ~0.35–0.59 s, worst chunks ~3–6.3 ms. This is not steady-state callback proof. Cached actual-launch light/dark renders at 980/1002/1280 show responsive geometry, but key=false and cache limitations preclude full window/appearance/menu acceptance. No physical/signed/two-Mac result is invented.
 
 Architecture contracts and schema supersession are in [ADRs 0004/0005](adr/README.md). [Design research/concept](design/README.md) persists official-source rationale and explicitly labels proposed art. See [README](../README.md) for commands and [manual plan](MANUAL_TEST_PLAN.md) for remaining tests.
 
