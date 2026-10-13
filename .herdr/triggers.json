@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "package_roots": [
+    "CueFlow",
+    "Packages/CueFlowCore"
+  ],
+  "package_change_lines": 400,
+  "trust_boundary_paths": [
+    "CueFlow/Documents/*",
+    "CueFlow/Import/*",
+    "CueFlow/Storage/*"
+  ],
+  "cli_spec_paths": [],
+  "cli_surface_markers": [],
+  "user_doc_paths": [
+    "README.md",
+    "docs/*"
+  ]
+}
