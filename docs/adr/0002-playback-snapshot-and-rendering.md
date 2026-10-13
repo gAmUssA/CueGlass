@@ -2,6 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
+- **Superseded clauses:** [0004](0004-lines-per-minute-direction-and-schema.md) replaces item 1’s speed range/positive-only motion. [0005](0005-native-surfaces-commands-and-timing.md) qualifies surface-switch/live-resize behavior. All other decisions below remain.
 - **Related:** [0001](0001-native-document-and-immutable-take.md), [0003](0003-icloud-document-storage.md), `CueFlow-Codex-Handoff.md` §4 and §6, requirements R05–R07
 
 ## Context
