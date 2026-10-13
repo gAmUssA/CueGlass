@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-13T20:40:51Z
-updated_at: 2026-10-13T22:27:13Z
+updated_at: 2026-10-13T22:36:57Z
 parent: cueglass-aeqt
 ---
 
@@ -31,3 +31,18 @@ Source-checked root sandbox improvements were incorporated and completed with ba
 Updated Ready/Paused concept-sample native caches and direct editor/take-bar caches were inspected at 1280×800, 1002×800 and 980×640 in light/dark. Caches are supporting evidence only. Final activation attempts report key=false; composite layer/appearance omissions and asynchronous screen-layout frame restoration remain explicit limitations. Screen capture preflight false; no permission request. Independent visual/accessibility/key-window/macOS 14 acceptance remains unchecked. Signed two-Mac identifiers are explicitly deferred by owner. Developer corrections do not accept this polish task or MVP.
 
 Independent review r2 (3569432) requires correction R2-1: fullscreen output has opaque white NSWindow backing outside clear viewport text panel, unlike dark preview. Source and actual native window properties reproduce; preserve floating/text-panel alpha semantics. Reviewer foreground gates incomplete because tester focus marker was absent; no independent visual acceptance. Evidence: /Users/vikgamov/.local/state/cueglass/r2.md.
+
+## Cumulative fix5 developer work
+
+- [ ] Reproduce and regress fullscreen matte parity through actual controllers
+- [x] Investigate separate-process focus, menu editing and accessibility exposure
+- [x] Run final native/core/build/resource gates
+- [ ] Push feature correction
+
+Independent final-tip acceptance remains pending.
+
+Fix5 evidence: actual OutputWindowController regression catches default and changed matte mismatch including clear margins; synchronizing fullscreen/preview backing resolves it on full render and aid-only updates without text relayout. Floating alpha remains 0.3, interactive backing 0.02, independent text-panel alpha 0.25. Finalized counterfactual removing only output backing assignment fails 12 assertions, other 19 native tests pass.
+
+Focus/AX investigation is not acceptance: actual LaunchServices DebugLocal and ReleaseLocal processes remain inactive, activate=false; CGSessionCopyCurrentDictionary reports CGSSessionScreenIsLocked=1 with loginwindow active. AX trusted=true, capture=false. External AXWindows entries report AXApplication role and cannot supply a valid window subtree. No claim that missing SwiftUI text is a harness-only omission, no focus/menu/AX pass. Requires unlocked operator session and independent final-tip inspection. Evidence and commands: /Users/vikgamov/.local/state/cueglass/d6.md.
+
+Final fix5 gates: normal DebugLocal scheme 20 native tests / 0 failures; Foundation core 14 / 0 failures; unsigned ReleaseLocal BUILD SUCCEEDED; strict swift-format, beans check and git diff --check pass. Compiled Resources include Assets.car (2234168 bytes), CueGlass.icns (64540 bytes), 1024px ReadingLine and both architectures minos14.0. No independent acceptance or source-spec/config/icon change. Focus/menu/AX obligations remain open as documented above.

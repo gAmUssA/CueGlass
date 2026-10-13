@@ -4,6 +4,8 @@ Record OS/build, Mac model, scale/refresh rates and synthetic fixture size. Do n
 
 ## Local document and accessibility
 
+Before focus or accessibility validation, confirm the console session is unlocked and CueGlass becomes the active app with a key document window. A locked console can leave a visible native window inactive and return unusable external AX window entries. Record this as blocked; do not infer accessibility from cached text, unlock the operator's session, or change privacy settings. Use a separate-process AX walk on the launched app to check elapsed/remaining captions and values, LPM, and the locked-editing banner in a paused take. Then exercise native menu Undo/Redo and editor/inspector versus transport focus.
+
 Build DebugLocal, Run in Xcode, import each committed fixture through Open and drop. Generate binary/large fixtures with `swift scripts/make-fixtures.swift`. Compare TXT/RTF original bytes/mtime; they must not change after editing, Save, close and reopen native. Verify Unicode/blank paragraphs and bold/italic/color. Invalid UTF-8 must offer an encoding preview; Cancel leaves existing work. RTFD/PDF/DOCX/malformed/oversize must fail without loss. Unsupported RTF content must be disclosed and retained in source. Undo/Redo must restore content and reading style; close/reopen and autosave recovery must retain the last good edit.
 
 Navigate editor → transport → inspector → preview with Tab/VoiceOver. Every control must have a meaningful label and a visible keyboard focus. Type spaces and use arrows in editor and numeric speed/size fields: no playback action. With preview focus, Space/Up/Down must control transport. Check option-command menu shortcuts, Escape from each focus location with output present, native clipboard, fonts, Recents and system light/dark appearances. The preview screenshot captured by tests is an offscreen cache render, not a full WindowServer fidelity claim.
@@ -17,6 +19,8 @@ At a named word under the guide, change family/size/spacing/width/guide. Pass: s
 Generate the 100,000-word fixture. Profile ReleaseLocal for 60 minutes with Instruments Time Profiler/Allocations/Core Animation. Record callback p50/p95/max, memory start/end, layout spikes and display rates. Pass: bounded steady-state work, no whole-document per-frame rebuild, no progressive memory growth or accumulating drift. Under-2-ms steady-state callbacks are a measurement goal, not a claim or universal guarantee.
 
 ## Output hardware and lifecycle
+
+Compare the complete fullscreen background, including both margins outside the text panel, with the preview at default and changed background colors. Repeat with text-panel opacity at 25% and 0%; the fullscreen matte must remain the selected background. In floating mode, confirm whole-window opacity and text-panel opacity remain independent and the margins remain transparent.
 
 Use extended desktop with mixed refresh rates and at least one negative-origin display. Select each named screen. Pass: output covers its complete frame, contains only text/background/guide, and preview wraps identically at scaled logical dimensions. Confirm the operator-screen warning. Disconnect selected output: retained-position pause, clear operator notice and no automatic editor-covering fallback. Reconnect requires explicit selection.
 

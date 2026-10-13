@@ -6,6 +6,61 @@ import Testing
 
 @Suite(.serialized) @MainActor struct OperatorFeatureTests {
   init() { _ = NSApplication.shared }
+  @Test func fullscreenMatteTracksPreviewWithoutChangingFloatingAlpha() throws {
+    let controller = OperatorWindowController(document: ScriptDocument())
+    defer { controller.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    let output = OutputWindowController(display: display)
+    defer { output.close() }
+    controller.output = output
+    controller.session.logicalSize = display.screen.frame.size
+    controller.render()
+    let window = try #require(output.window)
+    let viewport = output.reflection.viewport
+    func expectMatte(_ expected: [Double], panelAlpha: Double) throws {
+      let matte = try #require(window.backgroundColor.usingColorSpace(.sRGB))
+      #expect(abs(matte.redComponent - expected[0]) < 0.00001)
+      #expect(abs(matte.greenComponent - expected[1]) < 0.00001)
+      #expect(abs(matte.blueComponent - expected[2]) < 0.00001)
+      #expect(matte.alphaComponent == 1)
+      #expect(window.isOpaque)
+      #expect(window.alphaValue == 1)
+      let previewColor = try #require(controller.preview.layer?.backgroundColor)
+      #expect(NSColor(cgColor: previewColor)?.usingColorSpace(.sRGB) == matte)
+      // Both margins expose the window matte, independently of the panel alpha.
+      #expect(viewport.panelBackground.frame.minX > 0)
+      #expect(viewport.panelBackground.frame.maxX < viewport.bounds.maxX)
+      #expect(viewport.layer?.backgroundColor?.alpha == 0)
+      #expect(
+        abs((viewport.panelBackground.layer?.backgroundColor?.alpha ?? -1) - panelAlpha) < 0.00001)
+    }
+    try expectMatte([0.039, 0.039, 0.043], panelAlpha: 1)
+    var style = controller.state.style
+    style.backgroundRGBA = [0.2, 0.3, 0.4, 1]
+    style.textPanelOpacity = 0.25
+    let layouts = viewport.layoutCount
+    controller.changeStyle(style)
+    #expect(viewport.layoutCount == layouts)
+    try expectMatte([0.2, 0.3, 0.4], panelAlpha: 0.25)
+    style.fontSize = 96
+    controller.changeStyle(style)
+    try expectMatte([0.2, 0.3, 0.4], panelAlpha: 0.25)
+    controller.output = nil
+    let floating = FloatingPrompterWindowController(screen: display.screen, controller: controller)
+    defer { floating.close() }
+    controller.floating = floating
+    controller.state.floatingOpacity = 0.3
+    controller.updateFloatingOptions()
+    controller.render()
+    #expect(floating.window?.isOpaque == false)
+    #expect(floating.window?.backgroundColor?.alphaComponent == 0.02)
+    #expect(floating.window?.alphaValue == 0.3)
+    #expect(floating.reflection.viewport.layer?.backgroundColor?.alpha == 0)
+    #expect(
+      abs((floating.reflection.viewport.panelBackground.layer?.backgroundColor?.alpha ?? -1) - 0.25)
+        < 0.00001)
+    controller.floating = nil
+  }
   @Test func quietStudioCompositionPreservesSource() throws {
     let doc = ScriptDocument()
     let controller = OperatorWindowController(document: doc)

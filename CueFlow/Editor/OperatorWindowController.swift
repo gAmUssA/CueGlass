@@ -452,6 +452,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         for viewport in [
           preview.reflection.viewport, output?.reflection.viewport, floating?.reflection.viewport,
         ] { viewport?.updateAids(style) }
+        updatePresentationBackground(style)
         refresh()
         return
       }
@@ -477,6 +478,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var authoritative: PrompterViewport {
     output?.reflection.viewport ?? floating?.reflection.viewport ?? preview.reflection.viewport
   }
+  private func updatePresentationBackground(_ style: ReadingStyle) {
+    let color = PresentationBuilder.color(style.backgroundRGBA)
+    preview.layer?.backgroundColor = color.cgColor
+    output?.window?.backgroundColor = color
+  }
   func render() {
     renderGeneration += 1
     let generation = renderGeneration
@@ -491,7 +497,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     let style = session.state == .idle ? state.style : session.style
     preview.logicalSize = session.logicalSize
-    preview.layer?.backgroundColor = PresentationBuilder.color(style.backgroundRGBA).cgColor
+    updatePresentationBackground(style)
     if session.logicalSize.width > 0, session.logicalSize.height > 0 {
       previewAspectConstraint?.isActive = false
       previewAspectConstraint = preview.heightAnchor.constraint(
