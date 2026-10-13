@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-13T20:40:51Z
-updated_at: 2026-10-13T22:36:57Z
+updated_at: 2026-10-13T22:37:12Z
 parent: cueglass-aeqt
 ---
 
@@ -37,7 +37,7 @@ Independent review r2 (3569432) requires correction R2-1: fullscreen output has 
 - [ ] Reproduce and regress fullscreen matte parity through actual controllers
 - [x] Investigate separate-process focus, menu editing and accessibility exposure
 - [x] Run final native/core/build/resource gates
-- [ ] Push feature correction
+- [x] Push feature correction
 
 Independent final-tip acceptance remains pending.
 
@@ -46,3 +46,5 @@ Fix5 evidence: actual OutputWindowController regression catches default and chan
 Focus/AX investigation is not acceptance: actual LaunchServices DebugLocal and ReleaseLocal processes remain inactive, activate=false; CGSessionCopyCurrentDictionary reports CGSSessionScreenIsLocked=1 with loginwindow active. AX trusted=true, capture=false. External AXWindows entries report AXApplication role and cannot supply a valid window subtree. No claim that missing SwiftUI text is a harness-only omission, no focus/menu/AX pass. Requires unlocked operator session and independent final-tip inspection. Evidence and commands: /Users/vikgamov/.local/state/cueglass/d6.md.
 
 Final fix5 gates: normal DebugLocal scheme 20 native tests / 0 failures; Foundation core 14 / 0 failures; unsigned ReleaseLocal BUILD SUCCEEDED; strict swift-format, beans check and git diff --check pass. Compiled Resources include Assets.car (2234168 bytes), CueGlass.icns (64540 bytes), 1024px ReadingLine and both architectures minos14.0. No independent acceptance or source-spec/config/icon change. Focus/menu/AX obligations remain open as documented above.
+
+Feature implementation pushed successfully: 254e460f880f4079252a5600f4b4836d6c8f9a47 on feat/cueflow-native. This metadata checkpoint records delivery only; independent acceptance remains unchecked. No PR/merge. Full report: /Users/vikgamov/.local/state/cueglass/d6.md.
