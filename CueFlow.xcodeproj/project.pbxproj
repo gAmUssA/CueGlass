@@ -22,7 +22,6 @@
 		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
 		C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91658B74825E5235177DFB /* PresentationBuilder.swift */; };
 		DE8D542994984AEF0BE9852A /* CueFlowCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8F38C200B6595D9AE760A456 /* CueFlowCore */; };
-		E06E357BAE5ACB0062280C66 /* CueFlowCore in Frameworks */ = {isa = PBXBuildFile; productRef = 336F5FCAF8862155E7272AEE /* CueFlowCore */; };
 		E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */; };
 		E6B3C29D97AFA68D70E6514B /* PrompterViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */; };
 		E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27F804C248326C3E21AB38F /* main.swift */; };
@@ -68,14 +67,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		B12747669B7FC56F79AFCE76 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				E06E357BAE5ACB0062280C66 /* CueFlowCore in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		B5A8ABC3047A07A8E0216900 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -248,7 +239,6 @@
 			buildConfigurationList = 27AE23A18716E8198B6E2171 /* Build configuration list for PBXNativeTarget "CueFlowTests" */;
 			buildPhases = (
 				DAE6704FFD5B49D19A8C5018 /* Sources */,
-				B12747669B7FC56F79AFCE76 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -257,7 +247,6 @@
 			);
 			name = CueFlowTests;
 			packageProductDependencies = (
-				336F5FCAF8862155E7272AEE /* CueFlowCore */,
 			);
 			productName = CueFlowTests;
 			productReference = 96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */;
@@ -439,34 +428,28 @@
 		84CC8CFBF7A2F086E75D5C58 /* DebugICloud */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
+				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow";
+				TEST_HOST = "";
 			};
 			name = DebugICloud;
 		};
 		8E0F09C9BB1CCB5BBF2B9CC7 /* ReleaseICloud */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
+				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow";
+				TEST_HOST = "";
 			};
 			name = ReleaseICloud;
 		};
@@ -568,17 +551,14 @@
 		CF70B46503C47A7AF2D5246D /* ReleaseLocal */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
+				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow";
+				TEST_HOST = "";
 			};
 			name = ReleaseLocal;
 		};
@@ -654,17 +634,14 @@
 		F58BB76EB8A1EE4FE35498F7 /* DebugLocal */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
+				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow";
+				TEST_HOST = "";
 			};
 			name = DebugLocal;
 		};
@@ -776,10 +753,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		336F5FCAF8862155E7272AEE /* CueFlowCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CueFlowCore;
-		};
 		8F38C200B6595D9AE760A456 /* CueFlowCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CueFlowCore;

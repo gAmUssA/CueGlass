@@ -55,13 +55,14 @@ targets:
     sources: [CueFlowTests]
     dependencies:
       - target: CueFlow
-      - package: CueFlowCore
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.example.cueflow.tests
-        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow'
-        BUNDLE_LOADER: '$(TEST_HOST)'
+        TEST_HOST: ''
+        BUNDLE_LOADER: ''
+        OTHER_LDFLAGS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib'
+        LD_RUNPATH_SEARCH_PATHS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks'
 schemes:
   CueFlow:
     build:
