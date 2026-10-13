@@ -2,7 +2,7 @@
 
 OpenAI built-in image generation produced `cueglass-icon-master-v1.png` for the owner-requested native app icon. The original is 1254 pixels square. `cueglass-icon-1024-v1.png` is a separate 1024-pixel derivative with an embedded sRGB profile, prepared with macOS `sips`; the original is preserved. The chosen Reading Line concept follows Quiet Studio: graphite, reading bars and one blue guide.
 
-`CueGlass.icon` contains the generated artwork as a single opaque layer using Apple's native Icon Composer format. The installed Icon Composer export tool rendered the native mask successfully for design generations 26 and 27. App-target integration and built Dock/Finder resource verification remain in progress under bean `cueglass-qoiv`.
+`CueGlass.icon` contains the generated artwork as a single opaque layer using Apple's native Icon Composer format. The installed Icon Composer export tool rendered the native mask successfully for design generations 26 and 27. The app target compiles this package with `ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass`. ReleaseLocal build verification finds `CFBundleIconName` and `CFBundleIconFile` set to `CueGlass`, `Assets.car` with the actual ReadingLine layer/native appearance stacks, and a compiler-generated `CueGlass.icns` fallback. The processed plist and both executable architectures retain macOS 14.0 minimum metadata. No legacy mask geometry is hand-authored. Finder/Dock visual acceptance and a real macOS 14 runtime check remain independent manual checks; packaging evidence alone does not establish them.
 
 ## Production prompt
 

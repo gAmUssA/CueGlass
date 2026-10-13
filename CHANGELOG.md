@@ -13,3 +13,4 @@
 
 - Correct Quiet Studio preview composition, compact inspector, balanced panes, semantic state pill, source-safe paragraph decoration and locked-editing action; match the native floating grip and HUD.
 - Run the full native integration suite through the normal DebugLocal scheme with an app-linked unhosted bundle, avoiding the hosted launcher assertion and duplicate Core package type identity.
+- Integrate the owner-requested Reading Line artwork through native Icon Composer compilation, including compiler-generated fallback resources while retaining macOS 14 deployment metadata.

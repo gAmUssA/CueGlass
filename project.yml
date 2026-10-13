@@ -29,6 +29,8 @@ targets:
     sources:
       - path: CueFlow
         excludes: [Resources]
+      - path: assets/branding/CueGlass.icon
+        buildPhase: resources
     dependencies:
       - package: CueFlowCore
     configFiles:
@@ -47,6 +49,7 @@ targets:
         ReleaseICloud:
           INFOPLIST_FILE: Configuration/Info-iCloud.plist
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: CueGlass
         GENERATE_INFOPLIST_FILE: NO
         LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/../Frameworks'
   CueFlowTests:

@@ -17,6 +17,7 @@
 		6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3798F2E904FA73605AD7462F /* IntegrationTests.swift */; };
 		737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */; };
 		7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E59D28065A1EC8A518D087C /* PresentationFont.swift */; };
+		7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8C3DC660FC600F99391B73D1 /* CueGlass.icon */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
 		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
 		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
@@ -49,6 +50,7 @@
 		65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPrompterWindowController.swift; sourceTree = "<group>"; };
 		6E59D28065A1EC8A518D087C /* PresentationFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationFont.swift; sourceTree = "<group>"; };
 		7572426652BF4AE04C6AA016 /* CueFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CueFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8C3DC660FC600F99391B73D1 /* CueGlass.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = CueGlass.icon; sourceTree = "<group>"; };
 		8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorFeatureTests.swift; sourceTree = "<group>"; };
 		914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStorageService.swift; sourceTree = "<group>"; };
 		96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CueFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,6 +87,15 @@
 				96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		15E8C92D35718FB437DC2E4A /* branding */ = {
+			isa = PBXGroup;
+			children = (
+				8C3DC660FC600F99391B73D1 /* CueGlass.icon */,
+			);
+			name = branding;
+			path = assets/branding;
 			sourceTree = "<group>";
 		};
 		2891F2B27A5E0DB888A3FC93 /* Storage */ = {
@@ -185,6 +196,7 @@
 		E9C0412429C1B951A9F89A28 = {
 			isa = PBXGroup;
 			children = (
+				15E8C92D35718FB437DC2E4A /* branding */,
 				C4EC56993820A587A085EC8C /* Configuration */,
 				5517FD3E17E593D5190CB8F2 /* CueFlow */,
 				3A2EAA33A9496AA821AE6691 /* CueFlowTests */,
@@ -220,6 +232,7 @@
 			buildConfigurationList = FE23A2BDC80AE112E40B67DE /* Build configuration list for PBXNativeTarget "CueFlow" */;
 			buildPhases = (
 				B8559BDC4B00929C6C1E08E1 /* Sources */,
+				5A131B9247AE808AE9D5F8D3 /* Resources */,
 				B5A8ABC3047A07A8E0216900 /* Frameworks */,
 			);
 			buildRules = (
@@ -292,6 +305,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		5A131B9247AE808AE9D5F8D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		B8559BDC4B00929C6C1E08E1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -341,7 +365,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E421E25C07455FA3D80DC323 /* ICloud.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
@@ -354,7 +378,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E421E25C07455FA3D80DC323 /* ICloud.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
@@ -457,7 +481,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 5F5BF751BC3355979A5962EB /* Local.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
@@ -470,7 +494,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 5F5BF751BC3355979A5962EB /* Local.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
