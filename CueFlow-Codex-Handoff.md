@@ -29,6 +29,20 @@ When the environment lacks macOS, Xcode, signing credentials, an external screen
 | R08 | Reflect text | Independent horizontal and vertical reflection, including both together. |
 | R09 | Present on another screen | Separate clean output window on a selectable display; operator controls remain readable. |
 
+### Operator features — mandatory for version one
+
+These were added after comparing the specification against an established Mac teleprompter. They target day-to-day operation rather than core correctness, and they reuse the playback, output, and settings architecture below.
+
+| ID | Requirement | Expected behavior |
+|---|---|---|
+| R10 | Floating prompter window | A third presentation mode besides full-screen output: an always-on-top, draggable, resizable window with adjustable opacity, usable on a single-display Mac (for example, under the webcam during a video call). |
+| R11 | Compact control panel | A small transport window (play/pause, speed, step back/forward, restart, direction) that stays usable when the operator window is hidden or the presentation shares the screen. |
+| R12 | Font-independent reading pace | Speed is chosen and displayed in a reading unit (lines per minute) so changing font size or line height preserves reading pace. |
+| R13 | Script navigation | Jump to start, step back/forward one paragraph, reverse direction, and pause-and-scrub with scroll wheel or trackpad. |
+| R14 | Clickers and foot pedals | Presentation remotes and keyboard-emulating foot pedals work through application-local key commands with sensible defaults and user remapping. |
+| R15 | Timing aids | Elapsed and estimated remaining time, an optional start countdown, and Timed Scrolling (finish the script in a chosen duration). |
+| R16 | Reading aids | Configurable reading-guide style, edge fade, side margins, text-panel opacity, and an option to hide controls while playing. |
+
 ### Assumptions and recommended defaults
 
 These are implementation decisions, not additional requirements explicitly approved by the user.
@@ -45,7 +59,7 @@ These are implementation decisions, not additional requirements explicitly appro
 
 ### Out of scope
 
-Speech-following, recording, camera/microphone access, AI writing, iPhone/watch clients, live remote control, collaborative editing, DOCX/PDF import, RTFD attachments, subscriptions, analytics, global input monitoring, and a full word processor. Cue markers, WPM estimates, and export convenience features can follow the required functionality.
+Speech-following, recording, camera/microphone access, AI writing, iPhone/watch clients, live remote control (including network/web remotes and multi-device sessions), game-controller input, caption/SRT export, paging mode, collaborative editing, DOCX/PDF import, RTFD attachments, subscriptions, analytics, global input monitoring, and a full word processor. Authored cue markers, live editing during a take, and export convenience features can follow the required functionality; R13 paragraph stepping covers navigation until cue markers exist. The R12 words-per-minute readout is an estimate, not a speech-rate measurement.
 
 ## 3. Primary user experience
 
@@ -63,13 +77,34 @@ Suggested starting values, all configurable:
 | Font size | 64 pt | 18–180 pt |
 | Line-height multiplier | 1.3 | 1.0–2.0 |
 | Text column width | 70% of logical output width | 25–100%, with sensible padding |
-| Scroll speed | 40 layout points/second | 1–300 points/second |
-| Reading guide | 35% from logical viewport top | Adjustable or hidden |
+| Scroll speed | 30 lines/minute (R12) | 2–240 lines/minute; configurable maximum |
+| Speed step / jump | 1 line/minute fine; 10 lines/minute jump | Configurable |
+| Reading guide | 35% from logical viewport top, triangle + line | Position, style (line, triangle, both, hidden), opacity |
+| Edge fade | Off | Top/bottom fade height 0–30% of viewport |
+| Side margins | 5% each side | 0–25%, applied inside the column |
+| Text panel opacity | 100% | 0–100%; background behind the text column |
+| Start countdown | Off | Off, 3, 5, 10 seconds |
+| Floating window opacity | 85% | 30–100% |
+| Hide controls while playing | Off | On/off |
 | Reflection | Neither axis | Horizontal and vertical independently |
 
 These numbers are starting choices, not performance or readability research findings. Pause is a distinct state, not a near-zero speed.
 
-Provide a slider plus numeric speed adjustment. Suggested playback shortcuts: Space for play/pause, up/down for speed, Escape to exit output. Scope them carefully: typing spaces, navigating text, or editing a numeric field must not trigger transport commands.
+Provide a slider plus numeric speed adjustment, labelled in lines per minute with an estimated words-per-minute readout. Show elapsed time and estimated remaining time in the operator window and control panel, never on the output.
+
+Default transport commands (R14), all application-local and remappable in settings:
+
+| Command | Default keys |
+|---|---|
+| Play/pause | Space, B, `.` |
+| Speed up / down (fine) | Up / Down |
+| Speed jump up / down | Shift-Up / Shift-Down |
+| Step forward / back one paragraph | Page Down / Page Up, Right / Left |
+| Restart (jump to start, paused) | Home, Command-Up |
+| Reverse direction | R |
+| Exit output / floating window | Escape |
+
+Presentation clickers typically send Page Up/Down, Left/Right, B, or `.`; keyboard-emulating foot pedals send configurable keys. Scope commands carefully: typing spaces, navigating text, or editing a numeric field in the editor or inspector must not trigger transport commands. Commands apply when the operator window (outside the editor's first responder), control panel, output, or floating window is key. Do not use global event monitoring; document that the app must be frontmost or the clicker must target it.
 
 ## 4. Architecture and state ownership
 
@@ -100,6 +135,11 @@ Separate the following state domains:
 - `DisplayLinkDriver`: link creation, timing conversion, callback forwarding, and teardown.
 - `ReadingAnchorResolver`: text-to-geometry mapping across relayout.
 - `OutputWindowController`: display selection, clean output, disconnect and close handling.
+- `FloatingPrompterWindowController`: R10 always-on-top window, opacity, drag/resize, frame persistence per display.
+- `ControlPanelController`: R11 compact transport window sharing the active session.
+- `CommandMap`: R14 key-to-command bindings, defaults, remapping, conflict detection; Foundation-only and testable.
+- `SpeedModel`: R12 conversion between lines per minute, words-per-minute estimate, and points per second for the current layout; Timed Scrolling solver (R15).
+- `ParagraphIndex`: snapshot-scoped paragraph start offsets for R13 stepping.
 - `DocumentStorageService`: container availability and file metadata outside document-owned saves.
 - `LocalSettingsStore`: machine-specific settings.
 
@@ -131,7 +171,12 @@ readingStyle:
   backgroundRGBA: four numbers
   readingGuideFraction: number
   showsReadingGuide: boolean
-preferredSpeedPointsPerSecond: number
+  readingGuideStyle: "line" | "triangle" | "triangleAndLine"
+  readingGuideOpacity: number
+  edgeFadeFraction: number
+  sideMarginFraction: number
+  textPanelOpacity: number
+preferredSpeedLinesPerMinute: number
 ```
 
 Validate schema version, payload size, finite numeric values, ranges, and RTF decoding before replacing content. Reject unsupported future versions without overwriting them. Default optional fields explicitly. Snapshot IDs and local timestamps are not distributed conflict-resolution clocks.
@@ -186,6 +231,34 @@ Prefer TextKit 2 deliberately. Audit legacy `layoutManager` access that may trig
 
 TextKit 2 uses viewport-oriented layout and can estimate offscreen geometry. [A6] Prepare a bounded region ahead of playback. Do not relayout a long document every frame or use an estimated total height as the definitive end condition. Stop after the actual final text and intentional trailing space reach the end position.
 
+### Reading pace units (R12)
+
+Users choose speed in lines per minute. Convert to the timeline's points per second using the current layout's nominal line advance (font line height × line-height multiplier, plus a documented treatment of paragraph spacing). Keep the timeline itself in layout points per second.
+
+After a font, size, spacing, or width relayout, recompute points per second from the unchanged lines-per-minute value while rebasing at the anchor. Reading pace therefore survives typography changes. Test that 30 lines/minute at 64 pt and at 120 pt yields the same lines crossing the guide per minute within a documented tolerance.
+
+Show an estimated words per minute as average words per laid-out line × lines per minute, labelled as an estimate. Enforce the configurable maximum speed in `SpeedModel`, not only in the slider.
+
+### Navigation and direction (R13)
+
+- **Restart:** pause, seek to the first line at the guide, rebase.
+- **Paragraph step:** pause-preserving seek to the previous/next paragraph start from `ParagraphIndex`. Stepping while playing keeps playing from the new anchor. Step back from mid-paragraph goes to that paragraph's start first.
+- **Reverse:** negate velocity at the current position (rebase). Direction is a session property, not saved per document, and is independent of reflection.
+- **Scrub:** scroll-wheel or trackpad input over the operator preview, floating window, or output pauses playback, moves the position by the gesture delta in logical layout space, and rebases. Resume is explicit. Momentum must not continue after an explicit Play.
+- Clamp seeks to the valid range; never extrapolate beyond the actual text plus intentional trailing space.
+
+### End of script and countdown (R15)
+
+When the final text and trailing space reach the end position, pause and hold there. Show an operator notice with Restart. Moving in reverse stops at the start likewise.
+
+An optional countdown runs on the output and floating window before playback begins. Pressing play/pause during it cancels it. The countdown uses the same monotonic clock, does not advance the timeline, and follows the output's reflection like the script text.
+
+### Timed Scrolling (R15)
+
+The operator enters a target duration. Compute the constant velocity that moves from the current position to the end position in that time, using the actual laid-out height, never the TextKit 2 estimate. Show the resulting lines per minute. A manual speed change disables Timed Scrolling with a visible notice. A relayout recomputes the velocity for the remaining duration. Reject durations that require speeds outside the allowed range and say why.
+
+Elapsed time counts only time spent playing. Remaining time is the remaining distance divided by the current speed, shown as unknown while paused at zero speed or when layout is still estimated.
+
 ### Reading anchors
 
 Before changing size, family, spacing, or logical output width, pause and capture the text under the reading guide. Use a snapshot-scoped text location, such as a valid UTF-16 offset, plus an intra-line position where useful. Respect grapheme/surrogate boundaries and distinguish Swift character counts from AppKit ranges.
@@ -216,6 +289,27 @@ scaleY = reflectVertically   ? -1 : 1
 Do not reverse string characters. Applying both reflections is equivalent to a 180-degree rotation. AppKit's flipped coordinate convention is not visual mirroring. Keep controls and the editor outside the transform. Make output noninteractive except for exit, or correctly invert coordinates for interactions.
 
 Logical scroll direction remains separate from reflection. Supply an asymmetric calibration fixture with words, numbered lines, LEFT/RIGHT labels, and UP/DOWN arrows. Validate all four reflection combinations through the intended optical setup.
+
+### Floating prompter window (R10)
+
+Provide a floating mode for single-display use. It is an alternative presentation surface for the same session, not a second session:
+
+- An `NSPanel` or `NSWindow` at a floating window level that stays above ordinary app windows, with a configurable option to join all Spaces and appear over full-screen apps. Verify behavior over a full-screen video-call app on the installed macOS.
+- Draggable by its background, resizable, with no title-bar clutter while playing. Remember the frame per display; on restore, clamp it to a visible screen.
+- Adjustable window opacity, plus the text-panel opacity from R16 so text stays legible over busy content. Text never inherits less than a documented minimum contrast setting without a warning.
+- Optional click-through while playing (ignoresMouseEvents) with an always-available way to regain control: the control panel, the menu, and Escape.
+- Default placement: top center of the operator's current screen, about 40% of screen width and 30% of height, to keep the reader's eyes near a built-in camera.
+- Reflection applies as in full-screen output. Only one of full-screen output or floating window presents at a time in version one; switching modes keeps position and paused/playing state.
+
+### Compact control panel (R11)
+
+A small utility panel with play/pause, speed slider and readout, fine and jump steps, paragraph back/forward, restart, direction, elapsed/remaining time, and a button to show the operator window. It controls the single active session, stays above the floating window, and never appears on the output display. It remains usable when the operator window is minimized or hidden. Optional "hide controls while playing" (R16) fades the panel and operator chrome during playback and restores them on pause or pointer movement.
+
+### Reading aids (R16)
+
+Render the reading guide, edge fade, and text panel in the presentation viewport layer outside the scrolling text, inside the reflection transform, so they mirror with the text. Edge fade uses a gradient mask, not per-frame text recoloring. None of these elements may trigger relayout on change except margins, which follow the reading-anchor relayout rules.
+
+### Display changes
 
 Observe display configuration changes and output closure. If the selected screen disappears, pause, retain position, and prompt for a new selection in the operator window. Do not silently cover the editor with mirrored text. Opening another document must not create an uncontrolled second presentation session.
 
@@ -320,9 +414,15 @@ Implement display-linked motion, live speed changes, pause/resume/restart, ancho
 
 **Exit:** timing/anchor tests pass and long-script local playback is demonstrated, or hardware verification is explicitly pending.
 
+### M2.5 — Operator controls
+
+Implement `SpeedModel` (lines per minute), `CommandMap` defaults and remapping, paragraph stepping, restart, reverse, scrubbing, end-of-script hold, countdown, Timed Scrolling, elapsed/remaining time, and the compact control panel.
+
+**Exit:** speed-unit, Timed Scrolling, command-scoping, and navigation tests pass; a clicker or Page Up/Down keyboard drives the local presentation.
+
 ### M3 — External presentation
 
-Implement output selection, independent window, shared logical preview layout, both reflection axes, calibration, and disconnect handling.
+Implement output selection, independent window, shared logical preview layout, both reflection axes, calibration, disconnect handling, the floating prompter window (R10), and the R16 reading aids.
 
 **Exit:** reflection and simulated disconnect tests pass; physical display results are recorded separately.
 
@@ -336,7 +436,7 @@ Complete configurations, container discovery, storage choice, status, offline/ac
 
 Finish focus-safe shortcuts, accessibility, recovery, lifecycle/profiling checks, fixtures, and build/setup documentation. Describe signing/notarization steps; do not claim a notarized build unless actually produced and verified.
 
-**Exit:** every R01–R09 requirement maps to an implementation and evidence or a concrete remaining blocker.
+**Exit:** every R01–R16 requirement maps to an implementation and evidence or a concrete remaining blocker.
 
 ## 12. Acceptance tests
 
@@ -364,6 +464,17 @@ These are proposed tests, not measured performance claims.
 | Disconnect/sleep | Safe pause at retained position; no catch-up leap | Integration/hardware |
 | Hidden operator window | External presentation continues | Hardware |
 | Editor spaces/arrows | Normal editing, not playback commands | UI |
+| Font size 64 → 120 pt at 30 lines/min | Same lines per minute at the guide; anchor preserved | Unit/visual |
+| Maximum speed setting | Slider, keys, and Timed Scrolling all respect it | Unit |
+| Timed Scrolling 5 minutes | Reaches the actual end within a documented tolerance; manual speed change disables it | Unit/integration |
+| Paragraph step, restart, reverse | Correct target offsets, clamped at both ends, timeline rebased once | Unit |
+| Scrub while playing | Pauses, moves by the gesture delta, no momentum after Play | UI/hardware |
+| End of script | Holds at the end, no overshoot; reverse stops at start | Unit/integration |
+| Countdown | Timeline does not advance; cancelling works; countdown mirrors with output | Unit/visual |
+| Clicker / foot pedal keys | Default bindings work when app windows are key; remapping persists locally | UI/hardware |
+| Floating window over full-screen call app | Stays visible, opacity applies, Escape and panel regain control from click-through | Hardware |
+| Floating window frame restore after display change | Clamped onto a visible screen | Integration |
+| Hidden operator window with control panel | Panel still controls playback | UI |
 | Save on Mac A, open on Mac B | Content and saved reading style transfer after actual sync | Two-Mac iCloud |
 | Both Macs edit offline | Conflict recovery preserves recoverable work | Two-Mac iCloud |
 | Cloud change during take | Take remains unchanged until explicit paused reload | Integration/two-Mac |
@@ -389,7 +500,7 @@ Run the actual test scheme with appropriate configuration and host signing. Unsi
 
 At the end of implementation, provide:
 
-1. Implemented behavior mapped to R01–R09.
+1. Implemented behavior mapped to R01–R16.
 2. Actual build/test commands, environment, and results.
 3. Important files, architecture choices, and justified deviations.
 4. Account/signing setup still required from the owner.
