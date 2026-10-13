@@ -8,7 +8,7 @@ created_at: 2026-10-13T18:53:52Z
 updated_at: 2026-10-13T19:07:34Z
 ---
 
-Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md`.
+Implement the CueFlow native macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md` (owner-expanded mandatory R01–R16).
 
 Stays `in-progress` until the full implementation is accepted by independent review and test. All checklist items below are acceptance gates, not a count of implementation artifacts delivered. None is accepted by this developer metadata round.
 
@@ -31,6 +31,8 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - [ ] M4 — iCloud configurations, container discovery, storage choice, truthful status, offline/account handling, conflicts, take isolation (implemented; owner-signed two-Mac validation pending)
 - [ ] M5 — Focus-safe shortcuts, accessibility, recovery, fixtures, README / ICLOUD_SETUP / MANUAL_TEST_PLAN / IMPLEMENTATION_STATUS docs (implemented; manual accessibility and independent validation pending)
 
+- [ ] M2.5 — Operator controls, LPM pace, commands/remapping, paragraph steps, reverse, scrubbing, timing/countdown, floating window and reading aids (R10–R16)
+
 ## Requirements — each needs independent evidence or an accepted named blocker
 
 - [ ] R01 Native macOS application
@@ -43,9 +45,19 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - [ ] R08 Independent horizontal/vertical reflection — needs optical check (cueglass-feeg)
 - [ ] R09 Present on another screen — needs physical display check (cueglass-feeg)
 
+- [ ] R10 Floating always-on-top prompter window
+- [ ] R11 Compact controls with the operator window hidden
+- [ ] R12 Font-independent LPM pace and estimated WPM
+- [ ] R13 Restart, paragraph step, reverse, pause-and-scrub
+- [ ] R14 App-local remappable clicker/pedal keys, editor-safe
+- [ ] R15 Elapsed/remaining, countdown, Timed Scrolling and end hold
+- [ ] R16 Guide style, edge fade, side margins, panel opacity, hide controls
+
 ## Related work and follow-ups
 
 - cueglass-xfha — ADR 0001 artifact/index delivery; completing it does not accept the MVP
 - cueglass-ykl0 — Owner iCloud setup and two-Mac verification (R04), remains todo
 - cueglass-feeg — Physical display and visual verification (R07, R08, R09), remains todo
 - cueglass-c1kt — Performance profiling on hardware (R07), remains todo
+
+- cueglass-8ngi — ADR for LPM/reverse/timing, superseding ADR 0002 speed contract
