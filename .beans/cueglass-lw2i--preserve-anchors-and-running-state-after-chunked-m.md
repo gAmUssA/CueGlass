@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-13T23:11:38Z
-updated_at: 2026-10-13T23:13:20Z
+updated_at: 2026-10-14T00:04:19Z
 parent: cueglass-aeqt
 ---
 
@@ -14,8 +14,8 @@ Independent broad review r4 at4eef1df establishes two mandatory-contract failure
 ## Acceptance
 
 - [x] Preserve independent reproductions and long/short discriminator
-- [ ] Investigate cause and test a discriminating counterfactual without canonical source edits
-- [ ] Record bounded diagnosis under original task/base/count
+- [x] Investigate cause and test a discriminating counterfactual without canonical source edits
+- [x] Record bounded diagnosis under original task/base/count
 - [ ] Correct anchor and resume intent while preserving cancellation, source, snapshot, LPM and single clock
 - [ ] Add meaningful long-script asynchronous regressions and pass normal full suite
 - [ ] Independent final-tip whole-branch verification, including native checks when GUI available
