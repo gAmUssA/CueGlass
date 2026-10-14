@@ -75,6 +75,14 @@ import Testing
   #expect(throws: TimedScrollError.self) {
     try TimedScrollSolver.solve(position: 0, end: 10, seconds: .nan, lineAdvance: 100, maximum: 240)
   }
+  #expect(throws: TimedScrollError.unrepresentable) {
+    try TimedScrollSolver.solve(
+      position: -.greatestFiniteMagnitude, end: .greatestFiniteMagnitude, seconds: 300,
+      lineAdvance: 100, maximum: 240)
+  }
+  #expect(
+    TimedScrollError.tooFast(.greatestFiniteMagnitude, 240).errorDescription != nil)
+  #expect(TimedScrollError.tooFast(.infinity, 240).errorDescription != nil)
   var elapsed = ElapsedClock()
   elapsed.play(at: 0)
   elapsed.pause(at: 5)

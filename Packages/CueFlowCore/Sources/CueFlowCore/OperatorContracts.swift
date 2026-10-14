@@ -16,7 +16,7 @@ public struct SpeedModel: Sendable {
   }
 }
 public enum TimedScrollError: Error, LocalizedError, Equatable {
-  case invalidDuration, endUnknown, atEnd
+  case invalidDuration, endUnknown, atEnd, unrepresentable
   case tooFast(Double, Double)
   case tooSlow
   public var errorDescription: String? {
@@ -24,10 +24,19 @@ public enum TimedScrollError: Error, LocalizedError, Equatable {
     case .invalidDuration: "Choose a duration greater than zero and no more than 10 hours."
     case .endUnknown: "Measuring script length — try Timed Scrolling when measurement finishes."
     case .atEnd: "Already at the end. Restart or seek back before setting a duration."
+    case .unrepresentable:
+      "This script and duration exceed the safe calculation range. Choose a shorter script or adjust the reading position."
     case .tooSlow: "This duration needs less than 2 lines/min. Choose a shorter duration."
     case .tooFast(let needed, let maximum):
-      "Needs \(Int(ceil(needed))) lines/min; maximum is \(Int(maximum)). Choose a longer duration."
+      "Needs \(Self.integerText(needed, roundUp: true)) lines/min; maximum is \(Self.integerText(maximum)). Choose a longer duration."
     }
+  }
+  private static func integerText(_ value: Double, roundUp: Bool = false) -> String {
+    guard value.isFinite else { return "outside the supported range" }
+    let rounded = roundUp ? ceil(value) : value.rounded()
+    if rounded >= Double(Int.max) { return ">\(Int.max)" }
+    if rounded <= Double(Int.min) { return "<\(Int.min)" }
+    return String(Int(rounded))
   }
 }
 public enum TimedScrollSolver {
@@ -38,13 +47,21 @@ public enum TimedScrollSolver {
       throw TimedScrollError.invalidDuration
     }
     guard let end else { throw TimedScrollError.endUnknown }
-    guard position.isFinite, end.isFinite, lineAdvance.isFinite, lineAdvance > 0, maximum.isFinite
+    guard position.isFinite, end.isFinite, lineAdvance.isFinite, lineAdvance > 0,
+      maximum.isFinite, maximum > 0
     else { throw TimedScrollError.invalidDuration }
     guard end > position else { throw TimedScrollError.atEnd }
-    let needed = (end - position) * 60 / (seconds * lineAdvance)
+    let distance = end - position
+    let availableAdvance = seconds * lineAdvance
+    let needed = distance * 60 / availableAdvance
     let limit = min(maximum, 2000 * 60 / lineAdvance)
+    guard distance.isFinite, availableAdvance.isFinite, needed.isFinite, limit.isFinite else {
+      throw TimedScrollError.unrepresentable
+    }
     guard needed <= limit else { throw TimedScrollError.tooFast(needed, limit) }
-    guard needed >= 2, needed * lineAdvance / 60 >= 0.1 else { throw TimedScrollError.tooSlow }
+    let pointsPerSecond = needed * lineAdvance / 60
+    guard pointsPerSecond.isFinite else { throw TimedScrollError.unrepresentable }
+    guard needed >= 2, pointsPerSecond >= 0.1 else { throw TimedScrollError.tooSlow }
     return needed
   }
 }

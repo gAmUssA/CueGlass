@@ -2,6 +2,7 @@
 
 ## 0.1.1 — 2026-10-14
 
+- Harden Timed Scrolling, pace/style Undo and Redo, and presentation recovery; preserve selected displays when monitors reconnect and reject malformed documents safely.
 - Simplify the project README for people trying CueGlass, clarify the local-first and unsigned-release status, and move build and implementation guidance to `AGENTS.md`.
 
 ## 0.1.0 — 2026-10-13
