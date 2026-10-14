@@ -1,11 +1,11 @@
 ---
 # cueglass-1id5
 title: Prepare MVP documentation and merge to main
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-10-14T15:11:01Z
-updated_at: 2026-10-14T16:11:44Z
+updated_at: 2026-10-14T16:54:51Z
 parent: cueglass-aeqt
 ---
 
@@ -15,8 +15,8 @@ Bring the current CueGlass MVP branch through the repo merge workflow, simplify 
 - [x] Rewrite README as a concise human-facing product, setup, and release guide
 - [x] Move detailed developer/build/test/implementation notes into AGENTS.md and link to existing docs
 - [x] Verify docs and run required MVP/release checks
-- [ ] Create/update PR, resolve required reviews and CI, and merge to main
-- [ ] Verify main CI and clean up the merged branch
+- [x] Create/update PR, resolve required reviews and CI, and merge to main
+- [x] Verify main CI and clean up the merged branch
 
 Do not include unrelated working-tree Bean edits.
 
@@ -51,3 +51,10 @@ Do not include unrelated working-tree Bean edits.
 
 
 - [x] Make fullscreen output noninteractive and synchronize the completed release Bean in the milestone tracker
+
+## Summary of Changes
+
+- Merged PR #3 (`16c81eb`) to `main` and removed the merged feature branch.
+- Rewrote README for app users and moved build, test, and maintainer guidance into `AGENTS.md`.
+- Verified main CI and published the unsigned, unnotarized `v0.1.1` prerelease with its ZIP, checksum, and notice.
+- Preserved unrelated working-tree Bean edits.
