@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-14T15:11:01Z
-updated_at: 2026-10-14T16:08:19Z
+updated_at: 2026-10-14T16:11:44Z
 parent: cueglass-aeqt
 ---
 
@@ -47,7 +47,7 @@ Do not include unrelated working-tree Bean edits.
 - [x] Record user-visible reliability improvements in the release notes
 
 
-- [x] Fix newly surfaced review findings: visible deferred status, preserve editor selection on metadata refresh, and render Bean checklist correctly
+- [x] Fix newly surfaced review findings: show pending/canceled Timed Scrolling status, preserve editor selection on metadata refresh, and render Bean checklist correctly
 
 
 - [x] Make fullscreen output noninteractive and synchronize the completed release Bean in the milestone tracker

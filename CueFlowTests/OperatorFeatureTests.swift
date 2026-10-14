@@ -1472,6 +1472,27 @@ extension OperatorFeatureTests {
     #expect(controller.session.timeline.upperBound != nil)
   }
 
+  @Test func manualPaceCancelsPendingTimedScrollingStatus() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(
+      string: (0..<200).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
+        separator: "\n"))
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+
+    controller.enableTimedScrolling(seconds: 600)
+    #expect(controller.session.measuring)
+    #expect(controller.state.status.contains("Timed Scrolling will be set when ready"))
+
+    controller.setSpeed(40)
+
+    #expect(controller.pendingTimedDuration == nil)
+    #expect(controller.state.status.contains("request canceled by manual pace change"))
+    await settle(controller)
+    #expect(controller.session.timedDuration == nil)
+    #expect(!controller.state.status.contains("will be set when ready"))
+  }
+
   @Test func readingPaceUndoAndRedoSynchronizeTheTake() async throws {
     let controller = try await prepared(20)
     defer { controller.close() }

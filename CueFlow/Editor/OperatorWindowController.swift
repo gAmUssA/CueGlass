@@ -517,10 +517,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func adjustSpeed(_ delta: Double) { setSpeed(min(state.maximum, max(2, state.speed + delta))) }
   func setSpeed(_ value: Double) {
     perform {
+      let cancelsPendingTimedScroll = pendingTimedDuration != nil
+      let hasActiveTimedScroll = session.timedDuration != nil
       try session.speed(value)
       state.speed = session.preferredLPM
       pendingTimedDuration = nil
+      if cancelsPendingTimedScroll && !hasActiveTimedScroll {
+        session.message = "Timed Scrolling request canceled by manual pace change"
+      }
       script.setPreferredSpeed(session.preferredLPM)
+      refresh()
     }
   }
   func changeStyle(_ style: ReadingStyle) {
