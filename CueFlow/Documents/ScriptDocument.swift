@@ -53,6 +53,12 @@ import os
     model.readingStyle = style
     NotificationCenter.default.post(name: Self.replaced, object: self)
   }
+  func setPreferredSpeed(_ linesPerMinute: Double) {
+    let old = model.preferredSpeedLinesPerMinute
+    undoManager?.registerUndo(withTarget: self) { $0.setPreferredSpeed(old) }
+    undoManager?.setActionName("Change Reading Pace")
+    model.preferredSpeedLinesPerMinute = linesPerMinute
+  }
   override func data(ofType typeName: String) throws -> Data {
     var next = model
     next.content.data = try source.data(

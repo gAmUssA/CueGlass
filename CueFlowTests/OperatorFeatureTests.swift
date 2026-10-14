@@ -1416,3 +1416,101 @@ extension OperatorFeatureTests {
     #expect(!doc.isDocumentEdited)
   }
 }
+
+extension OperatorFeatureTests {
+  @Test func timedScrollingRequestWaitsForInitialMeasurement() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(
+      string: (0..<200).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
+        separator: "\n"))
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+
+    controller.enableTimedScrolling(seconds: 600)
+    #expect(controller.session.measuring)
+    #expect(controller.pendingTimedDuration == 600)
+
+    await settle(controller)
+
+    #expect(controller.pendingTimedDuration == nil)
+    #expect(controller.session.timedDuration == 600)
+    #expect(controller.session.timeline.upperBound != nil)
+  }
+
+  @Test func readingPaceUndoAndRedoSynchronizeTheTake() async throws {
+    let controller = try await prepared(20)
+    defer { controller.close() }
+    let undo = try #require(controller.editor.undoManager)
+    undo.removeAllActions()
+    let original = controller.script.model.preferredSpeedLinesPerMinute
+    let changed = original + 10
+
+    controller.setSpeed(changed)
+    #expect(controller.script.model.preferredSpeedLinesPerMinute == changed)
+    #expect(controller.state.speed == changed)
+    #expect(controller.session.preferredLPM == changed)
+
+    undo.undo()
+    #expect(controller.script.model.preferredSpeedLinesPerMinute == original)
+    #expect(controller.state.speed == original)
+    #expect(controller.session.preferredLPM == original)
+    #expect(undo.canRedo)
+
+    undo.redo()
+    #expect(controller.script.model.preferredSpeedLinesPerMinute == changed)
+    #expect(controller.state.speed == changed)
+    #expect(controller.session.preferredLPM == changed)
+  }
+
+  @Test func styleUndoAndRedoSynchronizeThePausedTake() async throws {
+    let controller = try await prepared(20)
+    defer { controller.close() }
+    let undo = try #require(controller.editor.undoManager)
+    undo.removeAllActions()
+    let original = controller.script.model.readingStyle
+    var changed = original
+    changed.fontSize += 10
+
+    controller.changeStyle(changed)
+    await settle(controller)
+    #expect(controller.session.state == .paused)
+    #expect(controller.session.style == changed)
+
+    undo.undo()
+    await settle(controller)
+    #expect(controller.script.model.readingStyle == original)
+    #expect(controller.state.style == original)
+    #expect(controller.session.style == original)
+
+    undo.redo()
+    await settle(controller)
+    #expect(controller.script.model.readingStyle == changed)
+    #expect(controller.state.style == changed)
+    #expect(controller.session.style == changed)
+  }
+
+  @Test func failedPreparationReleasesPresentationOwnership() {
+    let unavailable = ScriptDocument()
+    unavailable.source = NSAttributedString(string: "Not downloaded yet")
+    unavailable.cloudStatus = .notDownloaded
+    let first = OperatorWindowController(document: unavailable)
+    defer {
+      first.stop()
+      first.close()
+    }
+
+    first.toggle()
+    #expect(first.session.state == .idle)
+    #expect(PresentationCoordinator.shared.owner !== first)
+
+    let second = OperatorWindowController(document: ScriptDocument())
+    defer {
+      second.stop()
+      second.close()
+    }
+    second.script.source = NSAttributedString(string: "Available locally")
+    second.toggle()
+    #expect(PresentationCoordinator.shared.owner === second)
+    #expect(second.session.state != .idle)
+  }
+}

@@ -167,14 +167,7 @@ struct OperatorControls: View {
           }
           TextField("Finish in seconds", value: $state.duration, format: .number)
           Button("Enable Timed Scrolling") {
-            controller.perform {
-              if controller.session.state == .idle {
-                try controller.session.prepare(controller.script)
-                controller.render()
-              }
-              try controller.session.enableTimed(seconds: state.duration)
-              controller.refresh()
-            }
+            controller.enableTimedScrolling(seconds: state.duration)
           }
           Toggle("Hide controls while playing", isOn: $state.hideControls)
         }

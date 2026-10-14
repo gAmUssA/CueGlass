@@ -260,6 +260,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   var pendingAnchor: ReadingAnchor?
+  var pendingTimedDuration: Double?
   var renderGeneration = 0
   var lastPointerTime = CACurrentMediaTime()
   var lastPointer = NSEvent.mouseLocation
@@ -471,11 +472,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       return
     }
     perform {
-      try PresentationCoordinator.shared.claim(self)
-      if session.state == .idle {
-        try session.prepare(script)
-        render()
-      }
+      try claimAndPrepare()
       if session.measuring {
         if pendingResume {
           pendingResume = false
@@ -500,6 +497,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     pendingPlay = false
     pendingResume = false
     pendingAnchor = nil
+    pendingTimedDuration = nil
     session.measuring = false
     session.stop()
     PresentationCoordinator.shared.release(self)
@@ -519,25 +517,15 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     perform {
       try session.speed(value)
       state.speed = session.preferredLPM
-      let previous = script.model.preferredSpeedLinesPerMinute
-      script.undoManager?.registerUndo(withTarget: script) { doc in
-        doc.model.preferredSpeedLinesPerMinute = previous
-      }
-      script.model.preferredSpeedLinesPerMinute = session.preferredLPM
+      pendingTimedDuration = nil
+      script.setPreferredSpeed(session.preferredLPM)
     }
   }
   func changeStyle(_ style: ReadingStyle) {
     perform {
       let style = try ScriptFileCodec.validatedStyle(style)
       let old = state.style
-      let affectsLayout =
-        old.mode != style.mode || old.fontIdentifier != style.fontIdentifier
-        || old.fontWeight != style.fontWeight || old.systemDesign != style.systemDesign
-        || old.fontSize != style.fontSize || old.lineHeightMultiplier != style.lineHeightMultiplier
-        || old.paragraphSpacing != style.paragraphSpacing
-        || old.columnWidthFraction != style.columnWidthFraction
-        || old.sideMarginFraction != style.sideMarginFraction
-        || old.readingGuideFraction != style.readingGuideFraction
+      let affectsLayout = styleAffectsLayout(from: old, to: style)
       if !affectsLayout {
         state.style = style
         session.style = style
@@ -566,6 +554,76 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       if let name = style.fontIdentifier, NSFont(name: name, size: style.fontSize) == nil {
         state.status = "Font unavailable — using the system font"
       }
+    }
+  }
+  private func styleAffectsLayout(from old: ReadingStyle, to style: ReadingStyle) -> Bool {
+    old.mode != style.mode || old.fontIdentifier != style.fontIdentifier
+      || old.fontWeight != style.fontWeight || old.systemDesign != style.systemDesign
+      || old.fontSize != style.fontSize || old.lineHeightMultiplier != style.lineHeightMultiplier
+      || old.paragraphSpacing != style.paragraphSpacing
+      || old.columnWidthFraction != style.columnWidthFraction
+      || old.sideMarginFraction != style.sideMarginFraction
+      || old.readingGuideFraction != style.readingGuideFraction
+  }
+  private func syncStyleAfterUndo() {
+    let style = script.model.readingStyle
+    let old = state.style
+    guard old != style else { return }
+    let affectsLayout = styleAffectsLayout(from: old, to: style)
+    if affectsLayout, session.state != .idle {
+      perform {
+        try session.pause()
+        preservePreparationAnchor()
+        pendingPlay = false
+        pendingResume = false
+        state.style = style
+        session.style = style
+        script.notice = PresentationFont.notice(style) ?? ""
+        render()
+        session.message = "Paused for layout change"
+        refresh()
+      }
+      return
+    }
+    state.style = style
+    session.style = style
+    if affectsLayout {
+      render()
+    } else {
+      for viewport in [
+        preview.reflection.viewport, output?.reflection.viewport, floating?.reflection.viewport,
+      ] { viewport?.updateAids(style) }
+      updatePresentationBackground(style)
+    }
+    script.notice = PresentationFont.notice(style) ?? ""
+    refresh()
+  }
+  func enableTimedScrolling(seconds: Double) {
+    perform {
+      if session.state == .idle {
+        try session.prepare(script)
+        render()
+      }
+      if session.measuring {
+        pendingTimedDuration = seconds
+        state.status = "Measuring script… Timed Scrolling will be set when ready"
+        refresh()
+        return
+      }
+      try session.enableTimed(seconds: seconds)
+      refresh()
+    }
+  }
+  private func claimAndPrepare() throws {
+    try PresentationCoordinator.shared.claim(self)
+    do {
+      if session.state == .idle {
+        try session.prepare(script)
+        render()
+      }
+    } catch {
+      if session.state == .idle { PresentationCoordinator.shared.release(self) }
+      throw error
     }
   }
   var authoritative: PrompterViewport {
@@ -647,6 +705,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
               end: end, paragraphs: paragraphs, wordCount: words, lineCount: lines,
               position: position)
             self.applyCurrentPosition()
+          }
+          if let seconds = self.pendingTimedDuration {
+            self.pendingTimedDuration = nil
+            self.perform { try self.session.enableTimed(seconds: seconds) }
           }
           if self.pendingResume {
             self.pendingResume = false
@@ -801,8 +863,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       guard confirm(alert) == .alertFirstButtonReturn else { return }
     }
     perform {
-      try PresentationCoordinator.shared.claim(self)
-      try session.prepare(script)
+      try claimAndPrepare()
       let wasRunning = session.state == .running || pendingResume
       try session.pause()
       preservePreparationAnchor()
@@ -915,7 +976,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     if session.state == .idle && !replacingEditor {
       state.style = script.model.readingStyle
+      session.style = script.model.readingStyle
       render()
+    } else if !replacingEditor, session.snapshot?.revision == script.revision {
+      syncStyleAfterUndo()
     }
     refresh()
   }
@@ -1007,6 +1071,7 @@ extension OperatorWindowController {
     case .reverse:
       cancelPendingNavigation()
       perform {
+        pendingTimedDuration = nil
         try session.reverse()
         refresh()
       }
@@ -1020,8 +1085,7 @@ extension OperatorWindowController {
   }
   func showFloating() {
     perform {
-      try PresentationCoordinator.shared.claim(self)
-      try session.prepare(script)
+      try claimAndPrepare()
       let running = session.state == .running || pendingResume
       try session.pause()
       preservePreparationAnchor()
@@ -1209,12 +1273,23 @@ extension OperatorWindowController {
   @objc func editorUndoChanged(_ notification: Notification) {
     script.updateChangeCount(
       notification.name == .NSUndoManagerDidUndoChange ? .changeUndone : .changeRedone)
-    guard session.state == .idle, !replacingEditor, editor.string != script.source.string else {
-      return
+    guard !replacingEditor else { return }
+    if session.state == .idle, editor.string != script.source.string {
+      replacingEditor = true
+      script.replaceSource(editor.attributedString(), registerUndo: false)
+      replacingEditor = false
     }
-    replacingEditor = true
-    script.replaceSource(editor.attributedString(), registerUndo: false)
-    replacingEditor = false
+    let speed = script.model.preferredSpeedLinesPerMinute
+    if speed != state.speed {
+      perform {
+        try session.speed(speed)
+        state.speed = session.preferredLPM
+        refresh()
+      }
+    }
+    if session.state == .idle || session.snapshot?.revision == script.revision {
+      syncStyleAfterUndo()
+    }
   }
   @objc func editorUndoGroupClosed(_ notification: Notification) {
     guard let undoManager = notification.object as? UndoManager else { return }
