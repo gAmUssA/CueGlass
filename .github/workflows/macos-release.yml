@@ -80,8 +80,8 @@ jobs:
             echo "Expected built app at $app_path" >&2
             exit 1
           fi
-          lipo -verify_arch arm64 "$app_executable"
-          lipo -verify_arch x86_64 "$app_executable"
+          lipo "$app_executable" -verify_arch arm64
+          lipo "$app_executable" -verify_arch x86_64
 
           dist_dir="$RUNNER_TEMP/CueGlassReleaseAssets"
           mkdir -p "$dist_dir"
