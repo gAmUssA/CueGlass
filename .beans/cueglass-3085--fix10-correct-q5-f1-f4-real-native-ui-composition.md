@@ -1,11 +1,11 @@
 ---
 # cueglass-3085
 title: 'Fix11: correct native composition oracles and Dark editor readability under J5'
-status: in-progress
+status: completed
 type: bug
 priority: normal
 created_at: 2026-10-14T06:44:24Z
-updated_at: 2026-10-14T09:43:43Z
+updated_at: 2026-10-14T09:44:53Z
 parent: cueglass-aeqt
 ---
 
@@ -63,4 +63,4 @@ In the unlocked live app, the script editor was the AX-focused text area and the
 
 ## Summary of Changes
 
-Corrected Fix11's native geometry, occlusion, Dark editor rendering, and volatile test-preference oracles within the authorized source paths. Display-only appearance refresh preserves authored source, stored RTF, and Undo. Lead verification and raw gate evidence are recorded in /Users/vikgamov/.local/state/cueglass/d12-lead-review.md and /Users/vikgamov/.local/state/cueglass/d12-lead-keyboard.md. Independent Quiet Studio visual/accessibility, actual menu behavior, macOS 14, signed iCloud, and two-Mac acceptance remain open under their existing Beans.
+Corrected Fix11's native geometry, occlusion, Dark editor rendering, and volatile test-preference oracles within the authorized source paths. Display-only appearance refresh preserves authored source, stored RTF, and Undo. Lead evidence is recorded in /Users/vikgamov/.local/state/cueglass/d12-lead-review.md and /Users/vikgamov/.local/state/cueglass/d12-lead-keyboard.md. The Fix11 code candidate and review tracking are published on origin/feat/cueflow-native through HEAD f9f2049; no PR or merge was created. Independent Quiet Studio visual/accessibility, actual menu behavior, macOS 14, signed iCloud, and two-Mac acceptance remain open under their existing Beans. The separate clean-document status issue is tracked in cueglass-w3f6.
