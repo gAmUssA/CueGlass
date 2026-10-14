@@ -749,10 +749,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         + CommandRouter.map.bindings.filter { $0.command == .toggle }.map { $0.chord.label }.joined(
           separator: " · ")
     }
-    state.status =
-      session.message
-      + (script.notice.isEmpty ? "" : " · " + script.notice)
-    if let notice = PresentationFont.notice(state.style) { state.status += " · " + notice }
+    refreshStatus()
     state.cloud =
       containerID.isEmpty ? "iCloud not configured in this build" : script.cloudStatus.rawValue
     preview.reflection.viewport.driver?.authoritative = output == nil && floating == nil
@@ -795,6 +792,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     updateEditorParagraph()
     updateProgressTimer()
     updateFloatingOptions()
+  }
+  private func refreshStatus() {
+    state.status = session.message + (script.notice.isEmpty ? "" : " · " + script.notice)
+    if let notice = PresentationFont.notice(state.style) { state.status += " · " + notice }
   }
   func reflect() {
     if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
@@ -934,6 +935,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       if let index = DisplayMatcher.match(selectedPreference, in: preferences) {
         state.selectedDisplay = displays[index].selectionKey
         disconnectedDisplayPreference = nil
+        if state.status == "Selected display not connected — choose a display"
+          || state.status == "Saved display not connected"
+        {
+          refreshStatus()
+        }
       } else {
         state.status = "Selected display not connected — choose a display"
         state.selectedDisplay = "disconnected"

@@ -948,10 +948,12 @@ extension OperatorFeatureTests {
 
     c.state.selectedDisplay = oldDisplay.selectionKey
     c.refreshScreens([oldDisplay])
+    c.refreshScreens([])
     c.refreshScreens([reconnectedDisplay])
 
     #expect(c.state.selectedDisplay == reconnectedDisplay.selectionKey)
     #expect(c.state.displays == [reconnectedDisplay.selectionKey])
+    #expect(c.state.status.hasPrefix(c.session.message))
   }
 
   private func preparationTurn() async {
