@@ -942,8 +942,10 @@ extension OperatorFeatureTests {
       DispatchQueue.main.async { continuation.resume() }
     }
   }
-  private func preparationController() async throws -> OperatorWindowController {
-    let c = try await prepared()
+  private func preparationController(paragraphs: Int = 200) async throws
+    -> OperatorWindowController
+  {
+    let c = try await prepared(paragraphs)
     c.state.countdown = 0
     c.seek(c.session.paragraphPositions[100])
     return c
@@ -1059,7 +1061,8 @@ extension OperatorFeatureTests {
   @Test func runningNavigationSurvivesBothPreparationPasses() async throws {
     for second in [false, true] {
       for action in ["seek", "next", "previous", "reverse"] {
-        let c = try await preparationController()
+        // Keep both bounded passes observable even on faster or slower hosted Macs.
+        let c = try await preparationController(paragraphs: 700)
         defer { c.close() }
         let snapshot = c.session.snapshot?.id
         let source = c.script.source.string

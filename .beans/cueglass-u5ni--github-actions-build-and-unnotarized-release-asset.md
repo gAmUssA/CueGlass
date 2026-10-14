@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-14T13:37:02Z
-updated_at: 2026-10-14T13:48:17Z
+updated_at: 2026-10-14T13:55:58Z
 parent: cueglass-aeqt
 ---
 
@@ -18,7 +18,9 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 - [x] Build universal arm64/x86_64 unsigned app; package ZIP, checksum and unsigned/unnotarized notice.
 - [x] Publish only from semantic version tags as an explicitly unsigned/unnotarized prerelease.
 - [x] Update README, changelog, ADR and local-first MVP scope for GitHub releases and deferred iCloud/signing.
-- [ ] Run the workflow on GitHub-hosted macOS and verify its build/test result.
+- [ ] Run the workflow on GitHub-hosted macOS after the fixture fix and verify its build/test result.
 - [ ] Verify a tagged prerelease and each uploaded asset are retrievable after MVP acceptance.
 
 - [x] Set repository visibility to public and verify it is now public (`gh repo view`).
+
+- [x] Stabilize the two-pass navigation test fixture after hosted CI exposed a timing-sensitive measuring assertion.
