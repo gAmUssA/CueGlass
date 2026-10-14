@@ -942,7 +942,7 @@ extension OperatorFeatureTests {
       DispatchQueue.main.async { continuation.resume() }
     }
   }
-  private func preparationController(paragraphs: Int = 200) async throws
+  private func preparationController(paragraphs: Int = 300) async throws
     -> OperatorWindowController
   {
     let c = try await prepared(paragraphs)
