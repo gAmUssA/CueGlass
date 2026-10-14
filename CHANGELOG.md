@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-10-14
+
+- Simplify the project README for people trying CueGlass, clarify the local-first and unsigned-release status, and move build and implementation guidance to `AGENTS.md`.
+
 ## 0.1.0 — 2026-10-13
 
 - Keep toolbar pockets clear of the take bar and first editor/inspector rows, preserve usable 980/1002/1280 sizing and Controls key routing, and render authored black RTF legibly in Dark without changing stored source.
