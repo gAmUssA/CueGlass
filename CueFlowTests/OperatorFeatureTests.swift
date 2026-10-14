@@ -1437,6 +1437,20 @@ extension OperatorFeatureTests {
 }
 
 extension OperatorFeatureTests {
+  @Test func metadataRefreshPreservesEditorSelection() throws {
+    let doc = ScriptDocument()
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    let selected = NSRange(location: 4, length: 8)
+    controller.editor.setSelectedRange(selected)
+    let source = controller.editor.attributedString()
+
+    NotificationCenter.default.post(name: ScriptDocument.replaced, object: doc)
+
+    #expect(controller.editor.selectedRange() == selected)
+    #expect(controller.editor.attributedString() == source)
+  }
+
   @Test func timedScrollingRequestWaitsForInitialMeasurement() async throws {
     let doc = ScriptDocument()
     doc.source = NSAttributedString(
@@ -1448,6 +1462,7 @@ extension OperatorFeatureTests {
     controller.enableTimedScrolling(seconds: 600)
     #expect(controller.session.measuring)
     #expect(controller.pendingTimedDuration == 600)
+    #expect(controller.state.status.contains("Timed Scrolling will be set when ready"))
 
     await settle(controller)
 

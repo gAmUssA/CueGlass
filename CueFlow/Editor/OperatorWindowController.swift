@@ -608,7 +608,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
       if session.measuring {
         pendingTimedDuration = seconds
-        state.status = "Measuring script… Timed Scrolling will be set when ready"
+        session.message = "Measuring script… Timed Scrolling will be set when ready"
         refresh()
         return
       }
@@ -989,12 +989,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   @objc func documentChanged() {
     session.changed(script)
     if !replacingEditor {
-      replacingEditor = true
-      let selected = editor.selectedRange()
-      editor.textStorage?.setAttributedString(script.source)
-      editor.setSelectedRange(
-        NSRange(location: min(selected.location, editor.string.utf16.count), length: 0))
-      replacingEditor = false
+      let source = script.source
+      if !editor.attributedString().isEqual(to: source) {
+        replacingEditor = true
+        let selected = editor.selectedRange()
+        editor.textStorage?.setAttributedString(source)
+        let textLength = editor.string.utf16.count
+        let location = min(selected.location, textLength)
+        let length = min(selected.length, textLength - location)
+        editor.setSelectedRange(NSRange(location: location, length: length))
+        replacingEditor = false
+      }
     }
     if session.state == .idle && !replacingEditor {
       state.style = script.model.readingStyle
