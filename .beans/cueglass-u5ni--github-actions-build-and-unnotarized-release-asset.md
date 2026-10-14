@@ -1,11 +1,11 @@
 ---
 # cueglass-u5ni
 title: GitHub Actions build and unnotarized release asset
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-10-14T13:37:02Z
-updated_at: 2026-10-14T14:47:57Z
+updated_at: 2026-10-14T14:57:51Z
 parent: cueglass-aeqt
 ---
 
@@ -19,7 +19,7 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 - [x] Publish only from semantic version tags as an explicitly unsigned/unnotarized prerelease.
 - [x] Update README, changelog, ADR and local-first MVP scope for GitHub releases and deferred iCloud/signing.
 - [x] Rerun workflow on GitHub-hosted macOS after the final test-fixture stabilization; verify tests, universal build and packaging.
-- [ ] Verify the v0.1.0 tagged prerelease and each uploaded asset are retrievable.
+- [x] Verify the public v0.1.0 prerelease and every uploaded asset; download, checksum, ZIP integrity and universal architecture checks pass.
 
 - [x] Set repository visibility to public and verify it is now public (`gh repo view`).
 
@@ -32,3 +32,7 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 - [x] Keep close-handoff and timed-close fixtures asynchronous with 300 paragraphs, preserving the timed feasibility cap; the local 48-test suite passes.
 
 - [x] Fix the Ubuntu release publisher to pass the repository explicitly to `gh release create`; the first tag build passed but publication exposed missing GitHub CLI repository context.
+
+## Summary of Changes
+
+Published the unsigned/unnotarized universal macOS app as the public [v0.1.0 GitHub prerelease](https://github.com/gAmUssA/CueGlass/releases/tag/v0.1.0). The [tag workflow](https://github.com/gAmUssA/CueGlass/actions/runs/38584524965) passed Core and native tests, strict formatting, universal arm64/x86_64 build, and packaging. Downloaded the release ZIP and verified its SHA-256, archive integrity, and both binary architectures. Fixed hosted-test fixture timing and the publisher repository context.
