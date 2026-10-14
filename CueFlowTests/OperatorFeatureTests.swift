@@ -1132,7 +1132,7 @@ extension OperatorFeatureTests {
   @Test func closeHandoffInstallsSettledEndAndParagraphAnchorInBothPasses() async throws {
     for kind in ["floating", "output", "resize", "outputLoss"] {
       for second in [false, true] {
-        let c = try await preparationController()
+        let c = try await preparationController(paragraphs: 700)
         defer { c.close() }
         try await startPreparation(c, kind: kind == "outputLoss" ? "output" : kind)
         try await enterPreparationPass(c, second: second)
