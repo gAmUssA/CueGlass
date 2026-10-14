@@ -1370,3 +1370,46 @@ extension OperatorFeatureTests {
     #expect(controller.state.speed == pace)
   }
 }
+
+extension OperatorFeatureTests {
+  @Test func nativeEditorUndoRestoresCleanDocumentStatus() async throws {
+    let doc = ScriptDocument()
+    doc.makeWindowControllers()
+    let controller = try #require(doc.windowControllers.first as? OperatorWindowController)
+    defer { controller.close() }
+
+    let original = doc.source.copy() as! NSAttributedString
+    #expect(!doc.isDocumentEdited)
+
+    let undo = try #require(controller.editor.undoManager)
+    #expect(undo === doc.undoManager)
+    undo.removeAllActions()
+    undo.beginUndoGrouping()
+    controller.editor.insertText("X", replacementRange: NSRange(location: 0, length: 0))
+    controller.editor.insertText("Y", replacementRange: NSRange(location: 1, length: 0))
+    controller.editor.insertText("Z", replacementRange: NSRange(location: 2, length: 0))
+    undo.endUndoGrouping()
+    await preparationTurn()
+    let edited = controller.editor.attributedString()
+    #expect(doc.source == edited)
+    #expect(doc.isDocumentEdited)
+
+    undo.undo()
+    await preparationTurn()
+    #expect(controller.editor.attributedString() == original)
+    #expect(doc.source == original)
+    #expect(!doc.isDocumentEdited)
+
+    undo.redo()
+    await preparationTurn()
+    #expect(controller.editor.attributedString() == edited)
+    #expect(doc.source == edited)
+    #expect(doc.isDocumentEdited)
+
+    undo.undo()
+    await preparationTurn()
+    #expect(controller.editor.attributedString() == original)
+    #expect(doc.source == original)
+    #expect(!doc.isDocumentEdited)
+  }
+}

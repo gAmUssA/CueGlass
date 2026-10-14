@@ -445,11 +445,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         self, selector: #selector(sleeping), name: name, object: nil)
     }
     NotificationCenter.default.addObserver(
-      self, selector: #selector(editorUndoChanged),
+      self, selector: #selector(editorUndoChanged(_:)),
       name: Notification.Name.NSUndoManagerDidUndoChange, object: editor.undoManager)
     NotificationCenter.default.addObserver(
-      self, selector: #selector(editorUndoChanged),
+      self, selector: #selector(editorUndoChanged(_:)),
       name: Notification.Name.NSUndoManagerDidRedoChange, object: editor.undoManager)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(editorUndoGroupClosed(_:)),
+      name: Notification.Name.NSUndoManagerDidCloseUndoGroup, object: editor.undoManager)
     CommandRouter.load()
     refreshScreens()
     render()
@@ -458,6 +461,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   required init?(coder: NSCoder) { fatalError("Use init(document:)") }
   func present(_ error: Error) { state.status = error.localizedDescription }
+  func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { script.undoManager }
   func perform(_ work: () throws -> Void) {
     do { try work() } catch let error as NSError { present(error) }
   }
@@ -518,10 +522,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       let previous = script.model.preferredSpeedLinesPerMinute
       script.undoManager?.registerUndo(withTarget: script) { doc in
         doc.model.preferredSpeedLinesPerMinute = previous
-        doc.updateChangeCount(.changeDone)
       }
       script.model.preferredSpeedLinesPerMinute = session.preferredLPM
-      script.updateChangeCount(.changeDone)
     }
   }
   func changeStyle(_ style: ReadingStyle) {
@@ -1204,13 +1206,22 @@ extension OperatorWindowController {
     panel?.window?.alphaValue = 1
     for item in window?.toolbar?.items ?? [] { item.view?.alphaValue = 1 }
   }
-  @objc func editorUndoChanged() {
+  @objc func editorUndoChanged(_ notification: Notification) {
+    script.updateChangeCount(
+      notification.name == .NSUndoManagerDidUndoChange ? .changeUndone : .changeRedone)
     guard session.state == .idle, !replacingEditor, editor.string != script.source.string else {
       return
     }
     replacingEditor = true
     script.replaceSource(editor.attributedString(), registerUndo: false)
     replacingEditor = false
+  }
+  @objc func editorUndoGroupClosed(_ notification: Notification) {
+    guard let undoManager = notification.object as? UndoManager else { return }
+    guard
+      undoManager.groupingLevel == 0, !undoManager.isUndoing, !undoManager.isRedoing
+    else { return }
+    script.updateChangeCount(.changeDone)
   }
   @objc func toggleInspector() {
     guard let item = inspectorItem, let window else { return }

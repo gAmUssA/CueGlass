@@ -45,14 +45,12 @@ import os
     }
     source = next.copy() as! NSAttributedString
     revision += 1
-    updateChangeCount(.changeDone)
     NotificationCenter.default.post(name: Self.replaced, object: self)
   }
   func setStyle(_ style: ReadingStyle) {
     let old = model.readingStyle
     undoManager?.registerUndo(withTarget: self) { $0.setStyle(old) }
     model.readingStyle = style
-    updateChangeCount(.changeDone)
     NotificationCenter.default.post(name: Self.replaced, object: self)
   }
   override func data(ofType typeName: String) throws -> Data {
