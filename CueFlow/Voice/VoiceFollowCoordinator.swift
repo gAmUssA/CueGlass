@@ -125,6 +125,8 @@ private actor VoiceAlignmentWorker {
   private var captureTask: Task<Void, Never>?
   private var silenceTask: Task<Void, Never>?
   private var installationTask: Task<Void, Never>?
+  private var pendingActivationIntent: VoiceStartIntent?
+  private var pendingActivationState: VoiceFollowUIState?
 
   init(
     session: PlaybackSession, source: VoiceCaptureSource,
@@ -137,6 +139,9 @@ private actor VoiceAlignmentWorker {
     self.usageDescription = usageDescription
     let stored = UserDefaults.standard.string(forKey: "voiceFollowLocale")
     selectedLocaleIdentifier = stored ?? Locale.current.identifier
+    session.onVoiceStartIntentInvalidated = { [weak self] reason, _ in
+      self?.cancelPendingActivation(reason: reason)
+    }
     session.onVoicePrioritySuspended = { [weak self] reason, nextEpoch in
       self?.manualOverride(reason: reason, epoch: nextEpoch)
     }
@@ -217,26 +222,42 @@ private actor VoiceAlignmentWorker {
     state = .needsModel
   }
 
-  func start(snapshot: ScriptSnapshot, lineTable: VoiceLineTable, startAt tokenIndex: Int) async {
-    await activate(snapshot: snapshot, lineTable: lineTable, startAt: tokenIndex)
+  func start(
+    snapshot: ScriptSnapshot, lineTable: VoiceLineTable, intent: VoiceStartIntent,
+    resolveStart: @escaping @MainActor () -> Int?
+  ) async {
+    await activate(
+      snapshot: snapshot, lineTable: lineTable, intent: intent, resolveStart: resolveStart)
   }
 
-  func resume(snapshot: ScriptSnapshot, lineTable: VoiceLineTable, startAt tokenIndex: Int) async {
+  func resume(
+    snapshot: ScriptSnapshot, lineTable: VoiceLineTable, intent: VoiceStartIntent,
+    resolveStart: @escaping @MainActor () -> Int?
+  ) async {
     guard isSuspended else { return }
-    await activate(snapshot: snapshot, lineTable: lineTable, startAt: tokenIndex)
+    await activate(
+      snapshot: snapshot, lineTable: lineTable, intent: intent, resolveStart: resolveStart)
   }
 
   private func activate(
-    snapshot: ScriptSnapshot, lineTable: VoiceLineTable, startAt tokenIndex: Int
+    snapshot: ScriptSnapshot, lineTable: VoiceLineTable, intent: VoiceStartIntent,
+    resolveStart: @escaping @MainActor () -> Int?
   )
     async
   {
+    guard session.isCurrentVoiceStartIntent(intent), snapshot.id == intent.snapshotID else {
+      return
+    }
     guard session.canStartVoice else {
       if session.voiceSessionActive && session.voiceSuspended {
         state = .suspended("Switch to Forward before resuming Follow Voice")
       } else {
         state = .failed("Prepare a forward take before starting Follow Voice.")
       }
+      return
+    }
+    guard resolveStart() != nil else {
+      state = .failed("Text layout is not ready for Follow Voice.")
       return
     }
     guard let usage = usageDescription(),
@@ -248,28 +269,46 @@ private actor VoiceAlignmentWorker {
       return
     }
     let requestedEpoch = nextEpoch()
+    pendingActivationIntent = intent
+    pendingActivationState = state
+    defer {
+      if pendingActivationIntent == intent {
+        pendingActivationIntent = nil
+        pendingActivationState = nil
+      }
+    }
+    func currentStartIndex() -> Int? {
+      guard epoch == requestedEpoch, pendingActivationIntent == intent,
+        session.isCurrentVoiceStartIntent(intent), session.canStartVoice,
+        snapshot.id == intent.snapshotID
+      else { return nil }
+      return resolveStart()
+    }
+
     let locale = selectedLocaleIdentifier
     let readiness = await source.readiness(localeIdentifier: locale)
-    guard epoch == requestedEpoch else { return }
+    guard currentStartIndex() != nil else { return }
     guard readiness == .ready else {
       state = Self.uiState(for: readiness)
       return
     }
+    guard currentStartIndex() != nil else { return }
     switch microphone.permission {
     case .denied:
       state = .microphoneDenied
       return
     case .notDetermined:
       state = .requestingMicrophone
-      guard await microphone.requestPermission() else {
-        guard epoch == requestedEpoch else { return }
+      let granted = await microphone.requestPermission()
+      guard currentStartIndex() != nil else { return }
+      guard granted else {
         state = .microphoneDenied
         return
       }
     case .granted:
       break
     }
-    guard epoch == requestedEpoch else { return }
+    guard let tokenIndex = currentStartIndex() else { return }
     state = .starting
     let index = ScriptIndex(text: snapshot.attributed.string)
     let boundedStart = min(max(tokenIndex, -1), index.count - 1)
@@ -284,19 +323,26 @@ private actor VoiceAlignmentWorker {
       } else {
         try session.beginVoice(epoch: requestedEpoch)
       }
-      let startTask = Task { try await source.start(localeIdentifier: locale) }
-      sourceStartTask = startTask
-      let stream = try await startTask.value
-      sourceStartTask = nil
-      guard epoch == requestedEpoch else {
+      guard currentStartIndex() != nil else {
         source.stop()
         await nextWorker.clear()
         return
       }
+      let startTask = Task { try await source.start(localeIdentifier: locale) }
+      sourceStartTask = startTask
+      let stream = try await startTask.value
+      sourceStartTask = nil
+      guard currentStartIndex() != nil else {
+        source.stop()
+        await nextWorker.clear()
+        return
+      }
+      pendingActivationIntent = nil
+      pendingActivationState = nil
       state = .listening
       consume(stream, worker: nextWorker, epoch: requestedEpoch)
     } catch {
-      guard epoch == requestedEpoch else { return }
+      guard epoch == requestedEpoch, session.isCurrentVoiceStartIntent(intent) else { return }
       source.stop()
       await nextWorker.clear()
       worker = nil
@@ -316,6 +362,7 @@ private actor VoiceAlignmentWorker {
   }
 
   func stop() {
+    session.invalidateVoiceStartIntent("Stop Follow Voice")
     let wasActive = session.voiceSessionActive
     _ = nextEpoch()
     installationTask?.cancel()
@@ -331,6 +378,8 @@ private actor VoiceAlignmentWorker {
 
   private func sessionEndedVoice() {
     _ = nextEpoch()
+    pendingActivationIntent = nil
+    pendingActivationState = nil
     source.stop()
     stopTasksAndClearWorker()
     scriptIndex = nil
@@ -351,8 +400,30 @@ private actor VoiceAlignmentWorker {
 
   private func manualOverride(reason: String, epoch nextEpoch: UInt64) {
     epoch = max(epoch, nextEpoch)
+    pendingActivationIntent = nil
+    pendingActivationState = nil
     stopCaptureAndClear()
     state = .suspended(reason)
+  }
+
+  private func cancelPendingActivation(reason: String) {
+    guard pendingActivationIntent != nil else {
+      if session.voiceSessionActive && session.voiceSuspended {
+        state = .suspended(reason)
+      }
+      return
+    }
+    let restoreState = pendingActivationState ?? .ready
+    pendingActivationIntent = nil
+    pendingActivationState = nil
+    _ = nextEpoch()
+    sourceStartTask?.cancel()
+    sourceStartTask = nil
+    if session.voiceSessionActive && session.voiceSuspended {
+      state = .suspended(reason)
+    } else if !session.voiceSessionActive {
+      state = restoreState
+    }
   }
 
   private func stopCaptureAndClear() {

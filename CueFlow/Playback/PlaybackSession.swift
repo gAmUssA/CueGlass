@@ -7,6 +7,10 @@ struct ScriptSnapshot {
   let revision: Int
   let attributed: NSAttributedString
 }
+struct VoiceStartIntent: Equatable {
+  let generation: UInt64
+  let snapshotID: UUID
+}
 @MainActor final class PlaybackSession {
   enum State { case idle, paused, running, countingDown }
   private(set) var snapshot: ScriptSnapshot?
@@ -36,7 +40,9 @@ struct ScriptSnapshot {
   private(set) var voiceSessionActive = false
   private(set) var voiceSuspended = false
   private(set) var voiceEpoch: UInt64 = 0
+  private(set) var voiceStartGeneration: UInt64 = 0
   var onVoicePrioritySuspended: ((String, UInt64) -> Void)?
+  var onVoiceStartIntentInvalidated: ((String, UInt64) -> Void)?
   var onVoiceEnded: (() -> Void)?
   private var timedElapsedBase = 0.0
   private var scrubGate = ScrubGate()
@@ -47,6 +53,19 @@ struct ScriptSnapshot {
   }
   var elapsedSeconds: Double { elapsed.value(at: effectiveTime) }
   var effectiveLPM: Double { timeline.velocity * 60 / lineAdvance }
+  func beginVoiceStartIntent() -> VoiceStartIntent? {
+    guard let snapshot, state != .idle else { return nil }
+    invalidateVoiceStartIntent("A newer Follow Voice start replaced this request")
+    return VoiceStartIntent(generation: voiceStartGeneration, snapshotID: snapshot.id)
+  }
+  func isCurrentVoiceStartIntent(_ intent: VoiceStartIntent) -> Bool {
+    intent.generation == voiceStartGeneration && snapshot?.id == intent.snapshotID
+      && state != .idle
+  }
+  func invalidateVoiceStartIntent(_ reason: String) {
+    voiceStartGeneration &+= 1
+    onVoiceStartIntentInvalidated?(reason, voiceStartGeneration)
+  }
   var remainingSeconds: Double? {
     guard !voiceSessionActive else { return nil }
     guard let upper = timeline.upperBound else { return nil }
@@ -147,6 +166,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func stop() {
+    invalidateVoiceStartIntent("Stop Take")
     if voiceSessionActive {
       voiceEpoch &+= 1
       voiceSessionActive = false
@@ -286,6 +306,7 @@ struct ScriptSnapshot {
     }
   }
   func loadLatest(_ doc: ScriptDocument) throws {
+    invalidateVoiceStartIntent("Load Latest")
     endVoice()
     guard state != .running, state != .countingDown else {
       throw CocoaError(.validationMissingMandatoryProperty)
@@ -425,6 +446,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   private func suspendVoiceForManualCommand(_ reason: String) {
+    invalidateVoiceStartIntent(reason)
     guard voiceSessionActive, !voiceSuspended else { return }
     voiceEpoch &+= 1
     suspendVoicePosition()

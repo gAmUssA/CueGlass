@@ -228,7 +228,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let script: ScriptDocument
   let state = OperatorState()
   let session = PlaybackSession()
-  private(set) var voiceCoordinator: VoiceFollowCoordinator?
+  var voiceCoordinator: VoiceFollowCoordinator?
   let editor = DropEditor(usingTextLayoutManager: true)
   let preview = ScaledPreviewContainer(frame: .zero)
   var output: OutputWindowController?
@@ -277,8 +277,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var lastPointer = NSEvent.mouseLocation
 
   private var replacingEditor = false
-  private var pendingVoiceStart = false
-  private var pendingVoiceResume = false
+  private struct PendingVoiceRequest {
+    let intent: VoiceStartIntent
+    let resume: Bool
+  }
+  private var pendingVoiceRequest: PendingVoiceRequest?
   private var sample: ScriptSnapshot?
   init(document: ScriptDocument) {
     script = document
@@ -506,6 +509,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     perform {
       try claimAndPrepare()
       if session.measuring {
+        session.invalidateVoiceStartIntent("Play or Pause")
+        pendingVoiceRequest = nil
         if pendingResume {
           pendingResume = false
           pendingPlay = false
@@ -523,6 +528,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func stop() {
+    pendingVoiceRequest = nil
     voiceCoordinator?.stop()
     hideOutput()
     panel?.close()
@@ -644,6 +650,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         render()
       }
       if session.measuring {
+        session.invalidateVoiceStartIntent("Timed Scrolling")
+        pendingVoiceRequest = nil
         pendingTimedDuration = seconds
         session.message = "Measuring script… Timed Scrolling will be set when ready"
         refresh()
@@ -677,27 +685,43 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       present(error)
       return
     }
+    guard let intent = session.beginVoiceStartIntent() else { return }
+    let request = PendingVoiceRequest(intent: intent, resume: resume)
     if session.measuring {
-      pendingVoiceStart = !resume
-      pendingVoiceResume = resume
+      pendingVoiceRequest = request
       state.status = "Measuring script… Follow Voice will start when ready"
       return
     }
-    beginVoiceFollow(coordinator, resume: resume)
+    beginVoiceFollow(coordinator, request: request)
   }
-  private func beginVoiceFollow(_ coordinator: VoiceFollowCoordinator, resume: Bool) {
-    guard let snapshot = session.snapshot, let lineTable = authoritative.voiceLineTable else {
+  private func beginVoiceFollow(
+    _ coordinator: VoiceFollowCoordinator, request: PendingVoiceRequest
+  ) {
+    guard session.isCurrentVoiceStartIntent(request.intent),
+      let snapshot = session.snapshot, let lineTable = authoritative.voiceLineTable
+    else {
       state.status = "Text layout is not ready for Follow Voice"
       return
     }
     let index = ScriptIndex(text: snapshot.attributed.string)
-    let offset = authoritative.captureAnchor()?.utf16Offset ?? 0
-    let token = index.tokens.lastIndex { $0.range.lowerBound <= offset } ?? -1
+    let initialOffset = authoritative.captureAnchor()?.utf16Offset ?? 0
+    let resolveStart: @MainActor () -> Int? = { [weak self] in
+      guard let self, self.session.isCurrentVoiceStartIntent(request.intent),
+        self.session.snapshot?.id == snapshot.id
+      else { return nil }
+      let offset = self.authoritative.captureAnchor()?.utf16Offset ?? initialOffset
+      return index.tokens.lastIndex { $0.range.lowerBound <= offset } ?? -1
+    }
+    guard resolveStart() != nil else { return }
     Task {
-      if resume {
-        await coordinator.resume(snapshot: snapshot, lineTable: lineTable, startAt: token)
+      if request.resume {
+        await coordinator.resume(
+          snapshot: snapshot, lineTable: lineTable, intent: request.intent,
+          resolveStart: resolveStart)
       } else {
-        await coordinator.start(snapshot: snapshot, lineTable: lineTable, startAt: token)
+        await coordinator.start(
+          snapshot: snapshot, lineTable: lineTable, intent: request.intent,
+          resolveStart: resolveStart)
       }
     }
   }
@@ -710,7 +734,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     guard let coordinator = voiceCoordinator else { return }
     Task { await coordinator.refreshAvailability() }
   }
-  func stopVoiceFollow() { voiceCoordinator?.stop() }
+  func stopVoiceFollow() {
+    pendingVoiceRequest = nil
+    voiceCoordinator?.stop()
+  }
   func openMicrophoneSettings() { voiceCoordinator?.openMicrophoneSettings() }
   func selectVoiceLocale(_ identifier: String) { voiceCoordinator?.selectLocale(identifier) }
   private func syncVoiceState() {
@@ -833,12 +860,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
             self.pendingPlay = false
             self.toggle()
           }
-          if self.pendingVoiceStart || self.pendingVoiceResume {
-            let resumeVoice = self.pendingVoiceResume
-            self.pendingVoiceStart = false
-            self.pendingVoiceResume = false
-            if let coordinator = self.voiceCoordinator {
-              self.beginVoiceFollow(coordinator, resume: resumeVoice)
+          if let request = self.pendingVoiceRequest {
+            self.pendingVoiceRequest = nil
+            if self.session.isCurrentVoiceStartIntent(request.intent),
+              let coordinator = self.voiceCoordinator
+            {
+              self.beginVoiceFollow(coordinator, request: request)
             }
           }
           self.refresh()

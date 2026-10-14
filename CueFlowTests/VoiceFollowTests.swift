@@ -7,17 +7,38 @@ import Testing
 @MainActor private final class FakeVoiceCaptureSource: VoiceCaptureSource {
   var localeOptions = [VoiceLocaleOption(identifier: "en-US", displayName: "English (US)")]
   var readinessState = VoiceAssetReadiness.ready
+  var readinessShouldWait = false
   var installShouldWait = false
+  private(set) var readinessCount = 0
   private(set) var installCount = 0
   private(set) var cancelInstallCount = 0
   private(set) var startCount = 0
   private(set) var stopCount = 0
   private var installWaiters: [CheckedContinuation<Void, Never>] = []
   private var installCompletion: CheckedContinuation<Void, any Error>?
+  private var readinessWaiters: [CheckedContinuation<Void, Never>] = []
+  private var readinessCompletion: CheckedContinuation<VoiceAssetReadiness, Never>?
   private var output: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
 
   func supportedLocales() async -> [VoiceLocaleOption] { localeOptions }
-  func readiness(localeIdentifier: String) async -> VoiceAssetReadiness { readinessState }
+  func readiness(localeIdentifier: String) async -> VoiceAssetReadiness {
+    readinessCount += 1
+    for waiter in readinessWaiters { waiter.resume() }
+    readinessWaiters.removeAll()
+    if readinessShouldWait {
+      return await withCheckedContinuation { readinessCompletion = $0 }
+    }
+    return readinessState
+  }
+  func waitForReadinessRequest(after count: Int) async {
+    if readinessCount > count { return }
+    await withCheckedContinuation { readinessWaiters.append($0) }
+  }
+  func completeReadiness(_ readiness: VoiceAssetReadiness = .ready) {
+    readinessState = readiness
+    readinessCompletion?.resume(returning: readiness)
+    readinessCompletion = nil
+  }
   func install(localeIdentifier: String, reportProgress: @escaping (Double) -> Void) async throws {
     installCount += 1
     reportProgress(0.35)
@@ -60,13 +81,30 @@ import Testing
 @MainActor private final class FakeMicrophonePermission: MicrophonePermissionChecking {
   var permission: MicrophonePermissionState
   var nextRequestResult = true
+  var requestShouldWait = false
   private(set) var requestCount = 0
+  private var requestWaiters: [CheckedContinuation<Void, Never>] = []
+  private var requestCompletion: CheckedContinuation<Bool, Never>?
 
   init(_ permission: MicrophonePermissionState) { self.permission = permission }
   func requestPermission() async -> Bool {
     requestCount += 1
+    for waiter in requestWaiters { waiter.resume() }
+    requestWaiters.removeAll()
+    if requestShouldWait {
+      return await withCheckedContinuation { requestCompletion = $0 }
+    }
     permission = nextRequestResult ? .granted : .denied
     return nextRequestResult
+  }
+  func waitForRequest(after count: Int = 0) async {
+    if requestCount > count { return }
+    await withCheckedContinuation { requestWaiters.append($0) }
+  }
+  func completeRequest(_ granted: Bool) {
+    permission = granted ? .granted : .denied
+    requestCompletion?.resume(returning: granted)
+    requestCompletion = nil
   }
 }
 
@@ -110,7 +148,7 @@ import Testing
     #expect(microphone.requestCount == 0)
     #expect(source.startCount == 0)
 
-    await coordinator.start(snapshot: snapshot, lineTable: table, startAt: -1)
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
     #expect(microphone.requestCount == 1)
     #expect(source.startCount == 1)
     #expect(coordinator.state == .listening)
@@ -145,7 +183,7 @@ import Testing
     let coordinator = VoiceFollowCoordinator(
       session: session, source: source, microphone: denied, usageDescription: { "Mic for voice." })
     await coordinator.refreshAvailability()
-    await coordinator.start(snapshot: snapshot, lineTable: table, startAt: -1)
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
 
     #expect(coordinator.state == .microphoneDenied)
     #expect(denied.requestCount == 0)
@@ -155,7 +193,8 @@ import Testing
     let noDescription = VoiceFollowCoordinator(
       session: session, source: source, microphone: FakeMicrophonePermission(.granted),
       usageDescription: { nil })
-    await noDescription.start(snapshot: snapshot, lineTable: table, startAt: -1)
+    try await start(
+      noDescription, session: session, snapshot: snapshot, table: table, token: -1)
     #expect(source.startCount == 0)
     #expect(
       noDescription.state
@@ -188,7 +227,7 @@ import Testing
       session: session, source: source, microphone: FakeMicrophonePermission(.granted),
       usageDescription: { "Mic for voice." })
     await coordinator.refreshAvailability()
-    await coordinator.start(snapshot: snapshot, lineTable: table, startAt: -1)
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
     let listeningEpoch = session.voiceEpoch
     #expect(session.voiceSessionActive)
     #expect(session.state == .running)
@@ -201,11 +240,132 @@ import Testing
     try session.voiceGlide(to: 200, epoch: listeningEpoch)
     #expect(session.timeline.anchorPosition == 90)
 
-    await coordinator.resume(snapshot: snapshot, lineTable: table, startAt: 1)
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: table, token: 1,
+      resume: true)
     #expect(!session.voiceSuspended)
     #expect(session.voiceEpoch != listeningEpoch)
     #expect(source.startCount == 2)
     coordinator.stop()
+  }
+
+  @Test func stopDuringMeasuredVoiceStartThenOrdinaryPlayDoesNotStartVoice() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(
+      string: (0..<200).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
+        separator: "\n"))
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    controller.session.clock = { 0 }
+    controller.state.countdown = 0
+    controller.voiceCoordinator?.stop()
+    let source = FakeVoiceCaptureSource()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.startVoiceFollow()
+    #expect(controller.session.measuring)
+    controller.stop()
+    controller.state.countdown = 0
+    controller.toggle()
+    #expect(controller.session.measuring)
+    await settle(controller)
+    await mainTurn()
+
+    #expect(controller.session.state == .running)
+    #expect(!controller.session.voiceSessionActive)
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+  }
+
+  @Test func stopOrManualOverrideBeforeQueuedStartupTaskDoesNotOpenCapture() async throws {
+    for stop in [true, false] {
+      let doc = ScriptDocument()
+      doc.source = NSAttributedString(string: "North wind carries the lantern home.")
+      let controller = OperatorWindowController(document: doc)
+      defer { controller.close() }
+      controller.session.clock = { 0 }
+      controller.voiceCoordinator?.stop()
+      let source = FakeVoiceCaptureSource()
+      let microphone = FakeMicrophonePermission(.notDetermined)
+      let coordinator = VoiceFollowCoordinator(
+        session: controller.session, source: source, microphone: microphone,
+        usageDescription: { "Mic for voice." })
+      controller.voiceCoordinator = coordinator
+      await coordinator.refreshAvailability()
+
+      controller.startVoiceFollow()
+      #expect(!controller.session.measuring)
+      if stop {
+        controller.stopVoiceFollow()
+      } else {
+        try controller.session.seek(90)
+      }
+      await mainTurn()
+      await mainTurn()
+
+      #expect(microphone.requestCount == 0)
+      #expect(source.startCount == 0)
+      #expect(!controller.session.voiceSessionActive)
+      #expect(controller.session.timeline.anchorPosition == (stop ? 0 : 90))
+    }
+  }
+
+  @Test func manualNavigationDuringDeferredReadinessDoesNotRequestMicrophone() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let readinessCount = source.readinessCount
+    source.readinessShouldWait = true
+    let intent = try #require(session.beginVoiceStartIntent())
+    let startTask = Task {
+      await coordinator.start(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { -1 })
+    }
+    await source.waitForReadinessRequest(after: readinessCount)
+
+    try session.seek(90)
+    source.completeReadiness()
+    await startTask.value
+
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+    #expect(!session.voiceSessionActive)
+    #expect(session.timeline.anchorPosition == 90)
+  }
+
+  @Test func manualNavigationDuringDeferredPermissionDoesNotStartCapture() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    microphone.requestShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let intent = try #require(session.beginVoiceStartIntent())
+    let startTask = Task {
+      await coordinator.start(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { -1 })
+    }
+    await microphone.waitForRequest()
+
+    try session.seek(90)
+    microphone.completeRequest(true)
+    await startTask.value
+
+    #expect(microphone.requestCount == 1)
+    #expect(source.startCount == 0)
+    #expect(!session.voiceSessionActive)
+    #expect(session.timeline.anchorPosition == 90)
   }
 
   @Test func sharedVoiceDriveIsSpeedCappedAndTimedScrollingStopsVoice() async throws {
@@ -270,6 +430,34 @@ import Testing
       #expect(!controller.state.voiceAvailable)
       #expect(controller.state.voiceState == .hidden)
       controller.close()
+    }
+  }
+
+  private func mainTurn() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.main.async { continuation.resume() }
+    }
+  }
+
+  private func settle(_ controller: OperatorWindowController) async {
+    for _ in 0..<2000 {
+      if !controller.session.measuring { return }
+      await mainTurn()
+    }
+    Issue.record("Measurement did not settle in 2000 main queue turns")
+  }
+
+  private func start(
+    _ coordinator: VoiceFollowCoordinator, session: PlaybackSession, snapshot: ScriptSnapshot,
+    table: VoiceLineTable, token: Int, resume: Bool = false
+  ) async throws {
+    let intent = try #require(session.beginVoiceStartIntent())
+    if resume {
+      await coordinator.resume(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { token })
+    } else {
+      await coordinator.start(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { token })
     }
   }
 }
