@@ -26,6 +26,7 @@ import QuartzCore
   private var style = ReadingStyle()
   private var preparedUntil: Double = 0
   private(set) var endPosition: Double?
+  private(set) var voiceLineTable: VoiceLineTable?
   var fractionalTranslation = true
   override init(frame: NSRect) {
     super.init(frame: frame)
@@ -74,6 +75,7 @@ import QuartzCore
     measurementGeneration += 1
     layoutCount += 1
     snapshotID = snapshot.id
+    voiceLineTable = nil
     self.style = style
     frame.size = size
     topPadding = size.height * style.readingGuideFraction
@@ -142,6 +144,7 @@ import QuartzCore
     let offsets = Set(ParagraphIndex.starts(in: text.string))
     let wordCount = text.string.split(whereSeparator: { $0.isWhitespace }).count
     var positions: [Double] = []
+    var voiceLines: [VoiceLine] = []
     var lines = 0
     var end = 0.0
     var cursor: NSTextLocation? = content.documentRange.location
@@ -156,6 +159,16 @@ import QuartzCore
           from: content.documentRange.location, to: fragment.rangeInElement.location)
         if offsets.contains(start) { positions.append(fragment.layoutFragmentFrame.minY) }
         lines += fragment.textLineFragments.count
+        let sourceLength = self.text.string.utf16.count
+        for line in fragment.textLineFragments {
+          let lower = start + line.characterRange.location
+          let upper = min(sourceLength, lower + line.characterRange.length)
+          guard lower >= 0, lower < upper else { continue }
+          voiceLines.append(
+            VoiceLine(
+              utf16Range: lower..<upper,
+              minY: fragment.layoutFragmentFrame.minY + line.typographicBounds.minY))
+        }
         end = max(end, fragment.layoutFragmentFrame.maxY)
         cursor = fragment.rangeInElement.endLocation
         visited += 1
@@ -172,6 +185,7 @@ import QuartzCore
       if finished || visited == 0 {
         self.measurementTotalSeconds = CACurrentMediaTime() - measurementStart
         self.endPosition = end
+        self.voiceLineTable = VoiceLineTable(lines: voiceLines)
         self.text.frame.size.height = max(
           self.bounds.height, end + self.bounds.height + self.topPadding)
         completion(end, positions, wordCount, lines)

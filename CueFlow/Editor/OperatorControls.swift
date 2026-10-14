@@ -171,6 +171,29 @@ struct OperatorControls: View {
           }
           Toggle("Hide controls while playing", isOn: $state.hideControls)
         }
+        if state.voiceAvailable {
+          InspectorSection("Follow Voice") {
+            Picker(
+              "Language",
+              selection: Binding(
+                get: { state.voiceLocale },
+                set: { controller.selectVoiceLocale($0) })
+            ) {
+              ForEach(state.voiceLocales) { locale in
+                Text(locale.displayName).tag(locale.identifier)
+              }
+            }.disabled(state.voiceLocales.isEmpty || state.voiceActive)
+            Text(
+              "English is the validated language. Other languages depend on the models available in macOS."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+            Text(
+              "Speech is analyzed on this Mac. CueGlass does not record or save audio or transcript text."
+            )
+            .font(.caption).foregroundStyle(.secondary)
+            followVoiceControls
+          }
+        }
         DisclosureGroup("Controls & Keys", isExpanded: $keysExpanded) {
           Text("App must be frontmost, or the clicker must target CueGlass. No global monitoring.")
             .font(.caption)
@@ -193,6 +216,7 @@ struct OperatorControls: View {
             }
           }
           Slider(value: $state.maximum, in: 10...240, step: 1).onChange(of: state.maximum) {
+            controller.session.suspendVoiceForManualControl("Maximum pace change")
             controller.session.configuredMax = state.maximum
             controller.perform {
               try controller.session.updateLayout(
@@ -229,6 +253,47 @@ struct OperatorControls: View {
       Text(sliderValue(path))
         .foregroundStyle(.secondary).monospacedDigit()
     }.frame(height: 28)
+  }
+  @ViewBuilder private var followVoiceControls: some View {
+    switch state.voiceState {
+    case .hidden:
+      EmptyView()
+    case .checking:
+      ProgressView(state.voiceMessage).controlSize(.small)
+    case .unavailable:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+    case .unsupportedLocale:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+    case .needsModel:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Button("Install Speech Model…") { controller.installVoiceModel() }
+    case .downloading(let progress):
+      ProgressView(value: progress) { Text(state.voiceMessage).font(.caption) }
+      Button("Cancel Installation") { controller.cancelVoiceModelInstallation() }
+    case .ready:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Button("Start Follow Voice") { controller.startVoiceFollow() }
+    case .requestingMicrophone, .starting:
+      ProgressView(state.voiceMessage).controlSize(.small)
+    case .microphoneDenied:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      HStack {
+        Button("Open Microphone Settings…") { controller.openMicrophoneSettings() }
+        Button("Try Again") { controller.startVoiceFollow() }
+      }
+    case .listening, .holding:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Button("Stop Follow Voice") { controller.stopVoiceFollow() }
+    case .suspended:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      HStack {
+        Button("Resume Following") { controller.startVoiceFollow(resume: true) }
+        Button("Stop Following") { controller.stopVoiceFollow() }
+      }
+    case .failed:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Button("Check Again") { controller.refreshVoiceAvailability() }
+    }
   }
 }
 

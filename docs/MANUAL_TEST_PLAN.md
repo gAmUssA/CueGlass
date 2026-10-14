@@ -51,3 +51,26 @@ Use Timed Scrolling on actual measured end with 300 seconds, pause/resume, scrub
 Switch local/fullscreen/floating and resize floating while playing: one surface, immutable snapshot, same guide text and restored play state after measurement. Float over a real fullscreen call app, drag, move displays, disconnect and restore frame. Whole-window alpha must visibly affect the entire panel independently of text-panel alpha. Check warnings at low alpha and transparent ink. Exercise optional click-through and recovery by Controls, menu and Escape; low-alpha hit testing is unverified until observed. Controls must never sit on selected fullscreen output: safe other display or hidden with recovery, even when output used the operator screen.
 
 Guide styles/opacity, edge gradient and text-panel opacity must not rewrap; margins must perform one anchored relayout. Test hide-while-playing after inactivity, restoration on pointer movement/pause/commands, and no fades under Reduce Motion. No operator timing/settings may appear on the clean output. Perform sustained 100k-word and 60-minute profiling separately from the paused measurement micro-observation.
+
+## Follow Voice (macOS 26+)
+
+Run on an unlocked macOS 26+ Mac with a human speaker. Record OS/build and device; do not write script or recognized speech into the test record. Synthetic speech is not acceptance evidence. Start from a fresh microphone privacy state for the prompt case. Verify the inspector is absent on macOS 14–25 and when SpeechTranscriber reports unavailable; a build targeting macOS 14 is not a runtime test on macOS 14.
+
+Implementation-round automated results (2026-10-14): the unsigned DebugLocal build targets `arm64-apple-macos14.0`; 41 Core tests and 63 native tests passed, including fake-source permission/model and TextKit mapping coverage. The available host was macOS 27.0.1. These checks do not complete any human-speech row below; all remain pending.
+
+| Case | Required observation | Status |
+|---|---|---|
+| Availability and locales | UI is macOS 26+/supported-device only; select an offered locale; English is identified as validated | Pending |
+| Permission prompt and denial | Start alone prompts; deny; no capture/listening starts; denial explains Settings path | Pending |
+| Settings recovery | Open Privacy & Security → Microphone, allow CueGlass, retry Start successfully | Pending |
+| Missing model consent | Capability check downloads nothing; Install is explicit; observe actual progress, cancel, and confirm no analyzer/mic start | Pending |
+| Model installation | Consent to install, observe completion and readiness recheck, then separately Start | Pending |
+| Silence and low confidence | Speak no words or indistinct words; follow holds without advancing and shows a clear waiting state | Pending |
+| Ad-lib | Speak words absent from the script; position holds until confidence recovers | Pending |
+| Skip and reacquisition | Skip ahead; confirm bounded glide/jump only after enough matching words | Pending |
+| Reread and reacquisition | Read a prior passage; confirm policy reacquires without volatile-update jumps | Pending |
+| Manual override and resume | Scrub/seek/change pace/pause; mic closes and status says paused; Play/Space or Resume explicitly restarts | Pending |
+| Timed Scrolling separation | Choose Timed Scrolling while following; confirm microphone closes and voice session ends | Pending |
+| Sustained human take and teardown | Run a long human take, then Stop Follow Voice/Stop Take/close/sleep; verify no retained audio/transcript and no live mic indicator | Pending |
+
+These cases were not performed during the implementation round: the available validation session had no human speaker. No human-speech result is claimed; do not check these rows based on the standalone generated-speech experiment or automated tests.

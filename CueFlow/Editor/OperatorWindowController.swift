@@ -1,6 +1,7 @@
 import AppKit
 import CueFlowCore
 import QuartzCore
+import Speech
 import SwiftUI
 
 @MainActor final class OperatorState: ObservableObject {
@@ -27,6 +28,13 @@ import SwiftUI
   @Published var active = false
   @Published var running = false
   @Published var pending = false
+  @Published var voiceAvailable = false
+  @Published var voiceState: VoiceFollowUIState = .hidden
+  @Published var voiceLocales: [VoiceLocaleOption] = []
+  @Published var voiceLocale = ""
+  @Published var voiceActive = false
+  @Published var voiceSuspended = false
+  @Published var voiceMessage = ""
 }
 @MainActor final class OperatorWindow: NSWindow {
   weak var controller: OperatorWindowController?
@@ -220,6 +228,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let script: ScriptDocument
   let state = OperatorState()
   let session = PlaybackSession()
+  private(set) var voiceCoordinator: VoiceFollowCoordinator?
   let editor = DropEditor(usingTextLayoutManager: true)
   let preview = ScaledPreviewContainer(frame: .zero)
   var output: OutputWindowController?
@@ -268,6 +277,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var lastPointer = NSEvent.mouseLocation
 
   private var replacingEditor = false
+  private var pendingVoiceStart = false
+  private var pendingVoiceResume = false
   private var sample: ScriptSnapshot?
   init(document: ScriptDocument) {
     script = document
@@ -436,6 +447,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       viewport: preview.reflection.viewport, session: session)
     preview.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
     session.onChange = { [weak self] in self?.refresh() }
+    if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
+      let coordinator = VoiceFollowCoordinator(
+        session: session, source: SpeechVoiceSource(),
+        usageDescription: {
+          Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String
+        })
+      voiceCoordinator = coordinator
+      state.voiceAvailable = true
+      coordinator.onChange = { [weak self] in self?.syncVoiceState() }
+      Task { await coordinator.refreshAvailability() }
+    }
     NotificationCenter.default.addObserver(
       self, selector: #selector(documentChanged), name: ScriptDocument.replaced, object: script)
     NotificationCenter.default.addObserver(
@@ -469,6 +491,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     do { try work() } catch let error as NSError { present(error) }
   }
   func toggle() {
+    if session.voiceSessionActive {
+      if session.voiceSuspended {
+        startVoiceFollow(resume: true)
+      } else {
+        perform { try session.toggle(script) }
+      }
+      return
+    }
     guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       state.status = "Type, paste or drop a TXT or RTF script to begin."
       return
@@ -493,6 +523,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func stop() {
+    voiceCoordinator?.stop()
     hideOutput()
     panel?.close()
     panel = nil
@@ -634,6 +665,83 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       throw error
     }
   }
+  func startVoiceFollow(resume: Bool = false) {
+    guard let coordinator = voiceCoordinator else { return }
+    guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      state.status = "Type, paste or drop a TXT or RTF script to begin."
+      return
+    }
+    do {
+      try claimAndPrepare()
+    } catch {
+      present(error)
+      return
+    }
+    if session.measuring {
+      pendingVoiceStart = !resume
+      pendingVoiceResume = resume
+      state.status = "Measuring script… Follow Voice will start when ready"
+      return
+    }
+    beginVoiceFollow(coordinator, resume: resume)
+  }
+  private func beginVoiceFollow(_ coordinator: VoiceFollowCoordinator, resume: Bool) {
+    guard let snapshot = session.snapshot, let lineTable = authoritative.voiceLineTable else {
+      state.status = "Text layout is not ready for Follow Voice"
+      return
+    }
+    let index = ScriptIndex(text: snapshot.attributed.string)
+    let offset = authoritative.captureAnchor()?.utf16Offset ?? 0
+    let token = index.tokens.lastIndex { $0.range.lowerBound <= offset } ?? -1
+    Task {
+      if resume {
+        await coordinator.resume(snapshot: snapshot, lineTable: lineTable, startAt: token)
+      } else {
+        await coordinator.start(snapshot: snapshot, lineTable: lineTable, startAt: token)
+      }
+    }
+  }
+  func installVoiceModel() {
+    guard let coordinator = voiceCoordinator else { return }
+    Task { await coordinator.installMissingModel() }
+  }
+  func cancelVoiceModelInstallation() { voiceCoordinator?.cancelInstallation() }
+  func refreshVoiceAvailability() {
+    guard let coordinator = voiceCoordinator else { return }
+    Task { await coordinator.refreshAvailability() }
+  }
+  func stopVoiceFollow() { voiceCoordinator?.stop() }
+  func openMicrophoneSettings() { voiceCoordinator?.openMicrophoneSettings() }
+  func selectVoiceLocale(_ identifier: String) { voiceCoordinator?.selectLocale(identifier) }
+  private func syncVoiceState() {
+    guard let coordinator = voiceCoordinator else { return }
+    state.voiceState = coordinator.state
+    state.voiceLocales = coordinator.locales
+    state.voiceLocale = coordinator.selectedLocaleIdentifier
+    state.voiceActive = coordinator.isActive
+    state.voiceSuspended = coordinator.isSuspended
+    state.voiceMessage = voiceMessage(for: coordinator.state)
+  }
+  private func voiceMessage(for state: VoiceFollowUIState) -> String {
+    switch state {
+    case .hidden: ""
+    case .checking: "Checking supported languages and the on-device speech model…"
+    case .unavailable: "Speech transcription is unavailable on this Mac."
+    case .unsupportedLocale: "The selected language is not supported on this Mac."
+    case .needsModel: "The selected Apple speech model needs to be installed with your consent."
+    case .downloading(let progress): "Installing speech model · \(Int(progress * 100))%"
+    case .ready:
+      "English is the validated language. Other supported languages depend on macOS. Audio stays on this Mac and is not recorded."
+    case .requestingMicrophone: "Waiting for microphone permission…"
+    case .microphoneDenied:
+      "Microphone access is off. Allow CueGlass in Privacy & Security → Microphone, then try again."
+    case .starting: "Starting on-device speech analysis…"
+    case .listening: "Listening · audio is not recorded"
+    case .holding(let reason): reason
+    case .suspended(let reason): "Following paused · \(reason) · microphone closed"
+    case .failed(let message): message
+    }
+  }
   var authoritative: PrompterViewport {
     output?.reflection.viewport ?? floating?.reflection.viewport ?? preview.reflection.viewport
   }
@@ -725,6 +833,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
             self.pendingPlay = false
             self.toggle()
           }
+          if self.pendingVoiceStart || self.pendingVoiceResume {
+            let resumeVoice = self.pendingVoiceResume
+            self.pendingVoiceStart = false
+            self.pendingVoiceResume = false
+            if let coordinator = self.voiceCoordinator {
+              self.beginVoiceFollow(coordinator, resume: resumeVoice)
+            }
+          }
           self.refresh()
         }
       }
@@ -739,6 +855,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func refresh() {
+    syncVoiceState()
     state.active = session.state != .idle
     state.running = session.state == .running || session.state == .countingDown
     state.pending = session.pendingRevision
@@ -985,7 +1102,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       perform { try session.pauseSafely("Local preview hidden — paused") }
     }
   }
-  @objc func sleeping() { perform { try session.pauseSafely("Paused for sleep") } }
+  @objc func sleeping() {
+    perform { try session.pauseSafely("Paused for sleep") }
+  }
   @objc func accountChanged() {
     script.notice =
       "iCloud account changed or unavailable. Unsaved edits are kept; use Save a Copy for local recovery."

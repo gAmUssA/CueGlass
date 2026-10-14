@@ -10,15 +10,18 @@
 		1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */; };
 		2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */; };
 		2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */; };
+		40519B16D4A4CAD34DB3C9DC /* SpeechVoiceSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */; };
 		4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B7911264ADD238A803806 /* ScriptDocument.swift */; };
 		521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E203A73B8791176DFFD9E89B /* AppDelegate.swift */; };
 		55ABDC67343D25B772455596 /* OperatorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */; };
 		599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E331330CF345B398B53267B /* OperatorControls.swift */; };
+		64D8D937E071E2C01F23BA0E /* VoiceFollowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */; };
 		6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3798F2E904FA73605AD7462F /* IntegrationTests.swift */; };
 		737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */; };
 		7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E59D28065A1EC8A518D087C /* PresentationFont.swift */; };
 		7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8C3DC660FC600F99391B73D1 /* CueGlass.icon */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
+		9F152307F21A87AB32F82275 /* VoiceFollowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */; };
 		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
 		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
 		C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91658B74825E5235177DFB /* PresentationBuilder.swift */; };
@@ -42,6 +45,8 @@
 
 /* Begin PBXFileReference section */
 		1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrompterViewport.swift; sourceTree = "<group>"; };
+		1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFollowTests.swift; sourceTree = "<group>"; };
+		239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechVoiceSource.swift; sourceTree = "<group>"; };
 		282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputWindowController.swift; sourceTree = "<group>"; };
 		3798F2E904FA73605AD7462F /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
 		4B91658B74825E5235177DFB /* PresentationBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationBuilder.swift; sourceTree = "<group>"; };
@@ -59,6 +64,7 @@
 		AA1B7911264ADD238A803806 /* ScriptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptDocument.swift; sourceTree = "<group>"; };
 		B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptImporter.swift; sourceTree = "<group>"; };
 		C27F804C248326C3E21AB38F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFollowCoordinator.swift; sourceTree = "<group>"; };
 		DA806692FFD5885EB30FF35C /* PlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
 		DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelController.swift; sourceTree = "<group>"; };
 		E203A73B8791176DFFD9E89B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -80,6 +86,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		09F27E16328920EDF4A2F8E1 /* Voice */ = {
+			isa = PBXGroup;
+			children = (
+				239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */,
+				D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */,
+			);
+			path = Voice;
+			sourceTree = "<group>";
+		};
 		118CA4BB5FC3623A76C5231E /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -121,6 +136,7 @@
 			children = (
 				3798F2E904FA73605AD7462F /* IntegrationTests.swift */,
 				8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */,
+				1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */,
 			);
 			path = CueFlowTests;
 			sourceTree = "<group>";
@@ -145,6 +161,7 @@
 				DADB96F6FC9966EA558CCD34 /* Playback */,
 				2A7C6102D2FF413F2F2AAB54 /* Presentation */,
 				2891F2B27A5E0DB888A3FC93 /* Storage */,
+				09F27E16328920EDF4A2F8E1 /* Voice */,
 			);
 			path = CueFlow;
 			sourceTree = "<group>";
@@ -337,6 +354,8 @@
 				4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */,
 				E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */,
 				B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */,
+				40519B16D4A4CAD34DB3C9DC /* SpeechVoiceSource.swift in Sources */,
+				9F152307F21A87AB32F82275 /* VoiceFollowCoordinator.swift in Sources */,
 				E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -347,6 +366,7 @@
 			files = (
 				6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */,
 				2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */,
+				64D8D937E071E2C01F23BA0E /* VoiceFollowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -97,6 +97,17 @@ struct StageFooter: View {
           Image(systemName: "lock.fill")
           Text("Editing locked for this take").font(.system(size: 11))
           Spacer(minLength: 0)
+          if state.voiceActive {
+            Circle().fill(state.voiceSuspended ? .orange : .green).frame(width: 6, height: 6)
+            Text(state.voiceMessage).font(.system(size: 10)).lineLimit(1)
+            if state.voiceSuspended {
+              Button("Resume Following") { controller.startVoiceFollow(resume: true) }
+                .controlSize(.small)
+            }
+            Button(state.voiceSuspended ? "Stop Following" : "Stop Follow Voice") {
+              controller.stopVoiceFollow()
+            }.controlSize(.small)
+          }
           Button("Stop Take") { controller.stop() }.controlSize(.small)
         }.padding(8).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
       }

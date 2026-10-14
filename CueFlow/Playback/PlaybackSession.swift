@@ -33,8 +33,14 @@ struct ScriptSnapshot {
   private(set) var countdownDigit: Int?
   private(set) var elapsed = ElapsedClock()
   private(set) var timedDuration: Double?
+  private(set) var voiceSessionActive = false
+  private(set) var voiceSuspended = false
+  private(set) var voiceEpoch: UInt64 = 0
+  var onVoicePrioritySuspended: ((String, UInt64) -> Void)?
+  var onVoiceEnded: (() -> Void)?
   private var timedElapsedBase = 0.0
   private var scrubGate = ScrubGate()
+  var canStartVoice: Bool { snapshot != nil && state != .idle && timeline.direction == .forward }
   var effectiveTime: Double {
     StallPolicy.effectiveTime(
       now: max(clock(), timeline.anchorTime), presented: lastPresentedTarget)
@@ -42,6 +48,7 @@ struct ScriptSnapshot {
   var elapsedSeconds: Double { elapsed.value(at: effectiveTime) }
   var effectiveLPM: Double { timeline.velocity * 60 / lineAdvance }
   var remainingSeconds: Double? {
+    guard !voiceSessionActive else { return nil }
     guard let upper = timeline.upperBound else { return nil }
     let p =
       timeline.anchorPosition
@@ -79,6 +86,7 @@ struct ScriptSnapshot {
     message = "Paused"
   }
   func toggle(_ doc: ScriptDocument) throws {
+    suspendVoiceForManualCommand("Play or Pause")
     try prepare(doc)
     if state == .running || state == .countingDown {
       try pause()
@@ -106,13 +114,14 @@ struct ScriptSnapshot {
     try timeline.play(at: time)
     elapsed.play(at: time)
     lastPresentedTarget = time
+    scrubGate.play()
     state = .running
     countdownEnd = nil
     countdownDigit = nil
-    scrubGate.play()
     message = "Playing"
   }
   func pause() throws {
+    suspendVoiceForManualCommand("Pause")
     deferredStart = nil
     guard state != .idle else { return }
     let time = effectiveTime
@@ -125,6 +134,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func pauseSafely(_ reason: String) throws {
+    suspendVoiceForManualCommand(reason)
     deferredStart = nil
     guard state != .idle else { return }
     let time = max(timeline.anchorTime, lastPresentedTarget ?? effectiveTime)
@@ -137,6 +147,12 @@ struct ScriptSnapshot {
     onChange?()
   }
   func stop() {
+    if voiceSessionActive {
+      voiceEpoch &+= 1
+      voiceSessionActive = false
+      voiceSuspended = false
+      onVoiceEnded?()
+    }
     deferredStart = nil
     timeline = PlaybackTimeline()
     snapshot = nil
@@ -151,6 +167,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func speed(_ lpm: Double) throws {
+    suspendVoiceForManualCommand("Pace change")
     let pace = try SpeedModel(lpm: lpm, lineAdvance: lineAdvance, configuredMax: configuredMax)
     try timeline.setVelocity(pace.pointsPerSecond, at: effectiveTime)
     preferredLPM = pace.nominalLPM
@@ -184,6 +201,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func seek(_ position: Double) throws {
+    suspendVoiceForManualCommand("Manual navigation")
     if state == .countingDown { try pause() }
     try timeline.seek(to: position, at: effectiveTime)
     lastPresentedTarget = nil
@@ -196,6 +214,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func restart() throws {
+    suspendVoiceForManualCommand("Restart")
     let duration = timedDuration
     try pause()
     elapsed = ElapsedClock()
@@ -206,6 +225,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func reverse() throws {
+    suspendVoiceForManualCommand("Direction change")
     if state == .countingDown { try pause() }
     try timeline.setDirection(
       timeline.direction == .forward ? .reverse : .forward, at: effectiveTime)
@@ -214,6 +234,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func step(forward: Bool) throws {
+    suspendVoiceForManualCommand("Paragraph step")
     if state == .countingDown { try pause() }
     try seek(
       ParagraphIndex.target(
@@ -221,11 +242,14 @@ struct ScriptSnapshot {
         lineAdvance: lineAdvance, end: timeline.upperBound ?? paragraphPositions.last ?? 0))
   }
   func scrub(delta: Double, momentum: Bool) throws {
+    suspendVoiceForManualCommand("Scrub")
     guard scrubGate.accepts(momentum: momentum) else { return }
     try pause()
     try seek(timeline.anchorPosition + delta)
   }
   func enableTimed(seconds: Double) throws {
+    suspendVoiceForManualCommand("Timed Scrolling")
+    if voiceSessionActive { endVoice() }
     guard timeline.direction == .forward else {
       throw NSError(
         domain: "CueGlass", code: 5,
@@ -262,6 +286,7 @@ struct ScriptSnapshot {
     }
   }
   func loadLatest(_ doc: ScriptDocument) throws {
+    endVoice()
     guard state != .running, state != .countingDown else {
       throw CocoaError(.validationMissingMandatoryProperty)
     }
@@ -290,6 +315,130 @@ struct ScriptSnapshot {
     message = same ? "Latest revision loaded — paused" : "Script changed; position reset"
     onChange?()
   }
+  func beginVoice(epoch: UInt64) throws {
+    guard snapshot != nil, state != .idle else {
+      throw CocoaError(.validationMissingMandatoryProperty)
+    }
+    guard timeline.direction == .forward else {
+      throw NSError(
+        domain: "CueGlass", code: 6,
+        userInfo: [NSLocalizedDescriptionKey: "Switch to Forward before starting Follow Voice."])
+    }
+    deferredStart = nil
+    let time = effectiveTime
+    if timedDuration != nil {
+      timedDuration = nil
+      message = "Timed Scrolling off — Follow Voice on"
+    }
+    try timeline.clearVoiceCeiling(at: time)
+    try timeline.setVelocity(
+      min(timeline.velocity, lineAdvance * configuredMax / 60), at: time)
+    try timeline.setVoiceCeiling(try timeline.position(at: time), at: time)
+    try timeline.play(at: time)
+    elapsed.play(at: time)
+    lastPresentedTarget = time
+    scrubGate.play()
+    state = .running
+    voiceSessionActive = true
+    voiceSuspended = false
+    voiceEpoch = epoch
+    countdownEnd = nil
+    countdownDigit = nil
+    message = "Waiting for speech"
+    onChange?()
+  }
+  func voiceGlide(to target: Double, epoch: UInt64) throws {
+    guard voiceSessionActive, !voiceSuspended, voiceEpoch == epoch,
+      state == .running, timeline.direction == .forward
+    else { return }
+    let time = effectiveTime
+    let current = try timeline.position(at: time)
+    guard target.isFinite, target > current else { return }
+    let maximum = max(0.1, lineAdvance * configuredMax / 60)
+    try timeline.setVelocity(min(timeline.velocity, maximum), at: time)
+    try timeline.setVoiceCeiling(target, at: time)
+    onChange?()
+  }
+  func voiceJump(to target: Double, epoch: UInt64) throws {
+    guard voiceSessionActive, !voiceSuspended, voiceEpoch == epoch,
+      state == .running, timeline.direction == .forward,
+      target.isFinite, target >= 0
+    else { return }
+    let time = effectiveTime
+    try timeline.seek(to: target, at: time)
+    try timeline.setVoiceCeiling(target, at: time)
+    lastPresentedTarget = time
+    onChange?()
+  }
+  func voiceHold(_ reason: String, epoch: UInt64) throws {
+    guard voiceSessionActive, !voiceSuspended, voiceEpoch == epoch, state == .running else {
+      return
+    }
+    let time = effectiveTime
+    try timeline.setVoiceCeiling(try timeline.position(at: time), at: time)
+    message = reason
+    onChange?()
+  }
+  func suspendVoice(_ reason: String, epoch: UInt64) {
+    guard voiceSessionActive else { return }
+    voiceEpoch = epoch
+    suspendVoicePosition()
+    message = "Following paused — \(reason)"
+    onChange?()
+  }
+  func resumeVoice(epoch: UInt64) throws {
+    guard voiceSessionActive, voiceSuspended, snapshot != nil else { return }
+    guard timeline.direction == .forward else {
+      throw NSError(
+        domain: "CueGlass", code: 6,
+        userInfo: [NSLocalizedDescriptionKey: "Switch to Forward before resuming Follow Voice."])
+    }
+    voiceEpoch = epoch
+    let time = effectiveTime
+    try timeline.setVoiceCeiling(try timeline.position(at: time), at: time)
+    try timeline.play(at: time)
+    elapsed.play(at: time)
+    lastPresentedTarget = time
+    state = .running
+    voiceSuspended = false
+    message = "Waiting for speech"
+    onChange?()
+  }
+  func endVoice() {
+    guard voiceSessionActive else { return }
+    voiceEpoch &+= 1
+    if !voiceSuspended && (state == .running || state == .countingDown) {
+      let time = effectiveTime
+      try? timeline.clearVoiceCeiling(at: time)
+      try? timeline.pause(at: time)
+      elapsed.pause(at: time)
+      state = .paused
+    } else if voiceSuspended {
+      try? timeline.clearVoiceCeiling(at: effectiveTime)
+    }
+    voiceSessionActive = false
+    voiceSuspended = false
+    countdownEnd = nil
+    countdownDigit = nil
+    message = "Follow Voice stopped"
+    onVoiceEnded?()
+    onChange?()
+  }
+  private func suspendVoiceForManualCommand(_ reason: String) {
+    guard voiceSessionActive, !voiceSuspended else { return }
+    voiceEpoch &+= 1
+    suspendVoicePosition()
+    message = "Following paused — \(reason)"
+    onVoicePrioritySuspended?(reason, voiceEpoch)
+  }
+  func suspendVoiceForManualControl(_ reason: String) {
+    suspendVoiceForManualCommand(reason)
+  }
+  private func suspendVoicePosition() {
+    let time = effectiveTime
+    try? timeline.clearVoiceCeiling(at: time)
+    voiceSuspended = true
+  }
   func noteFrame(target: Double, end: Double?) throws {
     guard target.isFinite, target >= 0 else { throw TimelineError.invalidTime }
     if state == .countingDown, let deadline = countdownEnd {
@@ -317,6 +466,7 @@ struct ScriptSnapshot {
       try timeline.pause(at: target)
       elapsed.pause(at: target)
       state = .paused
+      if voiceSessionActive { endVoice() }
       message =
         timeline.direction == .forward
         ? "End of script — Restart to read again" : "Start of script — held"

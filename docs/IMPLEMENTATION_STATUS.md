@@ -33,6 +33,14 @@ Architecture contracts and schema supersession are in [ADRs 0004/0005](adr/READM
 
 The initial MVP distribution path is recorded in [ADR 0006](adr/0006-public-github-actions-release-build.md): a public GitHub Actions workflow builds a universal unsigned/unnotarized prerelease from version tags. Signing/notarization and real iCloud acceptance remain in the next milestone.
 
+## Optional Follow Voice implementation
+
+Bean `cueglass-2mil` adds an optional macOS 26+ `SpeechVoiceSource` and operator inspector section, hidden on macOS 14–25 and when SpeechTranscriber is unavailable. Locale/model status checks do not open the microphone or download assets. The operator separately consents to model installation, can observe installation progress/cancel, and must explicitly Start after readiness. Microphone permission is checked/requested only after Start; a denial or missing usage description fails closed.
+
+The adapter feeds bounded transient audio/results into on-device SpeechAnalyzer. `VoiceFollowCore` aligns transcript hypotheses to the immutable take's UTF-16 tokens; a measured TextKit 2 line table maps accepted tokens into Y positions. The shared PlaybackTimeline's voice ceiling provides capped time-based glides. Confirmed skips/rereads can jump; silence/uncertainty hold. Manual commands close capture and suspend following; Play/Space or Resume explicitly restarts. Timed Scrolling ends the voice session. No audio/transcript content is persisted.
+
+On 2026-10-14, the unsigned DebugLocal app built for `arm64-apple-macos14.0`; 41 Core tests and 63 native tests passed, as did the direct `scripts/test-app.sh` cross-check, strict Swift formatting, plist lint and `beans check --json`. The host was macOS 27.0.1, so this is compile evidence for the macOS 14 deployment target, not a macOS 14 runtime test. Owner iCloud build inputs were absent, so that configuration was not compiled. Human-speech permission/model/lifecycle acceptance on macOS 26+ remains open; no human speaker was available and synthetic speech was not substituted. Detailed commands and outputs are in the branch handoff report at `/tmp/cg2m14/d.md`.
+
 [Owner cloud follow-up](../.beans/cueglass-ykl0--owner-icloud-setup-and-two-mac-verification.md), [physical/visual follow-up](../.beans/cueglass-feeg--physical-display-and-visual-verification.md), [performance follow-up](../.beans/cueglass-c1kt--performance-profiling-on-hardware.md) remain open. No current-tip independent pass is claimed.
 
 ## Quiet Studio correction
