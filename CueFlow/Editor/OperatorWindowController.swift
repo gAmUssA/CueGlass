@@ -178,6 +178,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var takeBar: NSView?
   var progressTimer: Timer?
   var pendingPlay = false
+  var pendingResume = false
+  var pendingAnchor: ReadingAnchor?
   var renderGeneration = 0
   var lastPointerTime = CACurrentMediaTime()
   var lastPointer = NSEvent.mouseLocation
@@ -389,7 +391,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         render()
       }
       if session.measuring {
-        pendingPlay.toggle()
+        if pendingResume {
+          pendingResume = false
+          pendingPlay = false
+        } else {
+          pendingPlay.toggle()
+        }
         state.status =
           pendingPlay
           ? "Measuring script… will start when ready" : "Measuring script… start cancelled"
@@ -405,12 +412,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     panel?.close()
     panel = nil
     pendingPlay = false
+    pendingResume = false
+    pendingAnchor = nil
+    session.measuring = false
     session.stop()
     PresentationCoordinator.shared.release(self)
     render()
     refresh()
   }
   func restart() {
+    cancelPendingNavigation()
     perform {
       try session.restart()
       applyCurrentPosition()
@@ -457,17 +468,15 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         return
       }
       try session.pause()
-      let anchor = authoritative.captureAnchor()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = false
       state.style = style
       session.style = style
       replacingEditor = true
       script.setStyle(style)
       replacingEditor = false
       render()
-      if let anchor, let position = authoritative.restore(anchor) {
-        try session.seek(position)
-        applyCurrentPosition()
-      }
       session.message = "Paused for layout change"
       refresh()
       if let name = style.fontIdentifier, NSFont(name: name, size: style.fontSize) == nil {
@@ -522,15 +531,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       viewport?.onScrub = { [weak self, weak viewport, weak reflection] event in
         guard let self, let viewport else { return }
         let scale = viewport.convert(CGSize(width: 1, height: 1), to: nil).height
-        self.perform {
-          try self.session.scrub(
-            delta: ScrubGate.delta(
-              rawY: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas,
-              lineAdvance: self.session.lineAdvance, scale: abs(scale),
-              verticalReflection: reflection?.vertical == true),
-            momentum: !event.momentumPhase.isEmpty)
-          self.applyCurrentPosition()
-        }
+        self.scrub(
+          delta: ScrubGate.delta(
+            rawY: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas,
+            lineAdvance: self.session.lineAdvance, scale: abs(scale),
+            verticalReflection: reflection?.vertical == true),
+          momentum: !event.momentumPhase.isEmpty)
       }
     }
     reflect()
@@ -538,18 +544,32 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     applyCurrentPosition()
     if session.snapshot != nil {
       session.measuring = true
-      authoritative.measure { [weak self] end, paragraphs, words, lines in
+      // The first pass establishes the text view extent. The geometry query settles
+      // its viewport before a second bounded pass records final fragment positions.
+      authoritative.measure { [weak self] _, _, _, _ in
         guard let self, self.renderGeneration == generation else { return }
-        self.session.measuring = false
-        self.perform {
-          try self.session.updateLayout(
-            end: end, paragraphs: paragraphs, wordCount: words, lineCount: lines)
+        _ = self.authoritative.captureAnchor()
+        authoritative.measure { [weak self] end, paragraphs, words, lines in
+          guard let self, self.renderGeneration == generation else { return }
+          self.session.measuring = false
+          self.perform {
+            _ = self.authoritative.captureAnchor()
+            let position = self.pendingAnchor.flatMap { self.authoritative.restore($0) }
+            self.pendingAnchor = nil
+            try self.session.updateLayout(
+              end: end, paragraphs: paragraphs, wordCount: words, lineCount: lines,
+              position: position)
+            self.applyCurrentPosition()
+          }
+          if self.pendingResume {
+            self.pendingResume = false
+            self.resumeAfterMeasurement()
+          } else if self.pendingPlay {
+            self.pendingPlay = false
+            self.toggle()
+          }
+          self.refresh()
         }
-        if self.pendingPlay {
-          self.pendingPlay = false
-          self.toggle()
-        }
-        self.refresh()
       }
     }
   }
@@ -643,19 +663,19 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func loadLatest() {
     perform {
       let oldText = session.snapshot?.attributed.string
+      // Load Latest is an explicit command: capture the current view, not an earlier intent.
       let anchor = authoritative.captureAnchor()
       try session.loadLatest(script)
+      cancelPendingNavigation()
+      pendingPlay = false
+      pendingResume = false
       state.style = script.model.readingStyle
-      render()
       if oldText == session.snapshot?.attributed.string, let anchor, let id = session.snapshot?.id {
-        let updated = ReadingAnchor(
+        pendingAnchor = ReadingAnchor(
           snapshotID: id, utf16Offset: anchor.utf16Offset,
           intraLineFraction: anchor.intraLineFraction)
-        if let position = authoritative.restore(updated) {
-          try session.seek(position)
-          applyCurrentPosition()
-        }
       }
+      render()
       refresh()
     }
   }
@@ -670,7 +690,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
           "UP ↑\nLEFT ← 1. CueGlass → RIGHT\n2. Read this asymmetric line\n3. ABC 123 →\nDOWN ↓",
         attributes: [.font: NSFont.systemFont(ofSize: 18)]))
   }
-  func showOutput() {
+  func showOutput(confirm: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }) {
     if output != nil {
       hideOutput()
       return
@@ -691,14 +711,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         "Output will cover this screen. Press Escape or use Stop Output to return."
       alert.addButton(withTitle: "Present")
       alert.addButton(withTitle: "Cancel")
-      guard alert.runModal() == .alertFirstButtonReturn else { return }
+      guard confirm(alert) == .alertFirstButtonReturn else { return }
     }
     perform {
       try PresentationCoordinator.shared.claim(self)
       try session.prepare(script)
-      let wasRunning = session.state == .running
+      let wasRunning = session.state == .running || pendingResume
       try session.pause()
-      let anchor = authoritative.captureAnchor()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = wasRunning
       floating?.onClose = nil
       floating?.close()
       floating = nil
@@ -712,11 +734,6 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       next.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
       next.onClose = { [weak self] in self?.outputClosed() }
       render()
-      if let anchor, let position = authoritative.restore(anchor) {
-        try session.seek(position)
-        applyCurrentPosition()
-      }
-      if wasRunning { resumeAfterMeasurement() }
       next.showWindow(nil)
       next.window?.orderFrontRegardless()
       window?.makeKeyAndOrderFront(nil)
@@ -889,16 +906,19 @@ extension OperatorWindowController {
     case .jumpSlower: adjustSpeed(-state.jumpStep)
     case .restart: restart()
     case .nextParagraph:
+      cancelPendingNavigation()
       perform {
         try session.step(forward: true)
         applyCurrentPosition()
       }
     case .previousParagraph:
+      cancelPendingNavigation()
       perform {
         try session.step(forward: false)
         applyCurrentPosition()
       }
     case .reverse:
+      cancelPendingNavigation()
       perform {
         try session.reverse()
         refresh()
@@ -915,9 +935,11 @@ extension OperatorWindowController {
     perform {
       try PresentationCoordinator.shared.claim(self)
       try session.prepare(script)
-      let running = session.state == .running
+      let running = session.state == .running || pendingResume
       try session.pause()
-      let anchor = authoritative.captureAnchor()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = running
       output?.onClose = nil
       output?.close()
       output = nil
@@ -938,41 +960,53 @@ extension OperatorWindowController {
         self.refresh()
       }
       render()
-      if let anchor, let p = authoritative.restore(anchor) {
-        try session.seek(p)
-        applyCurrentPosition()
-      }
       next.showWindow(nil)
       showControls()
-      if running { resumeAfterMeasurement() }
       refresh()
+    }
+  }
+  private func preservePreparationAnchor() {
+    if pendingAnchor == nil { pendingAnchor = authoritative.captureAnchor() }
+  }
+  func cancelPendingNavigation() {
+    pendingAnchor = nil
+  }
+  func scrub(delta: Double, momentum: Bool) {
+    if !momentum { cancelPendingNavigation() }
+    perform {
+      try session.scrub(delta: delta, momentum: momentum)
+      applyCurrentPosition()
+    }
+  }
+  func seek(_ position: Double) {
+    cancelPendingNavigation()
+    perform {
+      try session.seek(position)
+      applyCurrentPosition()
     }
   }
   func resumeAfterMeasurement() {
     if session.measuring {
-      pendingPlay = true
+      pendingResume = true
     } else {
       perform {
         let saved = session.countdownSeconds
         session.countdownSeconds = 0
+        defer { session.countdownSeconds = saved }
         try session.toggle(script)
-        session.countdownSeconds = saved
       }
     }
   }
   func floatingResized() {
     guard let floating, let size = floating.window?.contentView?.bounds.size else { return }
     perform {
-      let running = session.state == .running
+      let running = session.state == .running || pendingResume
       try session.pause()
-      let anchor = authoritative.captureAnchor()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = running
       session.logicalSize = size
       render()
-      if let anchor, let p = authoritative.restore(anchor) {
-        try session.seek(p)
-        applyCurrentPosition()
-      }
-      if running { resumeAfterMeasurement() }
     }
   }
   func updateFloatingOptions() {

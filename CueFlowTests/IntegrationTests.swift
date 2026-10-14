@@ -206,6 +206,7 @@ import Testing
     #expect(controller.editor.string.hasPrefix(" "))
     #expect(controller.session.state == .idle)
     controller.session.clock = { 10 }
+    controller.state.countdown = 0
     controller.toggle()
     #expect(controller.session.state == .running)
     #expect(!controller.editor.isEditable)

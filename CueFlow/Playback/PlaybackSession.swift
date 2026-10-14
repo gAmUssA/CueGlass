@@ -153,12 +153,18 @@ struct ScriptSnapshot {
     }
     onChange?()
   }
-  func updateLayout(end: Double?, paragraphs: [Double], wordCount: Int, lineCount: Int) throws {
+  func updateLayout(
+    end: Double?, paragraphs: [Double], wordCount: Int, lineCount: Int, position: Double? = nil
+  ) throws {
     lineAdvance = PresentationFont.lineAdvance(style)
     let pace = try SpeedModel(
       lpm: preferredLPM, lineAdvance: lineAdvance, configuredMax: configuredMax)
     try timeline.setVelocity(pace.pointsPerSecond, at: effectiveTime)
     try timeline.setUpperBound(end, at: effectiveTime)
+    if let position {
+      try timeline.seek(to: position, at: effectiveTime)
+      lastPresentedTarget = nil
+    }
     paragraphPositions = paragraphs
     words = wordCount
     lines = lineCount
@@ -189,8 +195,7 @@ struct ScriptSnapshot {
     timedElapsedBase = 0
     try timeline.setDirection(.forward, at: effectiveTime)
     try seek(0)
-    timedDuration = duration
-    message = "Restarted — paused"
+    if duration == nil || timedDuration != nil { message = "Restarted — paused" }
     onChange?()
   }
   func reverse() throws {

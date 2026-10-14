@@ -6,6 +6,572 @@ import Testing
 
 @Suite(.serialized) @MainActor struct OperatorFeatureTests {
   init() { _ = NSApplication.shared }
+  private func settle(_ controller: OperatorWindowController) async {
+    for _ in 0..<2000 {
+      if !controller.session.measuring { return }
+      await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+      }
+    }
+    Issue.record("Measurement did not settle in 2000 main queue turns")
+  }
+  private func prepared(_ paragraphs: Int = 200) async throws -> OperatorWindowController {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(
+      string: (0..<paragraphs).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
+        separator: "\n"))
+    let controller = OperatorWindowController(document: doc)
+    controller.session.clock = { 0 }
+    controller.state.countdown = 5
+    try controller.session.prepare(doc)
+    controller.render()
+    #expect(controller.session.measuring == (paragraphs > 64))
+    await settle(controller)
+    #expect((controller.authoritative.measurementChunkCount > 1) == (paragraphs > 64))
+    return controller
+  }
+  @Test func finalFragmentGeometryKeepsAnchorAndTimedDeadline() async throws {
+    for count in [20, 64, 65, 200] {
+      for paragraph in [count - 2, count - 1] {
+        let c = try await prepared(count)
+        defer { c.close() }
+        var time = 0.0
+        c.session.clock = { time }
+        c.session.countdownSeconds = 0
+        // Consume playing time before selecting a feasible plan near the end.
+        try c.session.toggle(c.script)
+        for frame in 1...40 {
+          time = Double(frame) / 4
+          try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+        }
+        try c.session.pause()
+        c.seek(c.session.paragraphPositions[paragraph])
+        let anchor = try #require(c.authoritative.captureAnchor())
+        try c.session.enableTimed(seconds: 60)
+        for resize in [false, true] {
+          if resize {
+            // Use the same pause/anchor/render path as a presentation resize.
+            c.showFloating()
+            c.floating?.reflection.viewport.driver?.stop()
+            c.floating?.reflection.viewport.driver = nil
+            await settle(c)
+            let window = try #require(c.floating?.window)
+            window.setContentSize(CGSize(width: 600, height: 350))
+            c.floatingResized()
+          } else {
+            var style = c.state.style
+            style.fontSize = 120
+            c.changeStyle(style)
+          }
+          await settle(c)
+          // Record all product values before the observational TextKit query.
+          let bound = try #require(c.session.timeline.upperBound)
+          let cached = try #require(c.authoritative.endPosition)
+          let position = c.session.timeline.anchorPosition
+          let remaining = try #require(c.session.remainingSeconds)
+          let velocity = c.session.timeline.velocity
+          let manager = try #require(c.authoritative.text.textLayoutManager)
+          let content = try #require(manager.textContentManager)
+          let location = try #require(
+            content.location(
+              content.documentRange.location,
+              offsetBy: c.authoritative.text.string.utf16.count - 1))
+          let final = try #require(manager.textLayoutFragment(for: location))
+          #expect(final.state == .layoutAvailable)
+          let actualEnd = final.layoutFragmentFrame.maxY
+          #expect(abs(bound - actualEnd) < 0.00001)
+          #expect(abs(cached - actualEnd) < 0.00001)
+          #expect(abs((actualEnd - position) / velocity - remaining) < 0.00001)
+          #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+          #expect(abs(position - (c.authoritative.restore(anchor) ?? -1)) < 1)
+          #expect(c.session.timedDuration == 60)
+          #expect(abs(remaining - 60) < 0.00001)
+          #expect(c.session.elapsedSeconds == 10)
+        }
+        c.restart()
+        if c.session.timedDuration != nil {
+          #expect(c.session.timedDuration == 60)
+          #expect(abs((c.session.remainingSeconds ?? -1) - 60) < 0.00001)
+        } else {
+          #expect(c.session.message.contains("maximum"))
+        }
+        #expect(c.session.elapsedSeconds == 0)
+        #expect(c.session.timeline.anchorPosition == 0)
+        #expect(c.session.state == .paused)
+      }
+    }
+  }
+  @Test func asynchronousAnchorMatrix() async throws {
+    // A1–A8: growth early/late, synchronous control, shrink, margin, column, line and supersession.
+    for scenario in 1...8 {
+      let short = scenario == 3
+      let c = try await prepared(short ? 20 : 200)
+      defer { c.close() }
+      if scenario == 4 {
+        var style = c.state.style
+        style.fontSize = 120
+        c.changeStyle(style)
+        #expect(c.session.measuring)
+        await settle(c)
+      }
+      c.seek(c.session.paragraphPositions[short ? 18 : (scenario == 2 ? 20 : 180)])
+      let anchor = try #require(c.authoritative.captureAnchor())
+      let source = c.script.source.copy() as! NSAttributedString
+      let snapshot = c.session.snapshot?.id
+      var style = c.state.style
+      switch scenario {
+      case 4: style.fontSize = 64
+      case 5: style.sideMarginFraction = 0.25
+      case 6: style.columnWidthFraction = 0.5
+      case 7: style.lineHeightMultiplier = 2
+      default: style.fontSize = 120
+      }
+      c.changeStyle(style)
+      #expect(c.session.measuring == !short)
+      if scenario == 8 {
+        style.fontSize = 100
+        c.changeStyle(style)
+        #expect(c.session.measuring)
+      }
+      await settle(c)
+      let expected = try #require(c.authoritative.restore(anchor))
+      #expect(abs(c.session.timeline.anchorPosition - expected) < 1)
+      #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+      #expect(c.session.state == .paused)
+      #expect(c.session.preferredLPM == 30)
+      #expect(c.session.snapshot?.id == snapshot)
+      #expect(c.script.source == source)
+    }
+  }
+  @Test func asynchronousResumeAndStartMatrix() async throws {
+    for scenario in 1...6 {
+      let c = try await prepared(scenario == 2 ? 20 : 200)
+      defer { c.close() }
+      if scenario <= 4 {
+        c.session.countdownSeconds = 0
+        try c.session.toggle(c.script)
+        try c.session.pause()
+        c.render()
+        #expect(c.session.measuring == (scenario != 2))
+        c.resumeAfterMeasurement()
+      } else {
+        var style = c.state.style
+        style.fontSize = 120
+        c.changeStyle(style)
+        #expect(c.session.measuring)
+      }
+      if scenario == 3 { c.toggle() }
+      if scenario == 4 {
+        var style = c.state.style
+        style.fontSize = 120
+        c.changeStyle(style)
+      }
+      if scenario == 5 { c.toggle() }
+      if scenario == 6 {
+        c.resumeAfterMeasurement()
+        c.stop()
+        // Drain the already queued obsolete completion as well as the current generation.
+        await withCheckedContinuation { continuation in
+          DispatchQueue.main.async { continuation.resume() }
+        }
+      }
+      await settle(c)
+      let expected: PlaybackSession.State =
+        scenario <= 2
+        ? .running : (scenario == 5 ? .countingDown : (scenario == 6 ? .idle : .paused))
+      #expect(c.session.state == expected)
+      #expect(c.session.countdownDigit == (scenario == 5 ? 5 : nil))
+      #expect(!c.session.measuring)
+      #expect(!c.pendingPlay)
+      #expect(!c.pendingResume)
+      if scenario == 6 {
+        #expect(c.pendingAnchor == nil)
+        #expect(!c.readout.status.contains("Measuring"))
+      }
+    }
+  }
+  @Test func pendingUserStartCanBeCancelledOrSuperseded() async throws {
+    for supersede in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      var style = c.state.style
+      style.fontSize = 120
+      c.changeStyle(style)
+      #expect(c.session.measuring)
+      c.toggle()
+      if supersede {
+        style.fontSize = 100
+        c.changeStyle(style)
+      } else {
+        c.toggle()
+      }
+      await settle(c)
+      #expect(c.session.state == .paused)
+      #expect(c.session.countdownDigit == nil)
+    }
+  }
+  @Test func navigationWinsDuringMeasurement() async throws {
+    for scenario in 0..<6 {
+      let c = try await prepared()
+      defer { c.close() }
+      c.seek(c.session.paragraphPositions[180])
+      var style = c.state.style
+      style.fontSize = 120
+      c.changeStyle(style)
+      #expect(c.session.measuring)
+      switch scenario {
+      case 0: c.seek(100)
+      case 1: c.execute(.nextParagraph)
+      case 2: c.execute(.previousParagraph)
+      case 3: c.restart()
+      case 4: c.execute(.reverse)
+      default:
+        c.scrub(delta: -100, momentum: false)
+      }
+      #expect(c.pendingAnchor == nil)
+      let intended = c.session.timeline.anchorPosition
+      await settle(c)
+      #expect(c.session.timeline.anchorPosition == intended)
+      #expect(c.session.state == .paused)
+      if scenario == 4 { #expect(c.session.timeline.direction == .reverse) }
+    }
+  }
+  @Test func latestRevisionRestoresOnlyItsOwnAnchor() async throws {
+    for changedText in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      c.seek(c.session.paragraphPositions[180])
+      var style = c.state.style
+      style.fontSize = 120
+      c.changeStyle(style)
+      #expect(c.session.measuring)
+      c.seek(1000)
+      let current = try #require(c.authoritative.captureAnchor())
+      let oldID = c.session.snapshot?.id
+      if changedText {
+        c.script.replaceSource(NSAttributedString(string: "Replacement\n" + c.script.source.string))
+      }
+      c.loadLatest()
+      #expect(c.session.measuring)
+      await settle(c)
+      #expect(c.session.snapshot?.id != oldID)
+      #expect(c.session.snapshot?.attributed == c.script.source)
+      #expect(c.session.state == .paused)
+      if changedText {
+        #expect(c.session.timeline.anchorPosition == 0)
+      } else {
+        #expect(c.authoritative.captureAnchor()?.utf16Offset == current.utf16Offset)
+      }
+    }
+  }
+  @Test func feasibleTimedRelayoutKeepsDeadline() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[180])
+    let anchor = try #require(c.authoritative.captureAnchor())
+    try c.session.enableTimed(seconds: 100)
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...40 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+    try c.session.pause()
+    let remaining = try #require(c.session.remainingSeconds)
+    let readingAnchor = try #require(c.authoritative.captureAnchor())
+    #expect(readingAnchor.utf16Offset >= anchor.utf16Offset)
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.timedDuration != nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == readingAnchor.utf16Offset)
+    #expect(abs((c.session.remainingSeconds ?? -1) - remaining) < 0.00001)
+    #expect(c.session.elapsedSeconds == 10)
+    #expect(c.session.state == .paused)
+    #expect(c.session.effectiveLPM >= 2 && c.session.effectiveLPM <= 240)
+  }
+  @Test func restartResetsPendingTimedDeadline() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[100])
+    try c.session.enableTimed(seconds: 600)
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...40 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    #expect(c.session.measuring)
+    c.restart()
+    await settle(c)
+    #expect(c.session.timeline.anchorPosition == 0)
+    #expect(c.session.elapsedSeconds == 0)
+    #expect(c.session.timedDuration == 600)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 600) < 0.00001)
+    #expect(c.session.state == .paused)
+  }
+  @Test func completedRelayoutKeepsBudgetAndRestart() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[100])
+    try c.session.enableTimed(seconds: 600)
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...40 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.timedDuration == 600)
+    #expect(c.session.elapsedSeconds == 10)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    c.restart()
+    #expect(c.session.timedDuration == 600)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 600) < 0.00001)
+    #expect(c.session.elapsedSeconds == 0)
+    #expect(c.session.state == .paused)
+  }
+  @Test func lateEnabledPlanKeepsItsElapsedBaseThroughRestart() async throws {
+    for inFlight in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      var time = 0.0
+      c.session.clock = { time }
+      c.seek(c.session.paragraphPositions[180])
+      c.session.countdownSeconds = 0
+      try c.session.toggle(c.script)
+      for frame in 1...20 {
+        time = Double(frame) / 4
+        try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+      }
+      try c.session.enableTimed(seconds: 600)
+      for frame in 21...60 {
+        time = Double(frame) / 4
+        try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+      }
+      var style = c.state.style
+      style.fontSize = 120
+      c.changeStyle(style)
+      #expect(c.session.measuring)
+      if !inFlight {
+        await settle(c)
+        #expect(c.session.elapsedSeconds == 15)
+        #expect(c.session.timedDuration == 600)
+        #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+      }
+      c.restart()
+      await settle(c)
+      #expect(c.session.timedDuration == 600)
+      #expect(abs((c.session.remainingSeconds ?? -1) - 600) < 0.00001)
+      #expect(c.session.timeline.anchorPosition == 0)
+      #expect(c.session.elapsedSeconds == 0)
+      #expect(c.session.state == .paused)
+    }
+  }
+  @Test func timedNavigationWinsDuringMeasurementAndRestart() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[100])
+    try c.session.enableTimed(seconds: 600)
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...40 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    #expect(c.session.measuring)
+    c.seek(1000)
+    await settle(c)
+    #expect(c.session.timeline.anchorPosition == 1000)
+    #expect(c.session.timedDuration == 600)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    c.restart()
+    #expect(c.session.timedDuration == 600)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 600) < 0.00001)
+    #expect(c.session.timeline.anchorPosition == 0)
+  }
+  @Test func timedRunningSurfacesKeepDeadlineAndRestart() async throws {
+    for fullscreen in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      var time = 0.0
+      c.session.clock = { time }
+      c.seek(c.session.paragraphPositions[100])
+      try c.session.enableTimed(seconds: 600)
+      c.session.countdownSeconds = 0
+      try c.session.toggle(c.script)
+      for frame in 1...40 {
+        time = Double(frame) / 4
+        try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+      }
+      if fullscreen {
+        let display = try #require(DisplayDescriptor.all().first)
+        c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+        c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+        let viewport = try #require(c.output?.reflection.viewport)
+        viewport.driver?.stop()
+        viewport.driver = nil
+      } else {
+        c.showFloating()
+        let viewport = try #require(c.floating?.reflection.viewport)
+        viewport.driver?.stop()
+        viewport.driver = nil
+      }
+      #expect(c.session.measuring)
+      await settle(c)
+      #expect(c.session.state == .running)
+      #expect(c.session.countdownDigit == nil)
+      #expect(c.session.timedDuration == 600)
+      #expect(c.session.elapsedSeconds == 10)
+      #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+      for frame in 41...60 {
+        time = Double(frame) / 4
+        try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+      }
+      if !fullscreen {
+        let window = try #require(c.floating?.window)
+        window.setContentSize(CGSize(width: 600, height: 350))
+        c.floatingResized()
+        #expect(c.session.measuring)
+        await settle(c)
+      }
+      #expect(c.session.state == .running)
+      #expect(c.session.countdownDigit == nil)
+      #expect(c.session.elapsedSeconds == 15)
+      #expect(c.session.timedDuration == 600)
+      #expect(abs((c.session.remainingSeconds ?? -1) - 585) < 0.00001)
+      c.restart()
+      #expect(c.session.timedDuration == 600)
+      #expect(abs((c.session.remainingSeconds ?? -1) - 600) < 0.00001)
+      #expect(c.session.timeline.anchorPosition == 0)
+      #expect(c.session.state == .paused)
+    }
+  }
+  @Test func infeasibleRestartCancelsPlanAndAllowsManualPlay() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    c.seek(c.session.paragraphPositions[180])
+    try c.session.enableTimed(seconds: 100)
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.timedDuration == 100)
+    c.restart()
+    #expect(c.session.timedDuration == nil)
+    #expect(c.session.timeline.anchorPosition == 0)
+    #expect(c.session.elapsedSeconds == 0)
+    #expect(c.session.state == .paused)
+    #expect(c.session.message.contains("maximum"))
+    #expect(c.state.status.contains("maximum"))
+    c.state.countdown = 0
+    c.toggle()
+    #expect(c.session.state == .running)
+    #expect(c.session.timedDuration == nil)
+    #expect(c.session.effectiveLPM >= 2 && c.session.effectiveLPM <= 240)
+  }
+  @Test func atomicLayoutResolvesOnlyFinalGeometry() throws {
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(ScriptDocument())
+    try session.updateLayout(end: 10000, paragraphs: [0], wordCount: 100, lineCount: 100)
+    try session.seek(9000)
+    try session.enableTimed(seconds: 100)
+    // The interim 0/100000 geometry is infeasible; the final 99000/100000 is feasible.
+    try session.updateLayout(
+      end: 100000, paragraphs: [0], wordCount: 1000, lineCount: 1000, position: 99000)
+    #expect(session.timeline.anchorPosition == 99000)
+    #expect(session.timedDuration == 100)
+    #expect(abs((session.remainingSeconds ?? -1) - 100) < 0.00001)
+  }
+  @Test func pendingTimedPlanHonorsManualCancellation() async throws {
+    for reverse in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      c.seek(c.session.paragraphPositions[180])
+      try c.session.enableTimed(seconds: 100)
+      var style = c.state.style
+      style.fontSize = 120
+      c.changeStyle(style)
+      #expect(c.session.measuring)
+      if reverse { c.execute(.reverse) } else { c.setSpeed(40) }
+      await settle(c)
+      #expect(c.session.timedDuration == nil)
+      if !reverse { #expect(c.session.preferredLPM == 40) }
+    }
+  }
+  @Test func realFloatingSwitchAndResizeKeepRunning() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    c.seek(c.session.paragraphPositions[100])
+    let anchor = try #require(c.authoritative.captureAnchor())
+    let snapshot = c.session.snapshot?.id
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    c.showFloating()
+    c.floating?.reflection.viewport.driver?.stop()
+    c.floating?.reflection.viewport.driver = nil
+    #expect(c.floating != nil)
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.countdownDigit == nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    let window = try #require(c.floating?.window)
+    window.setContentSize(CGSize(width: 600, height: 350))
+    c.floatingResized()
+    #expect(c.session.measuring)
+    window.setContentSize(CGSize(width: 700, height: 400))
+    c.floatingResized()
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.countdownDigit == nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.session.snapshot?.id == snapshot)
+  }
+  @Test func realOutputSwitchRestoresAndResumes() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+    c.seek(c.session.paragraphPositions[180])
+    let anchor = try #require(c.authoritative.captureAnchor())
+    let snapshot = c.session.snapshot?.id
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    let output = try #require(c.output)
+    output.reflection.viewport.driver?.stop()
+    output.reflection.viewport.driver = nil
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.countdownDigit == nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.session.snapshot?.id == snapshot)
+  }
   @Test func fullscreenMatteTracksPreviewWithoutChangingFloatingAlpha() throws {
     let controller = OperatorWindowController(document: ScriptDocument())
     defer { controller.close() }
@@ -235,6 +801,7 @@ import Testing
       #expect(controller.stageView.bounds.height >= window.contentLayoutRect.height * 0.85)
     }
     controller.session.clock = { 0 }
+    controller.state.countdown = 0
     controller.toggle()
     controller.showFloating()
     controller.showControls()

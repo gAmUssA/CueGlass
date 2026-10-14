@@ -15,3 +15,5 @@
 - Run the full native integration suite through the normal DebugLocal scheme with an app-linked unhosted bundle, avoiding the hosted launcher assertion and duplicate Core package type identity.
 - Integrate the owner-requested Reading Line artwork through native Icon Composer compilation, including compiler-generated fallback resources while retaining macOS 14 deployment metadata.
 - Synchronize fullscreen and preview background mattes on initial render and color changes, preserving independent floating-window and text-panel opacity; add an actual-controller native regression.
+- Preserve reading anchors and running intent through chunked measurement, install final Timed geometry atomically without rebasing its budget, and keep infeasible Restart plans cancelled with the solver reason visible.
+- Settle final viewport geometry with two bounded preparation passes before atomic Timed completion; verify the actual final TextKit fragment after typography and resize on short and asynchronous scripts.
