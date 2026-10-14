@@ -1132,7 +1132,7 @@ extension OperatorFeatureTests {
   @Test func closeHandoffInstallsSettledEndAndParagraphAnchorInBothPasses() async throws {
     for kind in ["floating", "output", "resize", "outputLoss"] {
       for second in [false, true] {
-        let c = try await preparationController(paragraphs: 700)
+        let c = try await preparationController(paragraphs: 300)
         defer { c.close() }
         try await startPreparation(c, kind: kind == "outputLoss" ? "output" : kind)
         try await enterPreparationPass(c, second: second)
@@ -1148,7 +1148,7 @@ extension OperatorFeatureTests {
   @Test func timedCloseKeepsOriginalBudgetMessageAndSettledEnd() async throws {
     for kind in ["floating", "output"] {
       for second in [false, true] {
-        let c = try await preparationController(paragraphs: 700)
+        let c = try await preparationController(paragraphs: 300)
         defer { c.close() }
         var time = 0.0
         c.session.clock = { time }

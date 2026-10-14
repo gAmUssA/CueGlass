@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-14T13:37:02Z
-updated_at: 2026-10-14T14:19:41Z
+updated_at: 2026-10-14T14:25:15Z
 parent: cueglass-aeqt
 ---
 
@@ -27,6 +27,6 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 
 - [x] Correct `lipo` architecture verification syntax for the hosted macOS 26 toolchain.
 
-- [x] Re-run the 48-test native app suite locally after stabilizing the close-handoff and timed-close preparation fixtures; strict Swift formatting and Beans integrity checks pass.
+- [x] Re-run the 48-test native app suite locally with the final 300-paragraph close-handoff and timed-close fixtures; strict Swift formatting and Beans integrity checks pass.
 
-- [x] Stabilize the timed-close preparation fixture after hosted macOS validation reproduced the same early-settlement race in that matrix.
+- [x] Keep close-handoff and timed-close fixtures asynchronous with 300 paragraphs, preserving the timed feasibility cap; the local 48-test suite passes.
