@@ -71,7 +71,68 @@ import SwiftUI
   var onAppearanceChange: ((Bool) -> Void)?
   override func viewDidChangeEffectiveAppearance() {
     super.viewDidChangeEffectiveAppearance()
+    refreshAppearanceRendering()
     onAppearanceChange?(effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+  }
+  /// Re-applies display-only colors to every stored run; TextKit 2 does not
+  /// re-run the validator for fragments it has already laid out.
+  func refreshAppearanceRendering() {
+    guard let manager = textLayoutManager, let content = manager.textContentManager,
+      let storage = textStorage
+    else { return }
+    let whole = content.documentRange
+    manager.setRenderingAttributes([:], for: whole)
+    if effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+      storage.enumerateAttribute(
+        .foregroundColor, in: NSRange(location: 0, length: storage.length)
+      ) { value, run, _ in
+        var nearBlack = value == nil
+        self.effectiveAppearance.performAsCurrentDrawingAppearance {
+          if let color = (value as? NSColor)?.usingColorSpace(.sRGB) {
+            nearBlack = max(color.redComponent, color.greenComponent, color.blueComponent) <= 0.1
+          }
+        }
+        guard nearBlack, let start = content.location(whole.location, offsetBy: run.location),
+          let end = content.location(start, offsetBy: run.length),
+          let range = NSTextRange(location: start, end: end)
+        else { return }
+        manager.setRenderingAttributes([.foregroundColor: NSColor.labelColor], for: range)
+      }
+    }
+    needsDisplay = true
+  }
+  func installAppearanceRendering() {
+    textLayoutManager?.renderingAttributesValidator = { [weak self] manager, fragment in
+      guard let self, let storage = self.textStorage,
+        let content = manager.textContentManager
+      else { return }
+      manager.setRenderingAttributes([:], for: fragment.rangeInElement)
+      guard self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua else {
+        return
+      }
+      let start = content.offset(
+        from: content.documentRange.location, to: fragment.rangeInElement.location)
+      let end = content.offset(
+        from: content.documentRange.location, to: fragment.rangeInElement.endLocation)
+      guard start >= 0, end <= storage.length, end > start else { return }
+      storage.enumerateAttribute(
+        .foregroundColor, in: NSRange(location: start, length: end - start)
+      ) {
+        value, run, _ in
+        var nearBlack = value == nil
+        self.effectiveAppearance.performAsCurrentDrawingAppearance {
+          if let color = (value as? NSColor)?.usingColorSpace(.sRGB) {
+            nearBlack = max(color.redComponent, color.greenComponent, color.blueComponent) <= 0.1
+          }
+        }
+        guard nearBlack,
+          let location = content.location(content.documentRange.location, offsetBy: run.location),
+          let endLocation = content.location(location, offsetBy: run.length),
+          let range = NSTextRange(location: location, end: endLocation)
+        else { return }
+        manager.setRenderingAttributes([.foregroundColor: NSColor.labelColor], for: range)
+      }
+    }
   }
   var onDrop: ((URL) -> Void)?
   lazy var decoration: EditorDecoration = {
@@ -168,6 +229,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let splitController = NSSplitViewController()
   var inspectorPopover: NSPopover?
   var inspectorItem: NSSplitViewItem?
+  private var userCollapsedInspector = UserDefaults.standard.bool(forKey: "inspectorCollapsed")
   var editorWidthConstraint: NSLayoutConstraint?
   var inspectorWidthConstraint: NSLayoutConstraint?
   weak var playToolbarButton: NSButton?
@@ -208,7 +270,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     script = document
     let window = OperatorWindow(
       contentRect: NSRect(x: 100, y: 100, width: 1280, height: 800),
-      styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+      backing: .buffered, defer: false
     )
     super.init(window: window)
     window.controller = self
@@ -261,6 +324,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     editor.onDrop = { [weak self] in self?.openDrop($0) }
     editor.setAccessibilityLabel("Script editor")
     editor.textStorage?.setAttributedString(script.source)
+    editor.installAppearanceRendering()
     let editorController = NSViewController()
     let scroll = NSScrollView()
     scroll.hasVerticalScroller = true
@@ -269,7 +333,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     editorController.view = scroll
     let editorItem = NSSplitViewItem(viewController: editorController)
     editorItem.minimumThickness = 320
-    editorItem.holdingPriority = NSLayoutConstraint.Priority(750)
+    editorItem.holdingPriority = NSLayoutConstraint.Priority(480)
     let stage = NSViewController()
     stage.view = stageView
     stageView.wantsLayer = true
@@ -300,7 +364,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       stageView.addSubview(view)
     }
     NSLayoutConstraint.activate([
-      bar.topAnchor.constraint(equalTo: stageView.topAnchor),
+      bar.topAnchor.constraint(equalTo: stageView.safeAreaLayoutGuide.topAnchor),
       bar.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
       bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
       bar.heightAnchor.constraint(equalToConstant: 56),
@@ -332,18 +396,18 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     NSLayoutConstraint.activate([
       inspectorHost.leadingAnchor.constraint(equalTo: inspector.view.leadingAnchor),
       inspectorHost.trailingAnchor.constraint(equalTo: inspector.view.trailingAnchor),
-      inspectorHost.topAnchor.constraint(equalTo: inspector.view.topAnchor),
+      inspectorHost.topAnchor.constraint(equalTo: inspector.view.safeAreaLayoutGuide.topAnchor),
       inspectorHost.bottomAnchor.constraint(equalTo: inspector.view.bottomAnchor),
     ])
-    let item = NSSplitViewItem(viewController: inspector)
+    let item = NSSplitViewItem(inspectorWithViewController: inspector)
     item.minimumThickness = 260
     item.maximumThickness = 320
     let editorWidth = editorController.view.widthAnchor.constraint(equalToConstant: 420)
-    editorWidth.priority = NSLayoutConstraint.Priority(800)
+    editorWidth.priority = NSLayoutConstraint.Priority(490)
     editorWidth.isActive = true
     editorWidthConstraint = editorWidth
     let inspectorWidth = inspector.view.widthAnchor.constraint(equalToConstant: 280)
-    inspectorWidth.priority = NSLayoutConstraint.Priority(800)
+    inspectorWidth.priority = NSLayoutConstraint.Priority(490)
     inspectorWidth.isActive = true
     inspectorWidthConstraint = inspectorWidth
     item.collapseBehavior = .useConstraints
@@ -355,7 +419,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     splitController.addSplitViewItem(item)
     window.contentViewController = splitController
     window.minSize = CGSize(width: 980, height: 640)
-    item.isCollapsed = UserDefaults.standard.bool(forKey: "inspectorCollapsed")
+    item.isCollapsed = userCollapsedInspector
     let toolbar = NSToolbar(identifier: "CueGlassToolbar")
     toolbar.delegate = self
     toolbar.displayMode = .iconOnly
@@ -1170,6 +1234,7 @@ extension OperatorWindowController {
     }
     inspectorWidthConstraint?.isActive = item.isCollapsed
     item.isCollapsed.toggle()
+    userCollapsedInspector = item.isCollapsed
     balancePanes()
     if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
       UserDefaults.standard.set(item.isCollapsed, forKey: "inspectorCollapsed")
@@ -1197,6 +1262,11 @@ extension OperatorWindowController {
     }
   }
   func windowDidResize(_ notification: Notification) {
+    if let window, window.contentLayoutRect.width >= 1002, !userCollapsedInspector,
+      inspectorItem?.isCollapsed == true
+    {
+      inspectorItem?.isCollapsed = false
+    }
     balancePanes()
   }
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {

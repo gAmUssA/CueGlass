@@ -631,16 +631,19 @@ import Testing
     let doc = ScriptDocument()
     let controller = OperatorWindowController(document: doc)
     let window = try #require(controller.window)
-    window.setContentSize(CGSize(width: 1280, height: 748))
+    window.setFrame(CGRect(x: 100, y: 100, width: 1280, height: 800), display: false)
     controller.inspectorItem?.isCollapsed = false
     controller.balancePanes()
     window.contentView?.layoutSubtreeIfNeeded()
     #expect(abs((controller.editor.enclosingScrollView?.frame.width ?? 0) - 420) < 2)
     #expect(abs(controller.stageView.frame.width - 578) < 2)
-    let ratio = controller.preview.bounds.width / controller.preview.bounds.height
+    // Layout rounds the preview to whole points; its height stays within half a
+    // point of the logical 16:9 output, whose exact size is asserted below.
+    let previewSize = controller.preview.bounds.size
     #expect(
-      abs(ratio - controller.session.logicalSize.width / controller.session.logicalSize.height)
-        < 0.001)
+      abs(
+        previewSize.height - previewSize.width * controller.session.logicalSize.height
+          / controller.session.logicalSize.width) <= 0.5)
     let source = doc.source.copy() as! NSAttributedString
     let derived = PresentationBuilder.build(source, style: controller.state.style)
     let paragraph = try #require(
@@ -658,7 +661,7 @@ import Testing
     #expect(controller.editor.attributedString() == source)
     try controller.session.seek(100)
     controller.applyCurrentPosition()
-    window.setContentSize(CGSize(width: 1002, height: 748))
+    window.setFrame(CGRect(x: 100, y: 100, width: 1002, height: 800), display: false)
     controller.balancePanes()
     controller.preview.layoutSubtreeIfNeeded()
     #expect(controller.preview.reflection.viewport.currentPosition == 100)
@@ -1190,5 +1193,180 @@ extension OperatorFeatureTests {
         if let cache { #expect(abs(cache - bound) < 0.00001) }
       }
     }
+  }
+}
+
+extension OperatorFeatureTests {
+  @Test func nativeRestingMinimumAndExplicitCollapse() throws {
+    // The saved user-collapse preference is read at init; pin it in the volatile
+    // argument domain so the outcome never depends on a prior run's defaults.
+    let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    UserDefaults.standard.setVolatileDomain(
+      arguments.merging(["inspectorCollapsed": false]) { $1 }, forName: UserDefaults.argumentDomain)
+    defer {
+      UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+    }
+    let controller = OperatorWindowController(document: ScriptDocument())
+    defer { controller.close() }
+    let window = try #require(controller.window)
+    let content = try #require(window.contentView)
+    // A user drag holds the window width at dragThatCanResizeWindow (510); the
+    // narrowest width it can reach is the content fitting width under that pull,
+    // measured from the balanced 1280 x 800 state a drag starts from.
+    func dragMinimum() -> CGFloat {
+      let drag = content.widthAnchor.constraint(equalToConstant: 0)
+      drag.priority = .dragThatCanResizeWindow
+      drag.isActive = true
+      defer { drag.isActive = false }
+      return content.fittingSize.width
+    }
+    window.setFrame(CGRect(x: 100, y: 100, width: 1280, height: 800), display: false)
+    controller.inspectorItem?.isCollapsed = false
+    controller.balancePanes()
+    content.layoutSubtreeIfNeeded()
+    #expect(window.minSize.width == 980)
+    #expect(abs((controller.editor.enclosingScrollView?.frame.width ?? 0) - 420) < 2)
+    #expect(abs(controller.stageView.frame.width - 578) < 2)
+    #expect(abs((controller.inspectorItem?.viewController.view.frame.width ?? 0) - 280) < 2)
+    #expect(dragMinimum() <= 1002)
+    controller.inspectorWidthConstraint?.isActive = false
+    controller.inspectorItem?.isCollapsed = true
+    content.layoutSubtreeIfNeeded()
+    #expect(dragMinimum() <= 980)
+    window.setFrame(CGRect(x: 100, y: 100, width: 1002, height: 800), display: false)
+    controller.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
+    #expect(controller.inspectorItem?.isCollapsed == false)
+    controller.toggleInspector()
+    #expect(controller.inspectorItem?.isCollapsed == true)
+    window.setFrame(CGRect(x: 100, y: 100, width: 1280, height: 800), display: false)
+    controller.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
+    #expect(controller.inspectorItem?.isCollapsed == true)
+  }
+
+  @Test func nativeChromeLeavesFirstRowsUncovered() throws {
+    let controller = OperatorWindowController(document: ScriptDocument())
+    defer { controller.close() }
+    let window = try #require(controller.window)
+    window.setFrame(CGRect(x: 100, y: 100, width: 1280, height: 800), display: false)
+    controller.inspectorItem?.isCollapsed = false
+    controller.balancePanes()
+    let content = try #require(window.contentView)
+    content.layoutSubtreeIfNeeded()
+    let bar = try #require(controller.takeBar)
+    let inspector = try #require(controller.inspectorItem?.viewController.view)
+    let host = try #require(inspector.subviews.first)
+    let scroll = try #require(controller.editor.enclosingScrollView)
+    // Retain J4's structural preconditions before checking foreground paint order.
+    #expect(window.styleMask.contains(.fullSizeContentView))
+    #expect(
+      abs(
+        bar.frame.maxY
+          - (controller.stageView.bounds.maxY - controller.stageView.safeAreaInsets.top)) < 0.5)
+    #expect(abs(host.frame.maxY - (inspector.bounds.maxY - inspector.safeAreaInsets.top)) < 0.5)
+    #expect(scroll.contentInsets.top == scroll.safeAreaInsets.top)
+    func pinnedToSafeArea(_ view: NSView, parent: NSView) -> Bool {
+      parent.constraints.contains {
+        $0.isActive && $0.firstItem as? NSView === view && $0.firstAttribute == .top
+          && $0.secondItem as? NSLayoutGuide === parent.safeAreaLayoutGuide
+          && $0.secondAttribute == .top
+      }
+    }
+    #expect(pinnedToSafeArea(bar, parent: controller.stageView))
+    #expect(pinnedToSafeArea(host, parent: inspector))
+    let manager = try #require(controller.editor.textLayoutManager)
+    let range = try #require(manager.textContentManager?.documentRange)
+    manager.ensureLayout(for: range)
+    let fragment = try #require(manager.textLayoutFragment(for: range.location))
+    let firstText = controller.editor.convert(
+      fragment.layoutFragmentFrame.offsetBy(
+        dx: controller.editor.textContainerOrigin.x, dy: controller.editor.textContainerOrigin.y),
+      to: nil)
+    // The inspector host is flipped; take its first 24 pt row in window space.
+    let hostRect = host.convert(host.bounds, to: nil)
+    let firstRow = CGRect(
+      x: hostRect.minX, y: hostRect.maxY - 24, width: hostRect.width, height: 24)
+    let split = controller.splitController.splitView
+    let theme = try #require(content.superview)
+    // An occluder paints after the target's owner in view order, belongs to
+    // neither the owner's subtree, its ancestors nor the owner's own split
+    // column, and overlaps the target. Targets exclude the 4 pt divider hit slop.
+    func paintsAfter(_ a: NSView, _ b: NSView) -> Bool {
+      func chain(_ view: NSView) -> [NSView] {
+        var result: [NSView] = []
+        var current: NSView? = view
+        while let v = current {
+          result.insert(v, at: 0)
+          current = v.superview
+        }
+        return result
+      }
+      let pa = chain(a)
+      let pb = chain(b)
+      var i = 0
+      while i < min(pa.count, pb.count), pa[i] === pb[i] { i += 1 }
+      guard i > 0, i < pa.count, i < pb.count else { return false }
+      let siblings = pa[i - 1].subviews
+      return (siblings.firstIndex(of: pa[i]) ?? -1) > (siblings.firstIndex(of: pb[i]) ?? -1)
+    }
+    let targets: [(NSView, CGRect)] = [
+      (bar, bar.convert(bar.bounds, to: nil)), (controller.editor, firstText), (host, firstRow),
+    ]
+    var stack: [NSView] = [theme]
+    var occluders: [String] = []
+    while let view = stack.popLast() {
+      stack.append(contentsOf: view.subviews)
+      guard !view.isHiddenOrHasHiddenAncestor, view.alphaValue > 0 else { continue }
+      let rect = view.convert(view.bounds, to: nil)
+      for (owner, target) in targets {
+        let column = split.arrangedSubviews.first { owner.isDescendant(of: $0) }
+        if view === owner || view.isDescendant(of: owner) || owner.isDescendant(of: view) {
+          continue
+        }
+        if let column, view.isDescendant(of: column) { continue }
+        let overlap = rect.intersection(target.insetBy(dx: 4, dy: 0))
+        if !overlap.isNull, overlap.width > 0, overlap.height > 0, paintsAfter(view, owner) {
+          occluders.append("\(type(of: view)) \(rect) over \(target)")
+        }
+      }
+    }
+    #expect(occluders.isEmpty, "\(occluders)")
+  }
+
+  @Test func controlsResponderChainKeepsParagraphAndFineKeys() async throws {
+    let controller = try await prepared(20)
+    defer { controller.close() }
+    controller.state.fineStep = 1
+    controller.showControls()
+    controller.window?.orderOut(nil)
+    let panel = try #require(controller.panel?.window)
+    panel.makeKeyAndOrderFront(nil)
+    for _ in 0..<20 {
+      await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+      }
+    }
+    print(
+      "J4 responder key=\(panel.isKeyWindow) responder=\(String(describing: panel.firstResponder))")
+    let pace = controller.state.speed
+    func send(_ code: UInt16, _ character: Int) throws {
+      let text = String(UnicodeScalar(character)!)
+      let event = try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+          windowNumber: panel.windowNumber, context: nil, characters: text,
+          charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+      panel.sendEvent(event)
+    }
+    let initial = controller.session.timeline.anchorPosition
+    try send(121, NSPageDownFunctionKey)
+    #expect(controller.session.timeline.anchorPosition > initial)
+    #expect(controller.state.speed == pace)
+    try send(116, NSPageUpFunctionKey)
+    #expect(controller.session.timeline.anchorPosition == initial)
+    #expect(controller.state.speed == pace)
+    try send(126, NSUpArrowFunctionKey)
+    #expect(controller.state.speed == pace + 1)
+    try send(125, NSDownArrowFunctionKey)
+    #expect(controller.state.speed == pace)
   }
 }

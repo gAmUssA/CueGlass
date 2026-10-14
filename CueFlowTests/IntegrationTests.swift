@@ -313,3 +313,95 @@ import Testing
     #expect(try await CloudStatus.map(DocumentStorageService.shared.metadata(url)) == .local)
   }
 }
+
+extension IntegrationTests {
+  @Test func darkEditorRenderingPreservesAuthoredRTFAndUndo() throws {
+    let rtf = Data(
+      #"{\rtf1\ansi{\colortbl;\red0\green0\blue0;\red10\green10\blue10;\red200\green40\blue30;}\cf1 Black\par\cf2 Near black\par\cf3 Red}"#
+        .utf8)
+    let doc = ScriptDocument()
+    doc.model.content.data = rtf
+    doc.source = try ScriptImporter.decodeRTF(rtf).attributed
+    let source = doc.source.copy() as! NSAttributedString
+    let before = try ScriptFileCodec.decode(doc.data(ofType: ScriptDocument.nativeType)).model
+      .content.data
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    let editor = controller.editor
+    let manager = try #require(editor.textLayoutManager)
+    let content = try #require(manager.textContentManager)
+    let undo = try #require(editor.undoManager)
+    undo.removeAllActions()
+    undo.registerUndo(withTarget: doc) { $0.notice = "Undo sentinel" }
+    undo.setActionName("Sentinel")
+    let action = undo.undoActionName
+    // Draws the editor through NSView's normal display path and returns, per
+    // paragraph fragment, the brightest sRGB luminance inside its first 120 pt.
+    func renderedLuminance() throws -> [CGFloat] {
+      let rep = try #require(editor.bitmapImageRepForCachingDisplay(in: editor.bounds))
+      editor.cacheDisplay(in: editor.bounds, to: rep)
+      let scale = CGFloat(rep.pixelsWide) / editor.bounds.width
+      var result: [CGFloat] = []
+      manager.enumerateTextLayoutFragments(
+        from: content.documentRange.location, options: [.ensuresLayout]
+      ) { fragment in
+        let frame = fragment.layoutFragmentFrame.offsetBy(
+          dx: editor.textContainerOrigin.x, dy: editor.textContainerOrigin.y)
+        var brightest: CGFloat = 0
+        for y in stride(from: frame.minY + 2, to: frame.maxY - 2, by: 1) {
+          for x in stride(from: frame.minX + 1, to: min(frame.maxX, frame.minX + 120), by: 1) {
+            if let c = rep.colorAt(x: Int(x * scale), y: Int(y * scale))?.usingColorSpace(.sRGB) {
+              brightest = max(
+                brightest,
+                0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent)
+            }
+          }
+        }
+        result.append(brightest)
+        return true
+      }
+      return result
+    }
+    func renderingColor(at offset: Int) -> NSColor? {
+      var color: NSColor?
+      manager.enumerateRenderingAttributes(from: content.documentRange.location, reverse: false) {
+        _, attributes, range in
+        let start = content.offset(from: content.documentRange.location, to: range.location)
+        let end = content.offset(from: content.documentRange.location, to: range.endLocation)
+        if start <= offset, offset < end { color = attributes[.foregroundColor] as? NSColor }
+        return color == nil
+      }
+      return color
+    }
+    #expect(editor.isFlipped)
+    editor.appearance = NSAppearance(named: .darkAqua)
+    let dark = try renderedLuminance()
+    #expect(dark.count == 3)
+    #expect(dark.prefix(2).allSatisfy { $0 > 0.6 })
+    #expect(renderingColor(at: 0) == NSColor.labelColor)
+    #expect(renderingColor(at: 6) == NSColor.labelColor)
+    #expect(renderingColor(at: 17) == nil)
+    #expect(editor.attributedString() == source)
+    #expect(doc.source == source)
+    #expect(doc.model.content.data == rtf)
+    #expect(
+      try ScriptFileCodec.decode(doc.data(ofType: ScriptDocument.nativeType)).model.content.data
+        == before)
+    #expect(undo.canUndo && !undo.canRedo && undo.undoActionName == action)
+    editor.appearance = NSAppearance(named: .aqua)
+    #expect(renderingColor(at: 0) == nil)
+    _ = try renderedLuminance()
+    editor.appearance = NSAppearance(named: .darkAqua)
+    #expect(try renderedLuminance().prefix(2).allSatisfy { $0 > 0.6 })
+    #expect(renderingColor(at: 0) == NSColor.labelColor)
+    #expect(editor.attributedString() == source)
+    #expect(doc.source == source)
+    #expect(
+      try ScriptFileCodec.decode(doc.data(ofType: ScriptDocument.nativeType)).model.content.data
+        == before)
+    #expect(undo.undoActionName == action)
+    undo.undo()
+    #expect(doc.notice == "Undo sentinel")
+    #expect(!undo.canUndo)
+  }
+}

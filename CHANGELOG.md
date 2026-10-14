@@ -2,6 +2,8 @@
 
 ## 0.1.0 — 2026-10-13
 
+- Keep toolbar pockets clear of the take bar and first editor/inspector rows, preserve usable 980/1002/1280 sizing and Controls key routing, and render authored black RTF legibly in Dark without changing stored source.
+
 - Implement the native CueFlow teleprompter with source-preserving TXT/RTF import, versioned documents, rich editing, derived typography, deterministic display-linked playback, reading anchors, selected-screen output and independent reflections.
 - Add real iCloud Documents configuration/discovery/download/metadata integration, honest local mode, immutable takes, future-version save protection, and native Versions/copy recovery paths.
 - Add core and AppKit integration tests, synthetic fixtures, build/test commands and explicit hardware/two-Mac validation procedures.

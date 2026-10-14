@@ -118,6 +118,7 @@ struct PanelPace: View {
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           in: 2...state.maximum
         ).tint(.gray).accessibilityLabel("Reading pace")
+          .focusable(false)
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? state.fineStep : state.jumpStep
           Button("+\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.borderless)
