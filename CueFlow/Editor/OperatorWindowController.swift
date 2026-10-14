@@ -239,6 +239,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var transportChrome = NSView()
   var takeBar: NSView?
   var progressTimer: Timer?
+  private var displayPreferencesBySelectionKey: [String: DisplayPreference] = [:]
+  private var disconnectedDisplayPreference: DisplayPreference?
   var pendingPlay: Bool {
     get { session.deferredStart == .play }
     set {
@@ -924,25 +926,39 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       state.status = "Output display disconnected — choose a display"
     }
   }
-  func refreshScreens() {
-    let displays = DisplayDescriptor.all()
-    state.displays = displays.map(\.selectionKey)
-    if state.selectedDisplay.isEmpty,
+  func refreshScreens(_ displays: [DisplayDescriptor] = DisplayDescriptor.all()) {
+    let preferences = displays.map(\.preference)
+    let selectedPreference =
+      displayPreferencesBySelectionKey[state.selectedDisplay] ?? disconnectedDisplayPreference
+    if let selectedPreference {
+      if let index = DisplayMatcher.match(selectedPreference, in: preferences) {
+        state.selectedDisplay = displays[index].selectionKey
+        disconnectedDisplayPreference = nil
+      } else {
+        state.status = "Selected display not connected — choose a display"
+        state.selectedDisplay = "disconnected"
+        disconnectedDisplayPreference = selectedPreference
+      }
+    } else if state.selectedDisplay.isEmpty,
       let data = UserDefaults.standard.data(forKey: "displayPreference")
     {
       do {
         let saved = try JSONDecoder().decode(DisplayPreference.self, from: data)
-        if let i = DisplayMatcher.match(saved, in: displays.map(\.preference)) {
-          state.selectedDisplay = state.displays[i]
+        if let index = DisplayMatcher.match(saved, in: preferences) {
+          state.selectedDisplay = displays[index].selectionKey
         } else {
           state.status = "Saved display not connected"
           state.selectedDisplay = "disconnected"
+          disconnectedDisplayPreference = saved
         }
       } catch let error as NSError {
         state.status = "Display preference could not be read (\(error.code)). Choose a display."
       }
     }
-    if state.selectedDisplay.isEmpty { state.selectedDisplay = state.displays.first ?? "" }
+    if state.selectedDisplay.isEmpty { state.selectedDisplay = displays.first?.selectionKey ?? "" }
+    state.displays = displays.map(\.selectionKey)
+    displayPreferencesBySelectionKey = Dictionary(
+      uniqueKeysWithValues: displays.map { ($0.selectionKey, $0.preference) })
   }
   func displayName(_ key: String) -> String {
     guard

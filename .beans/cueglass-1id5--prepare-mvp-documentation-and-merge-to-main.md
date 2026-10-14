@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-14T15:11:01Z
-updated_at: 2026-10-14T15:36:34Z
+updated_at: 2026-10-14T15:44:10Z
 parent: cueglass-aeqt
 ---
 
@@ -26,3 +26,5 @@ Bring the current CueGlass MVP branch through the repo merge workflow, simplify 
 - [x] Use CueGlass terminology in import errors
 - [x] Repair documentation links to maintainer commands and automated test evidence
 - [x] Run core and native tests, strict formatting, Bean integrity, and diff checks
+
+- [x] Remap the selected display after monitor topology changes and add a regression

@@ -937,6 +937,23 @@ import Testing
 // Fix9 ports the Q3 intent matrix and Q4 settled-geometry oracle. Keep the
 // inherited suite above byte unchanged; these tests share its serialization.
 extension OperatorFeatureTests {
+  @Test func displaySelectionRemapsWhenDisplayIDChanges() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(DisplayDescriptor.all().first?.screen)
+    let oldDisplay = DisplayDescriptor(
+      screen: screen, preference: .init(uuid: "stable-display", name: "Stage"), id: 101)
+    let reconnectedDisplay = DisplayDescriptor(
+      screen: screen, preference: .init(uuid: "stable-display", name: "Stage"), id: 202)
+
+    c.state.selectedDisplay = oldDisplay.selectionKey
+    c.refreshScreens([oldDisplay])
+    c.refreshScreens([reconnectedDisplay])
+
+    #expect(c.state.selectedDisplay == reconnectedDisplay.selectionKey)
+    #expect(c.state.displays == [reconnectedDisplay.selectionKey])
+  }
+
   private func preparationTurn() async {
     await withCheckedContinuation { continuation in
       DispatchQueue.main.async { continuation.resume() }
