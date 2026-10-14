@@ -563,6 +563,7 @@ import Testing
     try c.session.toggle(c.script)
     c.showOutput(confirm: { _ in .alertFirstButtonReturn })
     let output = try #require(c.output)
+    #expect(output.window?.ignoresMouseEvents == true)
     output.reflection.viewport.driver?.stop()
     output.reflection.viewport.driver = nil
     #expect(c.session.measuring)

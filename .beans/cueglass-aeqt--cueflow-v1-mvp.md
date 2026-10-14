@@ -5,7 +5,7 @@ status: in-progress
 type: milestone
 priority: high
 created_at: 2026-10-13T18:53:52Z
-updated_at: 2026-10-14T13:43:44Z
+updated_at: 2026-10-14T16:07:51Z
 ---
 
 Implement the CueGlass local-first macOS teleprompter MVP per `CueFlow-Codex-Handoff.md` and `CueFlow-Codex-Kickoff.md`. Initial MVP scope is R01–R03 and R05–R16 plus GitHub Actions binary releases; R04 iCloud sync is deferred to `cueglass-ffq6`.
@@ -60,7 +60,7 @@ Stays `in-progress` until the full implementation is accepted by independent rev
 - cueglass-ffq6 — Signed distribution and iCloud follow-up milestone, blocked by this MVP
 - cueglass-pili — Apple Developer account, signing and notarization follow-up
 - cueglass-ykl0 — Owner iCloud setup and two-Mac verification (R04), deferred to cueglass-ffq6
-- cueglass-u5ni — GitHub Actions build and unnotarized prerelease asset, in progress
+- cueglass-u5ni — GitHub Actions build and unnotarized prerelease asset, completed; v0.1.0 prerelease published
 - cueglass-feeg — Physical display and visual verification (R07, R08, R09), remains todo
 - cueglass-c1kt — Performance profiling on hardware (R07), remains todo
 
@@ -75,4 +75,4 @@ Independent current-source acceptance: core foundation14 tests and app/sample fo
 
 - This is the local-first initial MVP. R04/iCloud sync and M4 are deferred to cueglass-ffq6; cueglass-ykl0 follows Apple Developer account setup in cueglass-pili.
 - Initial distribution includes a GitHub Actions universal macOS build and an unsigned/unnotarized GitHub prerelease asset. No Gatekeeper bypass instructions will be published. The workflow and public-runner decision are recorded in ADR 0006.
-- Deferred cloud/signing work is outside this milestone's exit criteria. Existing app acceptance, visual/accessibility, hardware/performance gates and the release workflow remain open until independently evidenced.
+- Deferred cloud/signing work is outside this milestone's exit criteria. Existing app acceptance, visual/accessibility, hardware and performance gates remain open until independently evidenced.

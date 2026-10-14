@@ -52,7 +52,7 @@ import CueFlowCore
     window.hidesOnDeactivate = false
     window.collectionBehavior = [.fullScreenAuxiliary, .stationary]
     window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
-    window.ignoresMouseEvents = false
+    window.ignoresMouseEvents = true
     window.contentView = reflection
     window.setFrame(display.screen.frame, display: true)
     window.delegate = self
