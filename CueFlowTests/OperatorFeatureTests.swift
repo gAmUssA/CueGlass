@@ -930,3 +930,265 @@ import Testing
     controller.close()
   }
 }
+
+// Fix9 ports the Q3 intent matrix and Q4 settled-geometry oracle. Keep the
+// inherited suite above byte unchanged; these tests share its serialization.
+extension OperatorFeatureTests {
+  private func preparationTurn() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.main.async { continuation.resume() }
+    }
+  }
+  private func preparationController() async throws -> OperatorWindowController {
+    let c = try await prepared()
+    c.state.countdown = 0
+    c.seek(c.session.paragraphPositions[100])
+    return c
+  }
+  private func stopPreparationDriver(_ c: OperatorWindowController) {
+    for viewport in [c.output?.reflection.viewport, c.floating?.reflection.viewport] {
+      viewport?.driver?.stop()
+      viewport?.driver = nil
+    }
+  }
+  private func showPreparationSurface(_ c: OperatorWindowController, kind: String) throws {
+    if kind == "output" {
+      let display = try #require(DisplayDescriptor.all().first)
+      c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+      c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    } else {
+      c.showFloating()
+    }
+    stopPreparationDriver(c)
+  }
+  private func startPreparation(_ c: OperatorWindowController, kind: String) async throws {
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    try showPreparationSurface(c, kind: kind)
+    if kind == "resize" {
+      await settle(c)
+      let window = try #require(c.floating?.window)
+      window.setContentSize(CGSize(width: 600, height: 350))
+      c.floatingResized()
+    }
+  }
+  private func enterPreparationPass(_ c: OperatorWindowController, second: Bool) async throws {
+    // configure clears the end; pass 1 publishes it before pass 2 starts.
+    // Inspect this existing observation without driving or querying layout.
+    if second {
+      for _ in 0..<20 {
+        if c.authoritative.endPosition != nil { break }
+        await preparationTurn()
+      }
+    }
+    try #require(c.session.measuring)
+    #expect((c.authoritative.endPosition != nil) == second)
+    print(
+      "FIX9 preparation pass=\(second ? 2 : 1) chunks=\(c.authoritative.measurementChunkCount)")
+  }
+  private func expectPreparationInvariants(
+    _ c: OperatorWindowController, snapshot: UUID?, source: String
+  ) {
+    #expect(!c.session.measuring && !c.pendingPlay && !c.pendingResume)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.script.source.string == source)
+    #expect(c.session.preferredLPM == 30)
+  }
+  private func expectSettledPreparationGeometry(_ c: OperatorWindowController) async throws {
+    // Record ALL product values before any observational layout query.
+    let bound = try #require(c.session.timeline.upperBound)
+    let cache = c.authoritative.endPosition
+    let position = c.session.timeline.anchorPosition
+    let paragraph = try #require(c.session.paragraphPositions.dropFirst(100).first)
+    let measured = c.authoritative
+    func pass() async -> (Double, [Double]) {
+      await withCheckedContinuation { continuation in
+        measured.measure { end, paragraphs, _, _ in
+          continuation.resume(returning: (end, paragraphs))
+        }
+      }
+    }
+    let first = await pass()
+    _ = measured.captureAnchor()
+    let settled = await pass()
+    print(
+      "FIX9 geometry bound=\(bound) cache=\(String(describing: cache)) position=\(position) paragraph=\(paragraph) pass1=\(first.0) settled=\(settled.0)"
+    )
+    #expect(abs(bound - settled.0) < 0.00001)
+    if let cache { #expect(abs(cache - bound) < 0.00001) }
+    #expect(abs(position - paragraph) < 0.00001)
+    let settledParagraph = try #require(settled.1.dropFirst(100).first)
+    #expect(abs(paragraph - settledParagraph) < 0.00001)
+  }
+  @Test func laterPauseWinsDuringBothPreparationPasses() async throws {
+    for kind in ["floating", "output"] {
+      for second in [false, true] {
+        for action in ["hide", "sleep", "restart", "scrub", "displayLoss"] {
+          let c = try await preparationController()
+          defer { c.close() }
+          let snapshot = c.session.snapshot?.id
+          let source = c.script.source.string
+          try await startPreparation(c, kind: kind)
+          try await enterPreparationPass(c, second: second)
+          #expect(c.pendingResume)
+          switch action {
+          case "hide": c.hideOutput()
+          case "sleep": c.sleeping()
+          case "restart": c.restart()
+          case "scrub": c.scrub(delta: -10, momentum: false)
+          default: c.handleAvailableDisplayIDs([])
+          }
+          let intended = c.session.timeline.anchorPosition
+          #expect(c.session.state == .paused)
+          await settle(c)
+          print("FIX9 pause \(kind) \(action) pass=\(second ? 2 : 1) state=\(c.session.state)")
+          #expect(c.session.state == .paused)
+          #expect(c.session.countdownDigit == nil)
+          if action == "restart" || action == "scrub" {
+            #expect(c.session.timeline.anchorPosition == intended)
+          }
+          if action == "restart" { #expect(c.session.timeline.anchorPosition == 0) }
+          expectPreparationInvariants(c, snapshot: snapshot, source: source)
+        }
+      }
+    }
+  }
+  @Test func runningNavigationSurvivesBothPreparationPasses() async throws {
+    for second in [false, true] {
+      for action in ["seek", "next", "previous", "reverse"] {
+        let c = try await preparationController()
+        defer { c.close() }
+        let snapshot = c.session.snapshot?.id
+        let source = c.script.source.string
+        try await startPreparation(c, kind: "floating")
+        try await enterPreparationPass(c, second: second)
+        switch action {
+        case "seek": c.seek(1000)
+        case "next": c.execute(.nextParagraph)
+        case "previous": c.execute(.previousParagraph)
+        default: c.execute(.reverse)
+        }
+        let intended = c.session.timeline.anchorPosition
+        await settle(c)
+        #expect(c.session.state == .running && c.session.countdownDigit == nil)
+        #expect(c.session.timeline.anchorPosition == intended)
+        if action == "reverse" { #expect(c.session.timeline.direction == .reverse) }
+        expectPreparationInvariants(c, snapshot: snapshot, source: source)
+      }
+    }
+  }
+  @Test func sleepingCancelsOperatorPlayAndMinimizeCancelsPreviewResume() async throws {
+    let c = try await preparationController()
+    defer { c.close() }
+    c.state.countdown = 5
+    var style = c.state.style
+    style.fontSize = 120
+    c.changeStyle(style)
+    c.toggle()
+    #expect(c.session.measuring && c.pendingPlay && !c.pendingResume)
+    c.sleeping()
+    await settle(c)
+    #expect(c.session.state == .paused && c.session.countdownDigit == nil)
+    #expect(!c.pendingPlay && !c.pendingResume)
+    #expect(c.session.message == "Paused for sleep")
+
+    let preview = try await preparationController()
+    defer { preview.close() }
+    preview.session.countdownSeconds = 0
+    try preview.session.toggle(preview.script)
+    try preview.session.pause()
+    preview.render()
+    preview.resumeAfterMeasurement()
+    #expect(preview.session.measuring && preview.pendingResume)
+    preview.windowDidMiniaturize(Notification(name: NSWindow.didMiniaturizeNotification))
+    await settle(preview)
+    #expect(preview.session.state == .paused && preview.session.countdownDigit == nil)
+    #expect(!preview.pendingPlay && !preview.pendingResume)
+  }
+  @Test func anotherDocumentClaimCancelsPreparationWithoutSilentResume() async throws {
+    for second in [false, true] {
+      let c = try await preparationController()
+      defer { c.close() }
+      try await startPreparation(c, kind: "floating")
+      try await enterPreparationPass(c, second: second)
+      let other = OperatorWindowController(document: ScriptDocument())
+      defer { other.close() }
+      #expect(throws: NSError.self) { try PresentationCoordinator.shared.claim(other) }
+      #expect(PresentationCoordinator.shared.owner === c)
+      #expect(c.session.state == .paused)
+      await settle(c)
+      #expect(c.session.state == .paused && c.session.countdownDigit == nil)
+      #expect(!c.pendingPlay && !c.pendingResume)
+      #expect(c.session.message == "Another document requested presentation. Stop this take first.")
+      #expect(other.session.state == .idle)
+    }
+  }
+  @Test func closeHandoffInstallsSettledEndAndParagraphAnchorInBothPasses() async throws {
+    for kind in ["floating", "output", "resize", "outputLoss"] {
+      for second in [false, true] {
+        let c = try await preparationController()
+        defer { c.close() }
+        try await startPreparation(c, kind: kind == "outputLoss" ? "output" : kind)
+        try await enterPreparationPass(c, second: second)
+        if kind == "outputLoss" { c.handleAvailableDisplayIDs([]) } else { c.hideOutput() }
+        await settle(c)
+        #expect(c.session.state == .paused)
+        #expect(!c.pendingPlay && !c.pendingResume)
+        print("FIX9 close geometry \(kind) pass=\(second ? 2 : 1)")
+        try await expectSettledPreparationGeometry(c)
+      }
+    }
+  }
+  @Test func timedCloseKeepsOriginalBudgetMessageAndSettledEnd() async throws {
+    for kind in ["floating", "output"] {
+      for second in [false, true] {
+        let c = try await preparationController()
+        defer { c.close() }
+        var time = 0.0
+        c.session.clock = { time }
+        try c.session.enableTimed(seconds: 600)
+        c.session.countdownSeconds = 0
+        try c.session.toggle(c.script)
+        for frame in 1...40 {
+          time = Double(frame) / 4
+          try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+        }
+        try showPreparationSurface(c, kind: kind)
+        try await enterPreparationPass(c, second: second)
+        #expect(c.pendingResume)
+        c.hideOutput()
+        await settle(c)
+        #expect(c.session.state == .paused)
+        #expect(c.session.timedDuration == 600)
+        #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+        #expect(c.session.elapsedSeconds == 10)
+        #expect(c.session.countdownDigit == nil)
+        #expect(!c.pendingPlay && !c.pendingResume)
+        #expect(
+          c.session.message
+            == (kind == "floating"
+              ? "Floating prompter stopped" : "Output stopped — position retained"))
+        // Timed playback advanced from paragraph 100 before preparation; compare
+        // its saved anchor rather than requiring the old paragraph's position.
+        let bound = try #require(c.session.timeline.upperBound)
+        let cache = c.authoritative.endPosition
+        let position = c.session.timeline.anchorPosition
+        let message = c.session.message
+        let measured = c.authoritative
+        func pass() async -> Double {
+          await withCheckedContinuation { continuation in
+            measured.measure { end, _, _, _ in continuation.resume(returning: end) }
+          }
+        }
+        _ = await pass()
+        _ = measured.captureAnchor()
+        let settled = await pass()
+        print(
+          "FIX9 timed close \(kind) pass=\(second ? 2 : 1) bound=\(bound) cache=\(String(describing: cache)) position=\(position) settled=\(settled) message=\(message)"
+        )
+        #expect(abs(bound - settled) < 0.00001)
+        if let cache { #expect(abs(cache - bound) < 0.00001) }
+      }
+    }
+  }
+}

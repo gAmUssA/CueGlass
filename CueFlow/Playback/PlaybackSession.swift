@@ -24,6 +24,10 @@ struct ScriptSnapshot {
   var paragraphPositions: [Double] = []
   var words = 0, lines = 0
   var measuring = false
+  /// A start deferred until measurement completes: a running surface's resume or
+  /// the operator's Play. Any later pause transition withdraws it.
+  enum DeferredStart { case resume, play }
+  var deferredStart: DeferredStart?
   var countdownSeconds = 0
   private(set) var countdownEnd: Double?
   private(set) var countdownDigit: Int?
@@ -109,6 +113,7 @@ struct ScriptSnapshot {
     message = "Playing"
   }
   func pause() throws {
+    deferredStart = nil
     guard state != .idle else { return }
     let time = effectiveTime
     try timeline.pause(at: time)
@@ -120,6 +125,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func pauseSafely(_ reason: String) throws {
+    deferredStart = nil
     guard state != .idle else { return }
     let time = max(timeline.anchorTime, lastPresentedTarget ?? effectiveTime)
     try timeline.pause(at: time)
@@ -131,6 +137,7 @@ struct ScriptSnapshot {
     onChange?()
   }
   func stop() {
+    deferredStart = nil
     timeline = PlaybackTimeline()
     snapshot = nil
     state = .idle
@@ -267,6 +274,7 @@ struct ScriptSnapshot {
     if same {
       try candidate.timeline.seek(to: try position(at: effectiveTime), at: candidate.effectiveTime)
     }
+    deferredStart = nil
     snapshot = candidate.snapshot
     timeline = candidate.timeline
     state = .paused

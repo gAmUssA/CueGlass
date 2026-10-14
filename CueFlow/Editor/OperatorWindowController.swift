@@ -177,8 +177,26 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var transportChrome = NSView()
   var takeBar: NSView?
   var progressTimer: Timer?
-  var pendingPlay = false
-  var pendingResume = false
+  var pendingPlay: Bool {
+    get { session.deferredStart == .play }
+    set {
+      if newValue {
+        session.deferredStart = .play
+      } else if pendingPlay {
+        session.deferredStart = nil
+      }
+    }
+  }
+  var pendingResume: Bool {
+    get { session.deferredStart == .resume }
+    set {
+      if newValue {
+        session.deferredStart = .resume
+      } else if pendingResume {
+        session.deferredStart = nil
+      }
+    }
+  }
   var pendingAnchor: ReadingAnchor?
   var renderGeneration = 0
   var lastPointerTime = CACurrentMediaTime()
@@ -546,11 +564,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       session.measuring = true
       // The first pass establishes the text view extent. The geometry query settles
       // its viewport before a second bounded pass records final fragment positions.
-      authoritative.measure { [weak self] _, _, _, _ in
+      let measured = authoritative
+      measured.measure { [weak self] _, _, _, _ in
         guard let self, self.renderGeneration == generation else { return }
-        _ = self.authoritative.captureAnchor()
-        authoritative.measure { [weak self] end, paragraphs, words, lines in
+        guard measured === self.authoritative else { return self.render() }
+        _ = measured.captureAnchor()
+        measured.measure { [weak self] end, paragraphs, words, lines in
           guard let self, self.renderGeneration == generation else { return }
+          guard measured === self.authoritative else { return self.render() }
           self.session.measuring = false
           self.perform {
             _ = self.authoritative.captureAnchor()

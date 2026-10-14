@@ -17,3 +17,4 @@
 - Synchronize fullscreen and preview background mattes on initial render and color changes, preserving independent floating-window and text-panel opacity; add an actual-controller native regression.
 - Preserve reading anchors and running intent through chunked measurement, install final Timed geometry atomically without rebasing its budget, and keep infeasible Restart plans cancelled with the solver reason visible.
 - Settle final viewport geometry with two bounded preparation passes before atomic Timed completion; verify the actual final TextKit fragment after typography and resize on short and asynchronous scripts.
+- Honor later pause, sleep, close, Restart and scrub during preparation by keeping deferred starts in the Session; reprepare on authoritative viewport handoff so both bounded passes install settled end and anchor geometry. Add native regressions across both passes, running navigation, second-document claims and original Timed budgets.
