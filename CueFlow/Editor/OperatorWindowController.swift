@@ -4,6 +4,13 @@ import QuartzCore
 import Speech
 import SwiftUI
 
+struct VoiceFollowPlatformCapability: Equatable {
+  let majorVersion: Int
+  let speechTranscriberAvailable: Bool
+
+  var allowsVoiceFollow: Bool { majorVersion >= 26 && speechTranscriberAvailable }
+}
+
 @MainActor final class OperatorState: ObservableObject {
   @Published var status = "Ready"
   @Published var cloud = "iCloud not configured in this build"
@@ -283,8 +290,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   private var pendingVoiceRequest: PendingVoiceRequest?
   private var sample: ScriptSnapshot?
-  init(document: ScriptDocument) {
+  private let voiceCapability: VoiceFollowPlatformCapability
+
+  init(document: ScriptDocument, voiceCapabilityOverride: VoiceFollowPlatformCapability? = nil) {
     script = document
+    voiceCapability = voiceCapabilityOverride ?? Self.currentVoiceCapability()
     let window = OperatorWindow(
       contentRect: NSRect(x: 100, y: 100, width: 1280, height: 800),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -450,7 +460,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       viewport: preview.reflection.viewport, session: session)
     preview.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
     session.onChange = { [weak self] in self?.refresh() }
-    if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
+    if #available(macOS 26.0, *), voiceCapability.allowsVoiceFollow {
       let coordinator = VoiceFollowCoordinator(
         session: session, source: SpeechVoiceSource(),
         usageDescription: {
@@ -488,6 +498,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     Task { await script.refreshCloudStatus() }
   }
   required init?(coder: NSCoder) { fatalError("Use init(document:)") }
+
+  private static func currentVoiceCapability() -> VoiceFollowPlatformCapability {
+    let majorVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+    if #available(macOS 26.0, *) {
+      return VoiceFollowPlatformCapability(
+        majorVersion: majorVersion, speechTranscriberAvailable: SpeechTranscriber.isAvailable)
+    }
+    return VoiceFollowPlatformCapability(
+      majorVersion: majorVersion, speechTranscriberAvailable: false)
+  }
+
   func present(_ error: Error) { state.status = error.localizedDescription }
   func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { script.undoManager }
   func perform(_ work: () throws -> Void) {

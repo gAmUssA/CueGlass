@@ -424,12 +424,38 @@ import Testing
     controller.close()
   }
 
-  @Test func followVoiceSurfaceIsUnavailableBeforeMacOS26() {
-    if #unavailable(macOS 26.0) {
-      let controller = OperatorWindowController(document: ScriptDocument())
-      #expect(!controller.state.voiceAvailable)
-      #expect(controller.state.voiceState == .hidden)
-      controller.close()
+  @Test func followVoiceSurfaceUsesPlatformCapability() {
+    for majorVersion in [14, 25] {
+      let capability = VoiceFollowPlatformCapability(
+        majorVersion: majorVersion, speechTranscriberAvailable: true)
+      #expect(!capability.allowsVoiceFollow)
+      let unsupported = OperatorWindowController(
+        document: ScriptDocument(), voiceCapabilityOverride: capability)
+      #expect(!unsupported.state.voiceAvailable)
+      #expect(unsupported.state.voiceState == .hidden)
+      #expect(unsupported.voiceCoordinator == nil)
+      unsupported.close()
+    }
+
+    let supportedCapability = VoiceFollowPlatformCapability(
+      majorVersion: 26, speechTranscriberAvailable: true)
+    #expect(supportedCapability.allowsVoiceFollow)
+    let unsupportedSpeechCapability = VoiceFollowPlatformCapability(
+      majorVersion: 26, speechTranscriberAvailable: false)
+    #expect(!unsupportedSpeechCapability.allowsVoiceFollow)
+    if #available(macOS 26.0, *) {
+      let supported = OperatorWindowController(
+        document: ScriptDocument(), voiceCapabilityOverride: supportedCapability)
+      #expect(supported.state.voiceAvailable)
+      #expect(supported.voiceCoordinator != nil)
+      supported.close()
+
+      let unsupportedSpeech = OperatorWindowController(
+        document: ScriptDocument(), voiceCapabilityOverride: unsupportedSpeechCapability)
+      #expect(!unsupportedSpeech.state.voiceAvailable)
+      #expect(unsupportedSpeech.state.voiceState == .hidden)
+      #expect(unsupportedSpeech.voiceCoordinator == nil)
+      unsupportedSpeech.close()
     }
   }
 

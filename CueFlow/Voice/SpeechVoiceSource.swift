@@ -300,14 +300,13 @@ private final class AudioInputPipe: @unchecked Sendable {
       onError(VoiceSourceError.bufferConversionFailed)
       return
     }
-    var suppliedInput = false
+    let oneShotInput = OneShotAudioInput(input)
     var conversionError: NSError?
     let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-      guard !suppliedInput else {
+      guard let input = oneShotInput.take() else {
         inputStatus.pointee = .noDataNow
         return nil
       }
-      suppliedInput = true
       inputStatus.pointee = .haveData
       return input
     }
@@ -328,6 +327,22 @@ private final class AudioInputPipe: @unchecked Sendable {
     {
       onError(VoiceSourceError.inputStreamTerminated)
     }
+  }
+}
+
+@available(macOS 26.0, *)
+private final class OneShotAudioInput: @unchecked Sendable {
+  private let lock = NSLock()
+  private var buffer: AVAudioPCMBuffer?
+
+  init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+
+  func take() -> AVAudioPCMBuffer? {
+    lock.lock()
+    defer { lock.unlock() }
+    let buffer = self.buffer
+    self.buffer = nil
+    return buffer
   }
 }
 
