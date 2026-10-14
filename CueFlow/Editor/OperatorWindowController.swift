@@ -847,7 +847,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     let displays = DisplayDescriptor.all()
     guard
       let display = displays.first(where: {
-        ($0.preference.uuid ?? $0.preference.name) == state.selectedDisplay
+        $0.selectionKey == state.selectedDisplay
       })
     else {
       state.status = "Saved display not connected — choose a display"
@@ -926,7 +926,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func refreshScreens() {
     let displays = DisplayDescriptor.all()
-    state.displays = displays.map { $0.preference.uuid ?? $0.preference.name }
+    state.displays = displays.map(\.selectionKey)
     if state.selectedDisplay.isEmpty,
       let data = UserDefaults.standard.data(forKey: "displayPreference")
     {
@@ -947,7 +947,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func displayName(_ key: String) -> String {
     guard
       let d = DisplayDescriptor.all().first(where: {
-        ($0.preference.uuid ?? $0.preference.name) == key
+        $0.selectionKey == key
       })
     else { return "Disconnected" }
     return d.preference.name + (d.screen == window?.screen ? " (operator screen)" : "")
@@ -1442,7 +1442,7 @@ extension OperatorWindowController {
         title: "Present on \(display.preference.name)", action: #selector(presentOnDisplay(_:)),
         keyEquivalent: "")
       item.target = self
-      item.representedObject = display.preference.uuid ?? display.preference.name
+      item.representedObject = display.selectionKey
       menu.addItem(item)
     }
     let floating = NSMenuItem(

@@ -66,7 +66,7 @@ jobs:
 
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             label="$GITHUB_REF_NAME"
-            if [[ ! "$label" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][[:alnum:].-]+)?$ ]]; then
+            if [[ ! "$label" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "Release tag must use vMAJOR.MINOR.PATCH: $label" >&2
               exit 1
             fi
@@ -79,6 +79,15 @@ jobs:
           if [[ ! -d "$app_path" || ! -x "$app_executable" ]]; then
             echo "Expected built app at $app_path" >&2
             exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag_version="${label#v}"
+            app_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+              "$app_path/Contents/Info.plist")
+            if [[ "$tag_version" != "$app_version" ]]; then
+              echo "Release tag $label does not match built app version $app_version" >&2
+              exit 1
+            fi
           fi
           lipo "$app_executable" -verify_arch arm64
           lipo "$app_executable" -verify_arch x86_64

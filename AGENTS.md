@@ -45,7 +45,7 @@ beans check --json
 swift scripts/make-fixtures.swift
 ```
 
-`scripts/test-app.sh` is an optional direct-runner cross-check. Fixture generation is useful when intentionally refreshing the synthetic files; do not run it as a routine test because it writes into `Fixtures/`.
+`scripts/test-app.sh` is an optional direct-runner cross-check. Fixture generation is useful when intentionally refreshing the synthetic files; do not run it as a routine test because it writes generated data into `.build/fixtures/` by default. Pass an explicit path only when you intend to write elsewhere.
 
 ## Implementation contracts
 

@@ -1,6 +1,6 @@
 # Manual validation plan
 
-Record OS/build, Mac model, scale/refresh rates and synthetic fixture size. Do not record private display UUIDs, account identities or script contents. Status of every procedure below: pending unless separately entered with observed evidence. Automated AppKit results are in README, not physical acceptance.
+Record OS/build, Mac model, scale/refresh rates and synthetic fixture size. Do not record private display UUIDs, account identities or script contents. Status of every procedure below: pending unless separately entered with observed evidence. Automated AppKit results and current implementation evidence are in [implementation status](IMPLEMENTATION_STATUS.md); they do not establish physical acceptance.
 
 ## Local document and accessibility
 

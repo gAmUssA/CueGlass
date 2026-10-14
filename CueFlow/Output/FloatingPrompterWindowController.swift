@@ -154,7 +154,9 @@ import SwiftUI
   override func mouseEntered(with event: NSEvent) {
     grip.alphaValue = 1
   }
-  override func mouseExited(with event: NSEvent) { grip.alphaValue = 0 }
+  override func mouseExited(with event: NSEvent) {
+    grip.alphaValue = controller?.session.state == .running ? 0 : 1
+  }
 }
 struct FloatingGrip: View {
   @ObservedObject var state: OperatorState

@@ -70,7 +70,15 @@ public enum ScriptFileCodec {
     let defaults =
       try JSONSerialization.jsonObject(with: JSONEncoder().encode(ReadingStyle())) as? [String: Any]
       ?? [:]
-    var style = object["readingStyle"] as? [String: Any] ?? [:]
+    var style: [String: Any]
+    if let encodedStyle = object["readingStyle"] {
+      guard let objectStyle = encodedStyle as? [String: Any] else {
+        throw ScriptFileError.malformed
+      }
+      style = objectStyle
+    } else {
+      style = [:]
+    }
     for (key, value) in defaults where style[key] == nil { style[key] = value }
     var enumAdjustments: [String] = []
     for (key, valid) in [

@@ -5,6 +5,7 @@ import CueFlowCore
   let screen: NSScreen
   let preference: DisplayPreference
   let id: CGDirectDisplayID
+  var selectionKey: String { String(id) }
   static func all() -> [Self] {
     NSScreen.screens.compactMap { screen in
       guard

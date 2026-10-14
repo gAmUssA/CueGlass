@@ -68,6 +68,16 @@ import Testing
   model.content.format = "html"
   #expect(throws: ScriptFileError.invalidPayload) { try ScriptFileCodec.encode(model) }
 }
+@Test func malformedPresentReadingStyleIsRejected() throws {
+  let model = ScriptDocumentModel(rtf: Data("{\\rtf1 sample}".utf8))
+  let encoded = try ScriptFileCodec.encode(model)
+  for malformedStyle: Any in [NSNull(), "not an object", 42] {
+    var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+    object["readingStyle"] = malformedStyle
+    let data = try JSONSerialization.data(withJSONObject: object)
+    #expect(throws: ScriptFileError.malformed) { try ScriptFileCodec.decode(data) }
+  }
+}
 @Test func unicodeAndEncoding() throws {
   let sample = "Привет 👩‍💻 é שלום\r\n\r\nEnd\r"
   let expected = "Привет 👩‍💻 é שלום\n\nEnd\n"

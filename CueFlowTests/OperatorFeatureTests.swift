@@ -426,7 +426,7 @@ import Testing
       }
       if fullscreen {
         let display = try #require(DisplayDescriptor.all().first)
-        c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+        c.state.selectedDisplay = display.selectionKey
         c.showOutput(confirm: { _ in .alertFirstButtonReturn })
         let viewport = try #require(c.output?.reflection.viewport)
         viewport.driver?.stop()
@@ -555,7 +555,7 @@ import Testing
     let c = try await prepared()
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
-    c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+    c.state.selectedDisplay = display.selectionKey
     c.seek(c.session.paragraphPositions[180])
     let anchor = try #require(c.authoritative.captureAnchor())
     let snapshot = c.session.snapshot?.id
@@ -959,7 +959,7 @@ extension OperatorFeatureTests {
   private func showPreparationSurface(_ c: OperatorWindowController, kind: String) throws {
     if kind == "output" {
       let display = try #require(DisplayDescriptor.all().first)
-      c.state.selectedDisplay = display.preference.uuid ?? display.preference.name
+      c.state.selectedDisplay = display.selectionKey
       c.showOutput(confirm: { _ in .alertFirstButtonReturn })
     } else {
       c.showFloating()

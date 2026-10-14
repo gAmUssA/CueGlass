@@ -6,7 +6,7 @@ enum ImportError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .unsupported:
-      "Choose a regular TXT, RTF, or CueFlow file. RTFD, PDF, and DOCX are unsupported."
+      "Choose a regular TXT, RTF, or CueGlass document (.cueflow). RTFD, PDF, and DOCX are unsupported."
     case .tooLarge: "This file exceeds the import limit. Split the script and try again."
     case .invalidRTF: "This file is not valid RTF. Export it as RTF or TXT and try again."
     }
