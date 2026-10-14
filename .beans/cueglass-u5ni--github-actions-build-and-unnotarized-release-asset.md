@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-14T13:37:02Z
-updated_at: 2026-10-14T14:36:33Z
+updated_at: 2026-10-14T14:47:57Z
 parent: cueglass-aeqt
 ---
 
@@ -18,8 +18,8 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 - [x] Build universal arm64/x86_64 unsigned app; package ZIP, checksum and unsigned/unnotarized notice.
 - [x] Publish only from semantic version tags as an explicitly unsigned/unnotarized prerelease.
 - [x] Update README, changelog, ADR and local-first MVP scope for GitHub releases and deferred iCloud/signing.
-- [ ] Rerun workflow on GitHub-hosted macOS after the final test-fixture stabilization; verify tests, universal build and packaging.
-- [ ] Verify a tagged prerelease and each uploaded asset are retrievable after MVP acceptance.
+- [x] Rerun workflow on GitHub-hosted macOS after the final test-fixture stabilization; verify tests, universal build and packaging.
+- [ ] Verify the v0.1.0 tagged prerelease and each uploaded asset are retrievable.
 
 - [x] Set repository visibility to public and verify it is now public (`gh repo view`).
 
@@ -30,3 +30,5 @@ Add a public-repository GitHub Actions release pipeline for the local CueGlass M
 - [x] Re-run the 48-test native app suite locally after raising the shared preparation fixture default to 300 paragraphs; strict Swift formatting and Beans integrity checks pass.
 
 - [x] Keep close-handoff and timed-close fixtures asynchronous with 300 paragraphs, preserving the timed feasibility cap; the local 48-test suite passes.
+
+- [x] Fix the Ubuntu release publisher to pass the repository explicitly to `gh release create`; the first tag build passed but publication exposed missing GitHub CLI repository context.

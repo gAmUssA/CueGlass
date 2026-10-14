@@ -148,6 +148,7 @@ jobs:
           ARCHIVE_NAME: CueGlass-${{ github.ref_name }}-macOS-UNSIGNED-UNNOTARIZED.zip
         run: |
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             "$DIST_DIR/$ARCHIVE_NAME" \
             "$DIST_DIR/$ARCHIVE_NAME.sha256" \
             "$DIST_DIR/UNNOTARIZED.txt" \
