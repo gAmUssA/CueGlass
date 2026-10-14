@@ -1,0 +1,37 @@
+# Architecture
+
+NSDocument is the only owner of document lifecycle, coordinated saves, autosave, Versions and change tracking. `ScriptDocument` holds authored attributed content and a version-1 core model. The editor has its own text storage; normal editing reports immutable content back to the document. The document/controller owns the operator window; there is no DocumentGroup or filesystem save watcher.
+
+| Producer | Consumer | Contract | Verification |
+|---|---|---|---|
+| Foundation core | document/import/session/viewport | Versioned RTF JSON, bounded finite style, host-time timeline, UTF-16 anchors | `swift test --package-path Packages/CueFlowCore --scratch-path .build/core` |
+| ScriptDocument | editor and session | Source revisions; copied immutable snapshots; explicit replacement notification | `scripts/test-app.sh` |
+| PlaybackSession | output and preview | One pure shared timeline; only authoritative viewport records presented targets | Integration transport/stall/output-loss tests |
+| PrompterViewport | preview/output | TextKit 2 logical layout, guide anchor, fractional scrolling | Anchor/long-script tests and hardware plan |
+| FileManager resource APIs | document/operator | Actual container/download/resource states only | Local metadata tests; signed two-Mac plan |
+
+All AppKit types, rendering and session commands are main-actor isolated. A storage actor performs potentially blocking container/resource/download calls away from UI. Presenter metadata callbacks are nonisolated, call super, then schedule an asynchronous metadata read/main-actor update. Concurrent NSDocument reads and asynchronous writes are disabled explicitly. A narrow `MainActor.assumeIsolated` in `read(from:ofType:)` relies on that documented synchronous read contract. The save-block flag uses `OSAllocatedUnfairLock` so the nonisolated framework write hook can read it safely without an unchecked Sendable conformance.
+
+The snapshot's attributed string, ID, document identity and source revision never change during pause/resume, editor or cloud replacements. An explicit paused load installs a new snapshot. Typography is separate derived session state, persisted as document reading preferences; presentation attributes preserve bold/italic, strip links/attachments and simplify table blocks. Reflection and display preferences are UserDefaults values on this Mac. No playback position is saved or published through SwiftUI each frame.
+
+Timeline inputs use CACurrentMediaTime / CADisplayLink targetTimestamp, never Date. Commands rebase at max(current host time, last presented target). Only output is authoritative when present; otherwise preview is. A gap over 0.5 seconds pauses at the last safely presented point. Ordinary dropped frames sample elapsed time. End uses an actually laid-out final fragment rather than estimated total usage bounds.
+
+Each viewport owns a driver → display link → proxy, whose pointer back to the driver is weak. Run-loop mode is common. Idle stops/invalidate links; pause pauses them; removal from a window/output closure invalidates them. No frame callback reads files, rebuilds attributed strings or dirties the document. Layout lookahead advances in viewport-size chunks. Layer translation carries the remainder after clip-view pixel alignment; physical smoothness still needs measurement. TextKit 1 fallback asserts in Debug. No legacy layoutManager is accessed.
+
+Anchor offsets use UTF-16 at grapheme boundaries plus intra-line fraction and snapshot ID. TextKit fragment geometry excludes the text-container inset; capture/restore use the equivalent unpadded coordinate. Initial top padding puts the first line at the guide, and trailing document space lets the final line reach it. Layout changes pause, capture, rebuild, restore and rebase. New text resets the anchor instead of fuzzy-matching edits.
+
+Output is a borderless noninteractive screen-frame window. Display selection is persisted as UUID/name, never array position. Missing/ambiguous matches do not silently move output. Preview uses AppKit bounds scaling over the output's logical dimensions. Reflections apply a center-based affine transform to viewport and guide, never string reversal or controls. Disconnect pauses and closes output; there is no automatic fallback.
+
+Cloud saves remain NSDocument saves. FileManager discovers the entitled container off main. Metadata vocabulary distinguishes uploading, uploaded, downloading, conflicts and unknown. Account changes preserve edits and offer local copying. Cloud-only opens request download and require retry after availability. NSDocument Versions and Save a Copy are the first conflict recovery tools; no automatic winner, destructive version removal or timestamp merge exists. The actual system conflict UI is a manual validation gate.
+
+Material deviations from the architecture consultation: XcodeGen is used as explicitly required by the developer brief, with project and shared scheme committed. Several related components share files. Snapshot styling is intentionally held separately as editable derived session state, while snapshot source remains immutable. The operator updates clocks/progress/current-paragraph decoration at at most 4 Hz. Core tests run through the package command; native integration tests now run through the normal DebugLocal scheme as an unhosted bundle explicitly linked to the app debug dylib. Removing the test target direct Core dependency avoids duplicate Core type identity. This remedy bypasses the observed historical hosted LaunchServices assertion without refactoring app ownership.
+
+## Expanded operator contracts (superseding implementation notes)
+
+[ADR 0004](adr/0004-lines-per-minute-direction-and-schema.md) supersedes the old positive-only 1–300 pt/s contract. SpeedModel owns LPM conversion; PlaybackTimeline keeps 0.1–2000 positive pt/s with separate direction, actual upper bound and clamped pure samples. The version-1 codec ignores the legacy speed key, defaults to 30 LPM and supports diagnosed/defaulted optional style enums and the reading-aid/weight/design fields. Nominal font advance excludes paragraph spacing; effective layout-limited pace is distinct from saved preference.
+
+[ADR 0005](adr/0005-native-surfaces-commands-and-timing.md) adds the one-at-a-time floating/output surfaces, native Controls HUD, CommandMap, elapsed/countdown/timed state and static reading-aid layers. The final source prepares a replacement transactionally, and all rejected native reads protect the on-disk revision. The nonisolated save guard continues using locked state. iCloud target configuration precedence is explicit in the generated project and spec.
+
+Paused actual-end/paragraph/line measurement advances at most 64 fragments per main-run-loop turn, cancellable by render generation. Known bounds avoid repeated whole-fragment scans during scrolling. Live resize scales old logical content and relayouts once at the end. Surface transitions restore anchors and resume only if previously running; typography stays paused. Command time clamps to both last presented target and timeline anchor, including after seeks clear the stall target.
+
+A separate TakeReadout publishes at 4 Hz, so timer ticks do not republish inspector style state. NSDocument still owns the editor/source; editor Undo/Redo notifications synchronize document source before saving. No live editing during a take is introduced. [Quiet Studio research](design/README.md) describes the toolbar/editor/stage/inspector hierarchy and visual-evidence limits.

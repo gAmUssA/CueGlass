@@ -1,0 +1,16 @@
+# CueGlass icon master
+
+OpenAI built-in image generation produced `cueglass-icon-master-v1.png` for the owner-requested native app icon. The original is 1254 pixels square. `cueglass-icon-1024-v1.png` is a separate 1024-pixel derivative with an embedded sRGB profile, prepared with macOS `sips`; the original is preserved. The chosen Reading Line concept follows Quiet Studio: graphite, reading bars and one blue guide.
+
+`CueGlass.icon` contains the generated artwork as a single opaque layer using Apple's native Icon Composer format. The installed Icon Composer export tool rendered the native mask successfully for design generations 26 and 27. The app target compiles this package with `ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass`. ReleaseLocal build verification finds `CFBundleIconName` and `CFBundleIconFile` set to `CueGlass`, `Assets.car` with the actual ReadingLine layer/native appearance stacks, and a compiler-generated `CueGlass.icns` fallback. The processed plist and both executable architectures retain macOS 14.0 minimum metadata. No legacy mask geometry is hand-authored. Finder/Dock visual acceptance and a real macOS 14 runtime check remain independent manual checks; packaging evidence alone does not establish them.
+
+## Production prompt
+
+Use case: logo-brand. Asset type: production master artwork for the native macOS application icon of CueGlass, a premium calm teleprompter. Generate ONE 1024 by 1024 pixel square image, full-bleed edge to edge, opaque, unmasked. NO rounded outside corners, NO outside border, NO transparent surround, NO external drop shadow. Not a mockup or presentation board, not a grid, no device or background scene. Subject: an abstract, calm glass reading surface. Background is a very smooth subtle deep graphite gradient, #2C2C2E at the top to #1C1C1E at the bottom, clean and without noise. Centered within the middle 75 percent of the square: FOUR horizontal rounded-capsule bars suggesting readable lines of text, left aligned, with varied lengths long, long, medium, short. Soft off-white #E5E5EA. The upper two lines are subdued, approximately 45 percent opacity; the third line is brightest. Make the bars thick and well spaced, with a strong recognizable silhouette at 16 and 32 pixels. One solid restrained system-blue #0A84FF horizontal reading-guide line with rounded ends crosses just beneath the third bar and extends a little beyond the bars on both sides. The guide must remain visible when reduced to a small Dock/Finder icon. Clean crisp precise shapes, generous spacing, extremely polished visual balance, quiet professional native Mac aesthetic. Flat master artwork intended for Apple's Icon Composer to apply the native material and mask. No letters, words, numbers, logos, play triangles, microphone, camera, faces, lens flare, bevels, noise, heavy 3D or extra accent colors. sRGB color.
+
+## Source guidance
+
+- [Apple app-icon HIG](https://developer.apple.com/design/human-interface-guidelines/app-icons)
+- [Icon Composer](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)
+
+Use the master with system-native masking through Icon Composer where supported. Do not guess legacy template geometry. Preserve the original master when preparing derived sizes.

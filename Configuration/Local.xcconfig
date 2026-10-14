@@ -1,0 +1,5 @@
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_ENTITLEMENTS = CueFlow/Resources/CueFlow-Local.entitlements
+CUEFLOW_ICLOUD_CONTAINER =
+
+INFOPLIST_FILE = CueFlow/Resources/Info.plist

@@ -1,0 +1,4 @@
+// Copy to Owner.xcconfig. Use your own registered identifiers.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+PRODUCT_BUNDLE_IDENTIFIER = your.bundle.cueflow
+CUEFLOW_ICLOUD_CONTAINER = iCloud.your.bundle.cueflow

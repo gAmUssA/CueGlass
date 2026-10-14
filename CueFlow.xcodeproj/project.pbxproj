@@ -1,0 +1,787 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */; };
+		2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */; };
+		2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */; };
+		4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1B7911264ADD238A803806 /* ScriptDocument.swift */; };
+		521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E203A73B8791176DFFD9E89B /* AppDelegate.swift */; };
+		55ABDC67343D25B772455596 /* OperatorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */; };
+		599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E331330CF345B398B53267B /* OperatorControls.swift */; };
+		6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3798F2E904FA73605AD7462F /* IntegrationTests.swift */; };
+		737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */; };
+		7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E59D28065A1EC8A518D087C /* PresentationFont.swift */; };
+		7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8C3DC660FC600F99391B73D1 /* CueGlass.icon */; };
+		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
+		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
+		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
+		C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91658B74825E5235177DFB /* PresentationBuilder.swift */; };
+		DE8D542994984AEF0BE9852A /* CueFlowCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8F38C200B6595D9AE760A456 /* CueFlowCore */; };
+		E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */; };
+		E6B3C29D97AFA68D70E6514B /* PrompterViewport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */; };
+		E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27F804C248326C3E21AB38F /* main.swift */; };
+		F19343DC6229C8218BB0A154 /* FloatingPrompterWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */; };
+		F81C082342E0653C5172F6A3 /* OutputWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7DEBA1B42930D1129C83A4CA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C7E26E40C1A15DD601D5C254 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B66317F08E1CA31D1EBA57B2;
+			remoteInfo = CueFlow;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrompterViewport.swift; sourceTree = "<group>"; };
+		282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputWindowController.swift; sourceTree = "<group>"; };
+		3798F2E904FA73605AD7462F /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
+		4B91658B74825E5235177DFB /* PresentationBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationBuilder.swift; sourceTree = "<group>"; };
+		5E331330CF345B398B53267B /* OperatorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorControls.swift; sourceTree = "<group>"; };
+		5F5BF751BC3355979A5962EB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
+		65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPrompterWindowController.swift; sourceTree = "<group>"; };
+		6E59D28065A1EC8A518D087C /* PresentationFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationFont.swift; sourceTree = "<group>"; };
+		7572426652BF4AE04C6AA016 /* CueFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CueFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8C3DC660FC600F99391B73D1 /* CueGlass.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = CueGlass.icon; sourceTree = "<group>"; };
+		8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorFeatureTests.swift; sourceTree = "<group>"; };
+		914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStorageService.swift; sourceTree = "<group>"; };
+		96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CueFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeStudio.swift; sourceTree = "<group>"; };
+		A8EB5B56A2B619627027FFC1 /* CueFlowCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CueFlowCore; path = Packages/CueFlowCore; sourceTree = SOURCE_ROOT; };
+		AA1B7911264ADD238A803806 /* ScriptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptDocument.swift; sourceTree = "<group>"; };
+		B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptImporter.swift; sourceTree = "<group>"; };
+		C27F804C248326C3E21AB38F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		DA806692FFD5885EB30FF35C /* PlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
+		DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelController.swift; sourceTree = "<group>"; };
+		E203A73B8791176DFFD9E89B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		E421E25C07455FA3D80DC323 /* ICloud.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ICloud.xcconfig; sourceTree = "<group>"; };
+		E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
+		F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayLinkDriver.swift; sourceTree = "<group>"; };
+		F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorWindowController.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B5A8ABC3047A07A8E0216900 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DE8D542994984AEF0BE9852A /* CueFlowCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		118CA4BB5FC3623A76C5231E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7572426652BF4AE04C6AA016 /* CueFlow.app */,
+				96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		15E8C92D35718FB437DC2E4A /* branding */ = {
+			isa = PBXGroup;
+			children = (
+				8C3DC660FC600F99391B73D1 /* CueGlass.icon */,
+			);
+			name = branding;
+			path = assets/branding;
+			sourceTree = "<group>";
+		};
+		2891F2B27A5E0DB888A3FC93 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */,
+			);
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		2A7C6102D2FF413F2F2AAB54 /* Presentation */ = {
+			isa = PBXGroup;
+			children = (
+				4B91658B74825E5235177DFB /* PresentationBuilder.swift */,
+				6E59D28065A1EC8A518D087C /* PresentationFont.swift */,
+				1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */,
+			);
+			path = Presentation;
+			sourceTree = "<group>";
+		};
+		3A2EAA33A9496AA821AE6691 /* CueFlowTests */ = {
+			isa = PBXGroup;
+			children = (
+				3798F2E904FA73605AD7462F /* IntegrationTests.swift */,
+				8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */,
+			);
+			path = CueFlowTests;
+			sourceTree = "<group>";
+		};
+		4836AAC6E66A50FF4204D949 /* Application */ = {
+			isa = PBXGroup;
+			children = (
+				E203A73B8791176DFFD9E89B /* AppDelegate.swift */,
+				C27F804C248326C3E21AB38F /* main.swift */,
+			);
+			path = Application;
+			sourceTree = "<group>";
+		};
+		5517FD3E17E593D5190CB8F2 /* CueFlow */ = {
+			isa = PBXGroup;
+			children = (
+				4836AAC6E66A50FF4204D949 /* Application */,
+				FBE04BD5C5CE98DB3813F988 /* Documents */,
+				E9D6B41FBA755BF59B8C7365 /* Editor */,
+				B35BD0C0D1B64F8F01AE7DAD /* Import */,
+				9D64533D012300428F683DB7 /* Output */,
+				DADB96F6FC9966EA558CCD34 /* Playback */,
+				2A7C6102D2FF413F2F2AAB54 /* Presentation */,
+				2891F2B27A5E0DB888A3FC93 /* Storage */,
+			);
+			path = CueFlow;
+			sourceTree = "<group>";
+		};
+		9D64533D012300428F683DB7 /* Output */ = {
+			isa = PBXGroup;
+			children = (
+				DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */,
+				65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */,
+				282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */,
+			);
+			path = Output;
+			sourceTree = "<group>";
+		};
+		B35BD0C0D1B64F8F01AE7DAD /* Import */ = {
+			isa = PBXGroup;
+			children = (
+				B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */,
+			);
+			path = Import;
+			sourceTree = "<group>";
+		};
+		C40994B1A6662F5AD39074F9 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				A8EB5B56A2B619627027FFC1 /* CueFlowCore */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		C4EC56993820A587A085EC8C /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				E421E25C07455FA3D80DC323 /* ICloud.xcconfig */,
+				5F5BF751BC3355979A5962EB /* Local.xcconfig */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		DADB96F6FC9966EA558CCD34 /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */,
+				DA806692FFD5885EB30FF35C /* PlaybackSession.swift */,
+			);
+			path = Playback;
+			sourceTree = "<group>";
+		};
+		E9C0412429C1B951A9F89A28 = {
+			isa = PBXGroup;
+			children = (
+				15E8C92D35718FB437DC2E4A /* branding */,
+				C4EC56993820A587A085EC8C /* Configuration */,
+				5517FD3E17E593D5190CB8F2 /* CueFlow */,
+				3A2EAA33A9496AA821AE6691 /* CueFlowTests */,
+				C40994B1A6662F5AD39074F9 /* Packages */,
+				118CA4BB5FC3623A76C5231E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E9D6B41FBA755BF59B8C7365 /* Editor */ = {
+			isa = PBXGroup;
+			children = (
+				98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */,
+				5E331330CF345B398B53267B /* OperatorControls.swift */,
+				F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */,
+				E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */,
+			);
+			path = Editor;
+			sourceTree = "<group>";
+		};
+		FBE04BD5C5CE98DB3813F988 /* Documents */ = {
+			isa = PBXGroup;
+			children = (
+				AA1B7911264ADD238A803806 /* ScriptDocument.swift */,
+			);
+			path = Documents;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B66317F08E1CA31D1EBA57B2 /* CueFlow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE23A2BDC80AE112E40B67DE /* Build configuration list for PBXNativeTarget "CueFlow" */;
+			buildPhases = (
+				B8559BDC4B00929C6C1E08E1 /* Sources */,
+				5A131B9247AE808AE9D5F8D3 /* Resources */,
+				B5A8ABC3047A07A8E0216900 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CueFlow;
+			packageProductDependencies = (
+				8F38C200B6595D9AE760A456 /* CueFlowCore */,
+			);
+			productName = CueFlow;
+			productReference = 7572426652BF4AE04C6AA016 /* CueFlow.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E171750F78AD831C8819281D /* CueFlowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 27AE23A18716E8198B6E2171 /* Build configuration list for PBXNativeTarget "CueFlowTests" */;
+			buildPhases = (
+				DAE6704FFD5B49D19A8C5018 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6B6C398AE3242959B8C8CF2D /* PBXTargetDependency */,
+			);
+			name = CueFlowTests;
+			packageProductDependencies = (
+			);
+			productName = CueFlowTests;
+			productReference = 96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C7E26E40C1A15DD601D5C254 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					B66317F08E1CA31D1EBA57B2 = {
+						ProvisioningStyle = Automatic;
+					};
+					E171750F78AD831C8819281D = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 6590F30F7B00D6EB4CAA607A /* Build configuration list for PBXProject "CueFlow" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E9C0412429C1B951A9F89A28;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F8982E03107F492EA6CE9727 /* XCLocalSwiftPackageReference "Packages/CueFlowCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 118CA4BB5FC3623A76C5231E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B66317F08E1CA31D1EBA57B2 /* CueFlow */,
+				E171750F78AD831C8819281D /* CueFlowTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5A131B9247AE808AE9D5F8D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B8559BDC4B00929C6C1E08E1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */,
+				AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */,
+				1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */,
+				737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */,
+				F19343DC6229C8218BB0A154 /* FloatingPrompterWindowController.swift in Sources */,
+				2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */,
+				599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */,
+				55ABDC67343D25B772455596 /* OperatorWindowController.swift in Sources */,
+				F81C082342E0653C5172F6A3 /* OutputWindowController.swift in Sources */,
+				98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */,
+				C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */,
+				7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */,
+				E6B3C29D97AFA68D70E6514B /* PrompterViewport.swift in Sources */,
+				4784883ABF94956FCC351D52 /* ScriptDocument.swift in Sources */,
+				E1FD80DCC539E7253B01E0FE /* ScriptImporter.swift in Sources */,
+				B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */,
+				E885C47FFBEC0ABDF0A36F70 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DAE6704FFD5B49D19A8C5018 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */,
+				2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6B6C398AE3242959B8C8CF2D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B66317F08E1CA31D1EBA57B2 /* CueFlow */;
+			targetProxy = 7DEBA1B42930D1129C83A4CA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		00E7781BC1FC024A6B0F0539 /* DebugICloud */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E421E25C07455FA3D80DC323 /* ICloud.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				SDKROOT = macosx;
+			};
+			name = DebugICloud;
+		};
+		0540B6FE6222ACC977AFD562 /* ReleaseICloud */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = E421E25C07455FA3D80DC323 /* ICloud.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				SDKROOT = macosx;
+			};
+			name = ReleaseICloud;
+		};
+		7C0D1AA9ECA361A1BD38EFEE /* ReleaseLocal */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = ReleaseLocal;
+		};
+		84CC8CFBF7A2F086E75D5C58 /* DebugICloud */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "";
+			};
+			name = DebugICloud;
+		};
+		8E0F09C9BB1CCB5BBF2B9CC7 /* ReleaseICloud */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "";
+			};
+			name = ReleaseICloud;
+		};
+		93CE7205EB0A78313098485F /* DebugLocal */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5F5BF751BC3355979A5962EB /* Local.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				SDKROOT = macosx;
+			};
+			name = DebugLocal;
+		};
+		A08889C45475FCBF88C21BC3 /* ReleaseLocal */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5F5BF751BC3355979A5962EB /* Local.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				SDKROOT = macosx;
+			};
+			name = ReleaseLocal;
+		};
+		AD4C9D71CFCBF137FE38C999 /* DebugICloud */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = DebugICloud;
+		};
+		CF70B46503C47A7AF2D5246D /* ReleaseLocal */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "";
+			};
+			name = ReleaseLocal;
+		};
+		F47D9F62D169BCD9573BC58B /* DebugLocal */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = DebugLocal;
+		};
+		F58BB76EB8A1EE4FE35498F7 /* DebugLocal */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "";
+			};
+			name = DebugLocal;
+		};
+		F78665B2365C5851252FAE4A /* ReleaseICloud */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = ReleaseICloud;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		27AE23A18716E8198B6E2171 /* Build configuration list for PBXNativeTarget "CueFlowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				84CC8CFBF7A2F086E75D5C58 /* DebugICloud */,
+				F58BB76EB8A1EE4FE35498F7 /* DebugLocal */,
+				8E0F09C9BB1CCB5BBF2B9CC7 /* ReleaseICloud */,
+				CF70B46503C47A7AF2D5246D /* ReleaseLocal */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = DebugLocal;
+		};
+		6590F30F7B00D6EB4CAA607A /* Build configuration list for PBXProject "CueFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD4C9D71CFCBF137FE38C999 /* DebugICloud */,
+				F47D9F62D169BCD9573BC58B /* DebugLocal */,
+				F78665B2365C5851252FAE4A /* ReleaseICloud */,
+				7C0D1AA9ECA361A1BD38EFEE /* ReleaseLocal */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = DebugLocal;
+		};
+		FE23A2BDC80AE112E40B67DE /* Build configuration list for PBXNativeTarget "CueFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00E7781BC1FC024A6B0F0539 /* DebugICloud */,
+				93CE7205EB0A78313098485F /* DebugLocal */,
+				0540B6FE6222ACC977AFD562 /* ReleaseICloud */,
+				A08889C45475FCBF88C21BC3 /* ReleaseLocal */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = DebugLocal;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F8982E03107F492EA6CE9727 /* XCLocalSwiftPackageReference "Packages/CueFlowCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CueFlowCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8F38C200B6595D9AE760A456 /* CueFlowCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CueFlowCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = C7E26E40C1A15DD601D5C254 /* Project object */;
+}

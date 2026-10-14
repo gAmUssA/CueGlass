@@ -3,3 +3,9 @@
 DerivedData/
 *.xcuserstate
 xcuserdata/
+Configuration/Owner.xcconfig
+Configuration/Info-iCloud.plist
+.build/
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
