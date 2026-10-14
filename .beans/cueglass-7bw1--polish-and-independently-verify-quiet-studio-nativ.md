@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-13T20:40:51Z
-updated_at: 2026-10-13T22:37:12Z
+updated_at: 2026-10-14T09:43:55Z
 parent: cueglass-aeqt
 ---
 
@@ -48,3 +48,7 @@ Focus/AX investigation is not acceptance: actual LaunchServices DebugLocal and R
 Final fix5 gates: normal DebugLocal scheme 20 native tests / 0 failures; Foundation core 14 / 0 failures; unsigned ReleaseLocal BUILD SUCCEEDED; strict swift-format, beans check and git diff --check pass. Compiled Resources include Assets.car (2234168 bytes), CueGlass.icns (64540 bytes), 1024px ReadingLine and both architectures minos14.0. No independent acceptance or source-spec/config/icon change. Focus/menu/AX obligations remain open as documented above.
 
 Feature implementation pushed successfully: 254e460f880f4079252a5600f4b4836d6c8f9a47 on feat/cueflow-native. This metadata checkpoint records delivery only; independent acceptance remains unchecked. No PR/merge. Full report: /Users/vikgamov/.local/state/cueglass/d6.md.
+
+## Unlocked-session lead observation — 2026-10-14
+
+Captured the Fix11 candidate owned window at 1280×800 and inspected its live Accessibility tree in the unlocked session. The script editor was AX-focused; a temporary editor edit / Cmd-Z / Cmd-Shift-Z / Cmd-Z cycle restored the exact source text while transport stayed Ready. The untitled document nevertheless remains marked Edited; follow-up bug cueglass-w3f6 tracks the document change-count issue. This does not establish actual menu-command behavior, full VoiceOver acceptance, Dark-mode WindowServer appearance, or macOS 14 runtime. The independent acceptance item above remains open. Evidence: /Users/vikgamov/.local/state/cueglass/d12-lead-keyboard.md.
