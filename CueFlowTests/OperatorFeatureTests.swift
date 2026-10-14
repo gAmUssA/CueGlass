@@ -1148,7 +1148,7 @@ extension OperatorFeatureTests {
   @Test func timedCloseKeepsOriginalBudgetMessageAndSettledEnd() async throws {
     for kind in ["floating", "output"] {
       for second in [false, true] {
-        let c = try await preparationController()
+        let c = try await preparationController(paragraphs: 700)
         defer { c.close() }
         var time = 0.0
         c.session.clock = { time }
