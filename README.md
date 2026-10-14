@@ -6,6 +6,8 @@ A native macOS teleprompter for local, floating and selected-display presentatio
 
 Validated: Xcode 27.0 (27A266a), Swift 6.4, macOS 27.0 (26A428), arm64. Open the committed `CueFlow.xcodeproj`, shared CueFlow scheme, DebugLocal. Local ad hoc signing needs no Apple development team or iCloud credentials.
 
+Build and test commands are CLI-friendly; no Xcode GUI interaction is needed. The app still depends on Apple's Xcode command-line toolchain (`xcodebuild`, macOS SDK and AppKit). The Foundation-only CueFlowCore package can be built and tested with Swift Package Manager alone.
+
 ```sh
 xcodebuild -project CueFlow.xcodeproj -scheme CueFlow -configuration DebugLocal \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/Xcode build
@@ -32,13 +34,13 @@ Timing includes a cancellable mirrored 3/5/10-second countdown, elapsed playing 
 
 Guide line/triangles, opacity, gradient edge fade, margins and text-panel opacity are configurable. Static reading-aid changes avoid text relayout; margins use guide-anchor restoration. Source snapshots remain immutable across pause/resume, editor/cloud reloads and surface changes. Explicit paused Load Latest adopts a new revision transactionally; failures keep the old take. Stop Take unlocks editing.
 
-## Documents, recovery and iCloud
+## Documents, recovery and deferred iCloud
 
 TXT limit 8 MiB; RTF 16 MiB; native JSON 32 MiB with a 16 MiB RTF payload. Regular-file/size checks run before and after reads. Strict UTF-8 and BOM UTF-8/UTF-16LE/BE preserve Unicode and blank paragraphs. Ambiguous encodings offer an explicit preview/choice. RTF uses the native explicit RTF API, preserving supported emphasis/fonts/colors/paragraphs. Attachment/table/link diagnostics explain presentation simplification; unsupported content stays in source. RTFD/DOCX/PDF are unsupported. No word-processor fidelity claim is made.
 
 A rejected on-disk revision (malformed, future, unreadable, oversize or invalid payload) blocks overwriting saves while preserving the source/take and a different-path Save a Copy recovery route. Versions remains the native conflict workflow; the app never chooses a timestamp winner, merges RTF or deletes conflict versions automatically.
 
-File → Save to iCloud uses FileManager's entitled container and NSDocument saves. [Owner setup](docs/ICLOUD_SETUP.md) supplies real team/bundle/container and plist key. Local mode explicitly says not configured. The effective DebugICloud/ReleaseICloud settings select the owner plist; unsigned processed-plist checks with a synthetic build-only container pass. This is not signing or real cloud proof. Uploaded means server upload only, never another Mac's receipt. Cloud-only opens request download and require reopen when complete. Account changes keep edits and offer local recovery.
+The initial MVP is local-first. iCloud container, download and document-lifecycle scaffolding exists, but signed account setup, cloud/offline/conflict handling and two-Mac verification are deferred to the [next milestone](.beans/cueglass-ffq6--cueglass-signed-distribution-and-icloud.md). `DebugLocal`/`ReleaseLocal` do not enable integrated iCloud; no cross-Mac sync claim is made. The owner setup guide remains for that follow-up.
 
 Version 1 now reads/writes `preferredSpeedLinesPerMinute` only (missing = 30); the legacy pt/s key is ignored because no documents have shipped. Missing style fields default explicitly; unknown style enum tokens default with diagnostics, finite ranges clamp with notice, nonfinite values reject. Weight/system-design fields are derived preferences and never replace authored fonts in stored RTF.
 
@@ -56,16 +58,22 @@ beans check --json
 swift scripts/make-fixtures.swift
 ```
 
-Developer evidence: **14 core Swift Testing tests and 47 native AppKit tests pass**. They cover LPM/schema/defaults, direction/bounds/pure sampling, command persistence/guards, timing/navigation/scrubbing, real line pitch, source-safe styling, transactional reloads, native save/undo, imports, native geometry at 980/1002/1280, hidden-operator panel commands, reading-aid relayout counts and chunked actual-end measurement. The adapted independent supplemental probe passes 39 assertions; its old hard-coded pt/s position oracle was changed only to retained-position comparison for the new LPM contract. Core aspect-fit geometry comparisons use a 1e-9 pt tolerance; native preview height allows 0.5 pt for point rounding; the former exact-double checks differ by about 4e-13 pt while logical layout dimensions remain unchanged.
+Developer evidence: **14 core Swift Testing tests and 48 native AppKit tests pass**. They cover LPM/schema/defaults, direction/bounds/pure sampling, command persistence/guards, timing/navigation/scrubbing, real line pitch, source-safe styling, transactional reloads, native save/undo, imports, native geometry at 980/1002/1280, hidden-operator panel commands, reading-aid relayout counts and chunked actual-end measurement. The adapted independent supplemental probe passes 39 assertions; its old hard-coded pt/s position oracle was changed only to retained-position comparison for the new LPM contract. Core aspect-fit geometry comparisons use a 1e-9 pt tolerance; native preview height allows 0.5 pt for point rounding; the former exact-double checks differ by about 4e-13 pt while logical layout dimensions remain unchanged.
+
+## GitHub Releases
+
+Pull requests and manual workflow runs build and validate only. Push a semantic version tag such as `v0.1.0` to build a universal arm64/x86_64 app and publish a GitHub prerelease containing the ZIP, SHA-256 checksum and `UNNOTARIZED.txt`. The workflow uses a standard GitHub-hosted `macos-26` runner and the repository `GITHUB_TOKEN`; it requires no Apple signing credentials. The repository must be public for standard hosted runner minutes to remain free.
+
+The initial release asset is **unsigned and not notarized**. macOS Gatekeeper may prevent it from opening. Signing and notarization are deferred to the next milestone; wait for that signed release if macOS blocks this build. No Gatekeeper bypass instructions are provided.
 
 A synthetic 100,000-word paused measurement took about 0.35–0.59 s in 157 chunks on this host, with observed worst chunks about 3–6.3 ms. This is preparation evidence, not a display callback or sustained-performance claim. Full-document measurement never runs in a display callback. The below-2-ms frame goal and 60-minute memory/reading tests remain open.
 
-The normal DebugLocal **scheme now passes all 47 native tests** through an unhosted app-linked integration target. It links the app's actual debug dylib and runtime paths; the test target has no second direct Core package dependency, which avoids duplicate Core type identities. This is a DebugLocal toolchain-specific runner configuration. The former hosted LaunchServices path still has the historical `childPID > 0` assertion; it is not relabelled a passing hosted launch. `scripts/test-app.sh` remains an optional direct execution cross-check using the same app-linked bundle. Neither path proves signed sandbox/iCloud behavior.
+The normal DebugLocal **scheme now passes all 48 native tests** through an unhosted app-linked integration target. It links the app's actual debug dylib and runtime paths; the test target has no second direct Core package dependency, which avoids duplicate Core type identities. This is a DebugLocal toolchain-specific runner configuration. The former hosted LaunchServices path still has the historical `childPID > 0` assertion; it is not relabelled a passing hosted launch. `scripts/test-app.sh` remains an optional direct execution cross-check using the same app-linked bundle. Neither path proves signed sandbox/iCloud behavior.
 
 Actual launch evidence covers the concept sample in Ready and Paused, light/dark, at 1280×800, 1002×800 and 980×640. Exact pane geometry and aspect-ratio checks are automated. Native composite caches can omit text/layers or misrepresent appearance: direct editor and take-bar caches are retained to distinguish that limitation from missing text or a light bar. Activation/key-window attempts and actual outcomes are logged; these remain supporting evidence, not WindowServer screenshots or independent visual acceptance. Screen capture preflight is false; no permission was requested. The committed [concept board](docs/design/quiet-studio-concept.svg) remains proposed art.
 
-Hardware/manual gates: physical low-speed/mixed-refresh/negative-origin rendering, fullscreen-call-app floating/click-through, optical reflection, real sleep/disconnect, VoiceOver/accessibility variants and macOS 14 runtime; signed iCloud delivery/offline conflicts/account/download on two Macs; sustained profiling. Each has procedures in [manual tests](docs/MANUAL_TEST_PLAN.md). No notarized/distributable release was produced.
+Hardware/manual gates: physical low-speed/mixed-refresh/negative-origin rendering, fullscreen-call-app floating/click-through, optical reflection, real sleep/disconnect, VoiceOver/accessibility variants and macOS 14 runtime; signed iCloud delivery/offline conflicts/account/download on two Macs; sustained profiling. Each has procedures in [manual tests](docs/MANUAL_TEST_PLAN.md). No release asset has been produced yet; the configured initial asset is intentionally unsigned and unnotarized.
 
 [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/README.md) · [design research](docs/design/README.md) · [implementation status](docs/IMPLEMENTATION_STATUS.md) · [Beans MVP](.beans/cueglass-aeqt--cueflow-v1-mvp.md)
 
-MVP remains in-progress pending current-tip independent reviewer/tester passes. Owner/hardware/performance follow-ups remain open. Distribution later requires owner signing, hardened-runtime/archive review, notarization/stapling and a clean-machine Gatekeeper check; none is claimed here.
+MVP remains in-progress pending current-tip independent reviewer/tester passes. Owner/hardware/performance follow-ups remain open. The next milestone adds owner signing, hardened-runtime/archive review, notarization/stapling and a clean-machine Gatekeeper check; none is claimed for the initial release path.

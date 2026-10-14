@@ -10,5 +10,6 @@ One file per decision, named `NNNN-<kebab-title>.md`. Each record carries Title,
 
 | [0004](0004-lines-per-minute-direction-and-schema.md) | LPM, direction, bounded navigation and schema | accepted |
 | [0005](0005-native-surfaces-commands-and-timing.md) | Native surfaces, commands, timing and reading aids | accepted |
+| [0006](0006-public-github-actions-release-build.md) | Public GitHub Actions build and unnotarized prerelease assets | accepted |
 
-Sources: `CueFlow-Codex-Handoff.md` (product specification) and the architect decision note for task `cueglass-v1` (kept outside the repository). Work tracking lives in [Beans](../../.beans/) ([MVP milestone cueglass-aeqt](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md)). All five records are delivered. Accepted ADR decisions do not constitute independent acceptance of the application; MVP acceptance remains open. ADR 0001 delivery is tracked by `cueglass-xfha`.
+Sources: `CueFlow-Codex-Handoff.md` (product specification) and the architect decision note for task `cueglass-v1` (kept outside the repository). Work tracking lives in [Beans](../../.beans/) ([MVP milestone cueglass-aeqt](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md)). All six records are delivered. Accepted ADR decisions do not constitute independent acceptance of the application; MVP acceptance remains open. ADR 0001 delivery is tracked by `cueglass-xfha`.

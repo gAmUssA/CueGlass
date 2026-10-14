@@ -3,12 +3,15 @@
 title: Owner iCloud setup and two-Mac verification
 status: todo
 type: task
+priority: normal
 tags:
     - owner
     - hardware
 created_at: 2026-10-13T18:53:52Z
-updated_at: 2026-10-13T18:53:52Z
-parent: cueglass-aeqt
+updated_at: 2026-10-14T13:34:22Z
+parent: cueglass-ffq6
+blocked_by:
+    - cueglass-pili
 ---
 
 Pending owner action and hardware. Cannot be completed by agents.
