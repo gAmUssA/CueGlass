@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T22:54:00Z
+updated_at: 2026-10-15T23:34:49Z
 parent: cueglass-2mil
 ---
 
@@ -20,7 +20,8 @@ Add opt-in spoken transport controls to Follow Voice, initially covering Pause, 
 - [x] Add deterministic parser and coordinator tests, update UI help and architecture/manual verification docs.
 - [x] Build and run automated checks.
 - [x] Record human macOS 26+ Pause/Resume command verification.
-- [ ] Record human macOS 26+ Stop Following/Stop Take and false-positive checks.
+- [x] Record live macOS 26+ tests for “CueGlass, stop”, “Prompter, stop take”, unprefixed “stop” in script text, and Play/Space resume after spoken Pause.
+- [ ] Check “Prompter, stop” and “CueGlass, stop take”; read ordinary script speech and revised/incomplete prefixed wording to complete command false-positive coverage.
 
 
 ## Verification (2026-10-15)
