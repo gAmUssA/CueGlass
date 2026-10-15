@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T21:27:22Z
+updated_at: 2026-10-15T21:40:37Z
 parent: cueglass-2mil
 ---
 
@@ -97,15 +97,21 @@ GitHub Actions run [38802743545](https://github.com/gAmUssA/CueGlass/actions/run
 ## Wake phrase update (2026-10-15)
 
 - [x] Accept CueGlass/Cue Glass and Prompter as exact prefixes for the existing command set; add parser tests, inspector help and ADR/design/changelog documentation.
-- [ ] Verify each wake phrase and Stop Following/Stop Take false-positive resistance in live human speech.
+- [x] Verify CueGlass and Prompter prefix recognition in live human speech (operator confirmed both on 2026-10-15).
+- [ ] Verify Stop Following versus Stop Take outcomes in live human speech.
+- [ ] Verify false-positive resistance with unprefixed command words and ordinary script speech in live human speech.
 
 ## Wake phrase verification (2026-10-15)
 
 - `swift test --package-path Packages/CueFlowCore --scratch-path .build/core`: 64 tests passed, including CueGlass/Prompter command variants and short-stop waiting behavior.
 - `scripts/test-app.sh`: 82 native tests passed. Universal unsigned ReleaseLocal build passed for arm64 and x86_64 at macOS 14.0 minimum, version 0.2.0/build 2.
 - `xcrun swift-format lint --strict --recursive CueFlow Packages`, `beans check --json`, and `git diff --check` passed.
-- Live confirmation of each wake phrase, Stop Following/Stop Take, and false-positive resistance remains open.
+- The operator has now confirmed both CueGlass and Prompter prefixes are recognized. Exact Stop Following/Stop Take outcomes and false-positive resistance remain open.
 
 ## GitHub Actions follow-up (2026-10-15)
 
-Run [38809174552](https://github.com/gAmUssA/CueGlass/actions/runs/38809174552) passed on commit `2f59c50`: Core/native tests, strict formatting, universal unsigned build, and release asset packaging. The tag-only upload was skipped. Human confirmation of both wake phrases, Stop Following/Stop Take outcomes, and false-positive resistance remains open.
+Run [38809174552](https://github.com/gAmUssA/CueGlass/actions/runs/38809174552) passed on commit `2f59c50`: Core/native tests, strict formatting, universal unsigned build, and release asset packaging. The tag-only upload was skipped. The operator has now confirmed both CueGlass and Prompter prefixes are recognized. Stop Following/Stop Take outcomes and false-positive resistance remain open.
+
+## Live wake-phrase verification (2026-10-15)
+
+The operator tested the CueGlass prefix and the Prompter prefix and reports that both are recognized. This confirms prefix recognition; the specific Stop Following/Stop Take results and false-positive resistance remain unverified.

@@ -83,6 +83,7 @@ For adaptive Follow Voice pace, start at a known configured speed and read a pas
 | Settings recovery | Open Privacy & Security → Microphone, allow CueGlass, retry Start successfully | Pending |
 | AirPods/Bluetooth startup | Start with AirPods selected as microphone; state reaches Listening after route setup and does not immediately pause after a display stall; speech advances the guide | Passed — operator confirmed 2026-10-15 |
 | Prefixed Pause and Resume | Say “CueGlass, pause” then “CueGlass, resume”; timeline holds, command listening remains active during Pause, and following resumes without a new microphone prompt | Passed — operator confirmed 2026-10-15 |
+| CueGlass and Prompter wake phrases | Speak a prefixed command with each wake phrase; both are recognized | Passed — operator confirmed both prefixes 2026-10-15; exact Stop outcomes untested |
 | Command false-positive resistance | Speak unprefixed command words and read ordinary script speech; neither triggers. Revised prefixed wording resets confirmation; unchanged exact wording waits for finalization or 0.75 seconds of stability | Pending |
 | Stop Following and Stop Take | Say “CueGlass, stop” and “CueGlass, stop take”; Stop closes capture and leaves the take paused, while Stop Take ends the take and closes output | Pending |
 | English command locale | Select a non-English locale and confirm the interface states that transport commands require English | Pending |
@@ -98,4 +99,4 @@ For adaptive Follow Voice pace, start at a known configured speed and read a pas
 | Timed Scrolling separation | Choose Timed Scrolling while following; confirm microphone closes and voice session ends | Pending |
 | Sustained human take and teardown | Run a long human take, then Stop Follow Voice/Stop Take/close/sleep; verify no retained audio/transcript and no live mic indicator | Pending |
 
-Human verification is partial: the operator confirmed AirPods speech following, prefixed Pause/Resume, spoken command recognition, and adaptive pace adjustment. The specific Stop Following/Stop Take outcomes and every other pending row still need direct observation on the rebuilt app. The standalone generated-speech experiment, source review and automated tests do not substitute for these human checks.
+Human verification is partial: the operator confirmed AirPods speech following, prefixed Pause/Resume, recognition of both CueGlass and Prompter prefixes, and adaptive pace adjustment. The specific Stop Following/Stop Take outcomes, false-positive resistance, and every other pending row still need direct observation on the rebuilt app. The standalone generated-speech experiment, source review and automated tests do not substitute for these human checks.

@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T21:27:22Z
+updated_at: 2026-10-15T21:40:37Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -70,4 +70,8 @@ Commit `eed609beb43a0a972ad3a3819df116ad3b7459be` passed workflow run [388027435
 
 ## 0.2.0 follow-up status (2026-10-15)
 
-The operator approved Prompter as an alternative command wake phrase. The implementation already supports it; the UI, docs, ADR, changelog, and deterministic tests now state that contract. Core tests (64), native app tests (82), strict formatting, Beans checks, and an unsigned universal ReleaseLocal build passed. GitHub Actions run 38809174552 passed on commit 2f59c50. The prior full review report was unaccepted because its required delivery marker did not match the brief; a valid current-tip full independent review remains outstanding. Human acceptance remains open for model download/permission-denial recovery, each wake phrase and exact Stop actions/false positives, silence/ad-libs/skips/rereads, manual takeover, Timed Scrolling, pace recovery, and a sustained take/teardown.
+The operator approved Prompter as an alternative command wake phrase. The implementation already supports it; the UI, docs, ADR, changelog, and deterministic tests now state that contract. Core tests (64), native app tests (82), strict formatting, Beans checks, and an unsigned universal ReleaseLocal build passed. GitHub Actions run 38809174552 passed on commit 2f59c50. The prior full review report was unaccepted because its required delivery marker did not match the brief; a valid current-tip full independent review remains outstanding. Human acceptance remains open for model download/permission-denial recovery, exact Stop actions/false positives, silence/ad-libs/skips/rereads, manual takeover, Timed Scrolling, pace recovery, and a sustained take/teardown.
+
+## Operator wake-phrase verification (2026-10-15)
+
+The operator tested both CueGlass and Prompter prefixes and reports that both are recognized. This confirms wake-phrase recognition only; exact Stop Following/Stop Take outcomes and false-positive resistance remain open, along with the other pending human-speech scenarios.
