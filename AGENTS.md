@@ -57,7 +57,7 @@ swift scripts/make-fixtures.swift
 - Display callbacks must not read files, rebuild attributed strings, or dirty a document. Host-time timeline and TextKit 2 fragment layout are the playback/rendering sources of truth.
 - `DebugLocal` and `ReleaseLocal` are local configurations without integrated iCloud entitlements. The source contains iCloud scaffolding, but the initial MVP makes no cross-Mac sync claim. Account setup, signing, notarization, cloud conflict/offline behavior, and two-Mac verification belong to the follow-up milestone.
 
-For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md) and [ADRs 0001–0010](docs/adr/README.md). For file limits, supported imports, interface requirements, and open manual gates, use the [implementation status](docs/IMPLEMENTATION_STATUS.md) and [manual test plan](docs/MANUAL_TEST_PLAN.md) as the current source of truth.
+For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md) and [ADRs 0001–0011](docs/adr/README.md). For file limits, supported imports, interface requirements, and open manual gates, use the [implementation status](docs/IMPLEMENTATION_STATUS.md) and [manual test plan](docs/MANUAL_TEST_PLAN.md) as the current source of truth.
 
 ## CI and release notes
 

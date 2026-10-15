@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ## 0.2.0 — Unreleased
 
 - Add opt-in macOS 26+ Follow Voice with on-device speech analysis, explicit microphone/model consent, bounded script alignment, and adaptive presenter-paced scrolling while retaining macOS 14 compatibility.

@@ -435,7 +435,7 @@ struct VoiceStartIntent: Equatable {
     countdownEnd = nil
     countdownDigit = nil
     voiceCommandPaused = true
-    message = "Paused — listening for CueGlass Resume"
+    message = "Paused — listening for CueGlass or Prompter commands"
     onChange?()
   }
   func resumeVoice(epoch: UInt64) throws {

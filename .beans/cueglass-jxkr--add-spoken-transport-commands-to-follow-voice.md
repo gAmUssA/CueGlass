@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T21:40:37Z
+updated_at: 2026-10-15T22:47:35Z
 parent: cueglass-2mil
 ---
 
@@ -115,3 +115,7 @@ Run [38809174552](https://github.com/gAmUssA/CueGlass/actions/runs/38809174552) 
 ## Live wake-phrase verification (2026-10-15)
 
 The operator tested the CueGlass prefix and the Prompter prefix and reports that both are recognized. This confirms prefix recognition; the specific Stop Following/Stop Take results and false-positive resistance remain unverified.
+
+## Candidate follow-up (2026-10-15)
+
+The operator confirms that both CueGlass and Prompter wake phrases are recognized. Candidate `2c3c25761ea5ea8296efcc341abd2de444476039` passed CI run 38816562330 and a full independent review with no blockers. The controller regression for Play/Space resume during spoken Pause passes; live Play/Space confirmation, exact Stop Following/Stop Take outcomes, and false-positive resistance remain open.

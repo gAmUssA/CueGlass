@@ -797,7 +797,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     case .listening: "Listening · audio is not recorded"
     case .holding(let reason): reason
     case .commandPaused:
-      "Paused · say ‘CueGlass, resume’ or press Resume Following · microphone stays active for commands"
+      "Paused · say ‘CueGlass, resume’ or ‘Prompter, resume’ · microphone active for commands"
     case .suspended(let reason): "Following paused · \(reason) · microphone closed"
     case .failed(let message): message
     }
