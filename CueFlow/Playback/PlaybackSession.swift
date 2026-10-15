@@ -105,6 +105,11 @@ struct VoiceStartIntent: Equatable {
     message = "Paused"
   }
   func toggle(_ doc: ScriptDocument) throws {
+    if voiceSessionActive {
+      if !voiceSuspended { suspendVoiceForManualCommand("Play or Pause") }
+      onChange?()
+      return
+    }
     suspendVoiceForManualCommand("Play or Pause")
     try prepare(doc)
     if state == .running || state == .countingDown {
@@ -268,8 +273,9 @@ struct VoiceStartIntent: Equatable {
     try seek(timeline.anchorPosition + delta)
   }
   func enableTimed(seconds: Double) throws {
+    let wasFollowing = voiceSessionActive
     suspendVoiceForManualCommand("Timed Scrolling")
-    if voiceSessionActive { endVoice() }
+    if wasFollowing { endVoice() }
     guard timeline.direction == .forward else {
       throw NSError(
         domain: "CueGlass", code: 5,
@@ -284,6 +290,11 @@ struct VoiceStartIntent: Equatable {
     preferredLPM = lpm
     timedDuration = seconds
     timedElapsedBase = elapsedSeconds
+    if wasFollowing {
+      try timeline.play(at: effectiveTime)
+      elapsed.play(at: effectiveTime)
+      state = .running
+    }
     message = "Timed Scrolling enabled"
     onChange?()
   }
@@ -459,6 +470,11 @@ struct VoiceStartIntent: Equatable {
   private func suspendVoicePosition() {
     let time = effectiveTime
     try? timeline.clearVoiceCeiling(at: time)
+    try? timeline.pause(at: time)
+    elapsed.pause(at: time)
+    state = .paused
+    countdownEnd = nil
+    countdownDigit = nil
     voiceSuspended = true
   }
   func noteFrame(target: Double, end: Double?) throws {

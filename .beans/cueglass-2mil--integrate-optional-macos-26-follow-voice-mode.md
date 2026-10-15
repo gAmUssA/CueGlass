@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-14T23:43:47Z
+updated_at: 2026-10-15T00:44:17Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -27,3 +27,12 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 
 - [x] Make the pre-macOS-26 availability test deterministic on macOS 26+ and verify both unsupported and supported version outcomes.
 - [x] Fix the SpeechVoiceSource Swift 6 sendability errors under CI Xcode 26.6 while preserving the macOS 14 target and no-audio-retention behavior.
+
+
+## Final source-review corrections
+
+- [x] Pause the shared timeline after manual seek, step, pace, or reverse input during Follow Voice; require Play/Space or Resume Following before motion resumes.
+- [x] Keep Follow Voice suspended and paused across preview/output/floating surface and floating-resize layout changes; preserve ordinary non-voice auto-resume and Timed Scrolling behavior.
+- [ ] Add clock-advanced regressions for manual and surface transitions, then rerun the full verification gates.
+- [x] Preserve model readiness and permission state after Stop Take instead of presenting Start when the selected model is unavailable.
+- [x] Update documented native test totals from 63 to 70.

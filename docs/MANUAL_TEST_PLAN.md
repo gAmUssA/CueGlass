@@ -56,7 +56,7 @@ Guide styles/opacity, edge gradient and text-panel opacity must not rewrap; marg
 
 Run on an unlocked macOS 26+ Mac with a human speaker. Record OS/build and device; do not write script or recognized speech into the test record. Synthetic speech is not acceptance evidence. Start from a fresh microphone privacy state for the prompt case. Verify the inspector is absent on macOS 14–25 and when SpeechTranscriber reports unavailable; a build targeting macOS 14 is not a runtime test on macOS 14.
 
-Implementation-round automated results (2026-10-14): the unsigned DebugLocal build targets `arm64-apple-macos14.0`; 41 Core tests and 63 native tests passed, including fake-source permission/model and TextKit mapping coverage. The available host was macOS 27.0.1. These checks do not complete any human-speech row below; all remain pending.
+Automated results (2026-10-14): the unsigned DebugLocal build targets `arm64-apple-macos14.0`; 41 Core tests and 70 native tests passed, including fake-source permission/model, clock-advanced manual-pause, surface-transition and TextKit mapping coverage. The available host was macOS 27.0.1. These checks do not complete any human-speech row below; all remain pending. A full independent review found two manual-priority defects on the preceding tip; the corrections pass local tests and await fresh independent review and CI.
 
 | Case | Required observation | Status |
 |---|---|---|
@@ -69,8 +69,8 @@ Implementation-round automated results (2026-10-14): the unsigned DebugLocal bui
 | Ad-lib | Speak words absent from the script; position holds until confidence recovers | Pending |
 | Skip and reacquisition | Skip ahead; confirm bounded glide/jump only after enough matching words | Pending |
 | Reread and reacquisition | Read a prior passage; confirm policy reacquires without volatile-update jumps | Pending |
-| Manual override and resume | Scrub/seek/change pace/pause; mic closes and status says paused; Play/Space or Resume explicitly restarts | Pending |
+| Manual override and resume | Seek/step/change pace/direction/pause and switch preview/output/floating surfaces or resize floating; mic closes and status says paused; motion stays held until Play/Space or Resume explicitly restarts | Pending |
 | Timed Scrolling separation | Choose Timed Scrolling while following; confirm microphone closes and voice session ends | Pending |
 | Sustained human take and teardown | Run a long human take, then Stop Follow Voice/Stop Take/close/sleep; verify no retained audio/transcript and no live mic indicator | Pending |
 
-These cases were not performed during the implementation round: the available validation session had no human speaker. No human-speech result is claimed; do not check these rows based on the standalone generated-speech experiment or automated tests.
+No human-speech result is claimed yet. The operator is available to participate after the corrected tip passes independent review and CI. Do not check these rows based on the standalone generated-speech experiment or automated tests.

@@ -1038,7 +1038,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     perform {
       try claimAndPrepare()
-      let wasRunning = session.state == .running || pendingResume
+      let wasRunning = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
@@ -1286,7 +1286,7 @@ extension OperatorWindowController {
   func showFloating() {
     perform {
       try claimAndPrepare()
-      let running = session.state == .running || pendingResume
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
@@ -1337,6 +1337,10 @@ extension OperatorWindowController {
     }
   }
   func resumeAfterMeasurement() {
+    guard !session.voiceSessionActive else {
+      pendingResume = false
+      return
+    }
     if session.measuring {
       pendingResume = true
     } else {
@@ -1351,7 +1355,7 @@ extension OperatorWindowController {
   func floatingResized() {
     guard let floating, let size = floating.window?.contentView?.bounds.size else { return }
     perform {
-      let running = session.state == .running || pendingResume
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false

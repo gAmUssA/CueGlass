@@ -127,6 +127,7 @@ private actor VoiceAlignmentWorker {
   private var installationTask: Task<Void, Never>?
   private var pendingActivationIntent: VoiceStartIntent?
   private var pendingActivationState: VoiceFollowUIState?
+  private var readinessState: VoiceFollowUIState = .checking
 
   init(
     session: PlaybackSession, source: VoiceCaptureSource,
@@ -163,11 +164,13 @@ private actor VoiceAlignmentWorker {
   }
 
   func refreshAvailability() async {
-    state = .checking
+    readinessState = .checking
+    state = readinessState
     let supported = await source.supportedLocales()
     guard !supported.isEmpty else {
       locales = []
-      state = .unavailable
+      readinessState = .unavailable
+      state = readinessState
       return
     }
     locales = supported
@@ -178,7 +181,8 @@ private actor VoiceAlignmentWorker {
     let inspectedLocale = selectedLocaleIdentifier
     let readiness = await source.readiness(localeIdentifier: inspectedLocale)
     guard inspectedLocale == selectedLocaleIdentifier else { return }
-    state = Self.uiState(for: readiness)
+    readinessState = Self.uiState(for: readiness)
+    state = readinessState
   }
 
   /// Starts the explicitly requested installation. No microphone permission or capture is
@@ -373,7 +377,7 @@ private actor VoiceAlignmentWorker {
     scriptIndex = nil
     lineTable = nil
     if wasActive { session.endVoice() }
-    state = .ready
+    state = stateAfterStop
   }
 
   private func sessionEndedVoice() {
@@ -385,7 +389,11 @@ private actor VoiceAlignmentWorker {
     scriptIndex = nil
     lineTable = nil
     if case .failed = state { return }
-    state = .ready
+    state = stateAfterStop
+  }
+
+  private var stateAfterStop: VoiceFollowUIState {
+    microphone.permission == .denied ? .microphoneDenied : readinessState
   }
 
   func openMicrophoneSettings() {

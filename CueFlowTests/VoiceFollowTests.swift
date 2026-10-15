@@ -189,6 +189,8 @@ import Testing
     #expect(denied.requestCount == 0)
     #expect(source.startCount == 0)
     #expect(!session.voiceSessionActive)
+    coordinator.stop()
+    #expect(coordinator.state == .microphoneDenied)
 
     let noDescription = VoiceFollowCoordinator(
       session: session, source: source, microphone: FakeMicrophonePermission(.granted),
@@ -201,6 +203,20 @@ import Testing
         == .failed(
           "Microphone access is unavailable in this build. Add NSMicrophoneUsageDescription to its Info.plist, then rebuild."
         ))
+  }
+
+  @Test func stopTakePreservesMissingModelReadiness() async throws {
+    let (session, _, _) = try take()
+    let source = FakeVoiceCaptureSource()
+    source.readinessState = .needsModel
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.notDetermined),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+
+    #expect(coordinator.state == .needsModel)
+    coordinator.stop()
+    #expect(coordinator.state == .needsModel)
   }
 
   @Test func unavailableLocaleDoesNotAskForPermissionOrInstallAssets() async throws {
@@ -222,6 +238,8 @@ import Testing
 
   @Test func manualSeekClosesCaptureAndRejectsStaleVoiceDriveBeforeResume() async throws {
     let (session, snapshot, table) = try take()
+    var now = 0.0
+    session.clock = { now }
     let source = FakeVoiceCaptureSource()
     let coordinator = VoiceFollowCoordinator(
       session: session, source: source, microphone: FakeMicrophonePermission(.granted),
@@ -232,21 +250,71 @@ import Testing
     #expect(session.voiceSessionActive)
     #expect(session.state == .running)
 
+    try session.voiceGlide(to: 200, epoch: listeningEpoch)
+    now = 2
+    _ = try session.position(at: now)
     try session.seek(90)
     #expect(session.voiceSuspended)
+    #expect(session.state == .paused)
+    #expect(!session.timeline.running)
     #expect(coordinator.state == .suspended("Manual navigation"))
     #expect(source.stopCount == 1)
     #expect(session.timeline.voiceCeiling == nil)
+    now += 10
+    #expect(try session.position(at: now) == 90)
     try session.voiceGlide(to: 200, epoch: listeningEpoch)
     #expect(session.timeline.anchorPosition == 90)
+    try session.toggle(ScriptDocument())
+    #expect(session.state == .paused)
+    #expect(!session.timeline.running)
+    #expect(source.startCount == 1)
 
     try await start(
       coordinator, session: session, snapshot: snapshot, table: table, token: 1,
       resume: true)
     #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.running)
     #expect(session.voiceEpoch != listeningEpoch)
     #expect(source.startCount == 2)
     coordinator.stop()
+  }
+
+  @Test func stepPaceAndDirectionChangesHoldVoiceTimelineUntilResume() throws {
+    for command in ["step", "pace", "direction"] {
+      let (session, _, _) = try take()
+      var now = 0.0
+      session.clock = { now }
+      try session.beginVoice(epoch: 7)
+      try session.voiceGlide(to: 180, epoch: 7)
+      now = 3
+      _ = try session.position(at: now)
+
+      switch command {
+      case "step": try session.step(forward: true)
+      case "pace": try session.speed(60)
+      case "direction": try session.reverse()
+      default: Issue.record("Unexpected manual command")
+      }
+
+      let heldPosition = try session.position(at: now)
+      #expect(session.voiceSessionActive)
+      #expect(session.voiceSuspended)
+      #expect(session.state == .paused)
+      #expect(!session.timeline.running)
+      #expect(session.timeline.voiceCeiling == nil)
+      now += 15
+      #expect(try session.position(at: now) == heldPosition)
+      try session.voiceGlide(to: 240, epoch: 7)
+      #expect(try session.position(at: now) == heldPosition)
+
+      if command != "direction" {
+        try session.resumeVoice(epoch: session.voiceEpoch + 1)
+        #expect(session.state == .running)
+        #expect(session.timeline.running)
+        #expect(!session.voiceSuspended)
+      }
+    }
   }
 
   @Test func stopDuringMeasuredVoiceStartThenOrdinaryPlayDoesNotStartVoice() async throws {

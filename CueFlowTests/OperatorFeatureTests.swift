@@ -573,6 +573,47 @@ import Testing
     #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
     #expect(c.session.snapshot?.id == snapshot)
   }
+
+  @Test func voiceSurfaceChangesStayPausedUntilExplicitResume() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    try c.session.beginVoice(epoch: 1)
+
+    c.showFloating()
+    c.floating?.reflection.viewport.driver?.stop()
+    c.floating?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.voiceSessionActive)
+    #expect(c.session.voiceSuspended)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    let floatingWindow = try #require(c.floating?.window)
+    floatingWindow.setContentSize(CGSize(width: 680, height: 380))
+    c.floatingResized()
+    await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.voiceSessionActive)
+    #expect(c.session.voiceSuspended)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    c.resumeAfterMeasurement()
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+  }
+
   @Test func fullscreenMatteTracksPreviewWithoutChangingFloatingAlpha() throws {
     let controller = OperatorWindowController(document: ScriptDocument())
     defer { controller.close() }
