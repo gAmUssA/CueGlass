@@ -511,6 +511,43 @@ private struct FakeSpeechAssetError: LocalizedError {
     coordinator.stop()
   }
 
+  @Test func playSpaceResumesSpokenCommandPauseWithoutClosingCapture() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(string: "North wind carries the lantern home.")
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    controller.session.clock = { 0 }
+    controller.voiceCoordinator?.stop()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.startVoiceFollow()
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    #expect(source.startCount == 1)
+
+    source.send(transcript("CueGlass pause", startingAt: 1))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+    #expect(controller.session.voiceCommandPaused)
+    #expect(source.stopCount == 0)
+
+    controller.execute(.toggle)
+    #expect(coordinator.isCommandPaused)
+    #expect(source.stopCount == 0)
+    await waitForVoiceState(.listening, coordinator: coordinator)
+
+    #expect(controller.session.voiceSessionActive)
+    #expect(!controller.session.voiceCommandPaused)
+    #expect(!controller.session.voiceSuspended)
+    #expect(controller.session.state == .running)
+    #expect(source.startCount == 1)
+    #expect(source.stopCount == 0)
+    coordinator.stop()
+  }
+
   @Test func commandOnlyRecognitionCarriesTheWakePhraseIntoTheNextUpdate() async throws {
     let (session, snapshot, table) = try take()
     let source = FakeVoiceCaptureSource()

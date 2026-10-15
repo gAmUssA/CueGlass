@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T21:40:37Z
+updated_at: 2026-10-15T22:21:05Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -75,3 +75,7 @@ The operator approved Prompter as an alternative command wake phrase. The implem
 ## Operator wake-phrase verification (2026-10-15)
 
 The operator tested both CueGlass and Prompter prefixes and reports that both are recognized. This confirms wake-phrase recognition only; exact Stop Following/Stop Take outcomes and false-positive resistance remain open, along with the other pending human-speech scenarios.
+
+## Current review follow-up
+
+- [x] Make Play/Space resume an active spoken command pause without closing its capture stream; add a controller-level regression and rerun verification.

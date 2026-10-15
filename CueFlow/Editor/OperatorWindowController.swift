@@ -518,7 +518,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func toggle() {
     if session.voiceSessionActive {
-      if session.voiceSuspended {
+      if voiceCoordinator?.isCommandPaused == true {
+        startVoiceFollow(resume: true)
+      } else if session.voiceSuspended {
         startVoiceFollow(resume: true)
       } else {
         perform { try session.toggle(script) }
