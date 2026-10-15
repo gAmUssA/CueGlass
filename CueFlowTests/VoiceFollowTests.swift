@@ -45,6 +45,7 @@ private struct FakeSpeechAssetError: LocalizedError {
   var readinessAfterInstallError: VoiceAssetReadiness?
   var readinessShouldWait = false
   var installShouldWait = false
+  var startShouldWait = false
   var installError: (any Error)?
   private(set) var readinessCount = 0
   private(set) var installCount = 0
@@ -55,6 +56,8 @@ private struct FakeSpeechAssetError: LocalizedError {
   private var installCompletion: CheckedContinuation<Void, any Error>?
   private var readinessWaiters: [CheckedContinuation<Void, Never>] = []
   private var readinessCompletion: CheckedContinuation<VoiceAssetReadiness, Never>?
+  private var startWaiters: [CheckedContinuation<Void, Never>] = []
+  private var startCompletion: CheckedContinuation<Void, Never>?
   private var output: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
 
   func supportedLocales() async -> [VoiceLocaleOption] { localeOptions }
@@ -107,10 +110,23 @@ private struct FakeSpeechAssetError: LocalizedError {
     TranscriptEvent, any Error
   > {
     startCount += 1
+    for waiter in startWaiters { waiter.resume() }
+    startWaiters.removeAll()
+    if startShouldWait {
+      await withCheckedContinuation { startCompletion = $0 }
+    }
     let pair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream(
       of: TranscriptEvent.self, bufferingPolicy: .bufferingNewest(4))
     output = pair.continuation
     return pair.stream
+  }
+  func waitForStart() async {
+    if startCount > 0 { return }
+    await withCheckedContinuation { startWaiters.append($0) }
+  }
+  func completeStart() {
+    startCompletion?.resume()
+    startCompletion = nil
   }
   func stop() {
     stopCount += 1
@@ -192,6 +208,38 @@ private struct FakeSpeechAssetError: LocalizedError {
     try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
     #expect(microphone.requestCount == 1)
     #expect(source.startCount == 1)
+    #expect(coordinator.state == .listening)
+    coordinator.stop()
+  }
+
+  @Test func captureStartupFinishesBeforeVoiceTimelineBegins() async throws {
+    let (session, snapshot, table) = try take()
+    var now = 0.0
+    session.clock = { now }
+    let source = FakeVoiceCaptureSource()
+    source.startShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let intent = try #require(session.beginVoiceStartIntent())
+    let startTask = Task {
+      await coordinator.start(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { -1 })
+    }
+
+    await source.waitForStart()
+    #expect(session.state == .paused)
+    #expect(!session.voiceSessionActive)
+    now = 2
+    source.completeStart()
+    await startTask.value
+
+    #expect(session.state == .running)
+    #expect(session.voiceSessionActive)
+    #expect(session.lastPresentedTarget == 2)
+    try session.noteFrame(target: 2.1, end: nil)
+    #expect(session.state == .running)
     #expect(coordinator.state == .listening)
     coordinator.stop()
   }

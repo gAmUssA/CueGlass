@@ -332,20 +332,24 @@ private actor VoiceAlignmentWorker {
     scriptIndex = index
     self.lineTable = lineTable
     do {
-      if session.voiceSessionActive {
-        try session.resumeVoice(epoch: requestedEpoch)
-      } else {
-        try session.beginVoice(epoch: requestedEpoch)
-      }
+      let startTask = Task { try await source.start(localeIdentifier: locale) }
+      sourceStartTask = startTask
+      let stream = try await startTask.value
+      sourceStartTask = nil
       guard currentStartIndex() != nil else {
         source.stop()
         await nextWorker.clear()
         return
       }
-      let startTask = Task { try await source.start(localeIdentifier: locale) }
-      sourceStartTask = startTask
-      let stream = try await startTask.value
-      sourceStartTask = nil
+      // AudioEngine.start can synchronously block the main actor during device route setup,
+      // especially for Bluetooth microphones. Keep the shared timeline paused until the
+      // capture stream is ready so its first display callback cannot mistake route setup for
+      // a display stall and immediately close the microphone.
+      if session.voiceSessionActive {
+        try session.resumeVoice(epoch: requestedEpoch)
+      } else {
+        try session.beginVoice(epoch: requestedEpoch)
+      }
       guard currentStartIndex() != nil else {
         source.stop()
         await nextWorker.clear()
