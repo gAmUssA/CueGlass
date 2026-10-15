@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T22:47:35Z
+updated_at: 2026-10-15T22:54:00Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -83,3 +83,7 @@ The operator tested both CueGlass and Prompter prefixes and reports that both ar
 ## Candidate follow-up (2026-10-15)
 
 The operator confirms that both the CueGlass and Prompter wake phrases are recognized in live testing. Candidate `2c3c25761ea5ea8296efcc341abd2de444476039` passed CI run 38816562330 and a full independent review with no blockers. Local verification passed 64 Core and 83 native tests; the Play/Space spoken-pause resume path is covered by an automated controller regression. Live Play/Space resume, Stop Following/Stop Take outcomes, false-positive resistance, and the remaining macOS 26+ human acceptance matrix are still open.
+
+## Exact candidate CI (2026-10-15)
+
+Commit `068e41afeb3b383cb609e377d8e0ad30bdccfef4` passed GitHub Actions run 38819564643: Core/native tests, strict formatting, universal unsigned build, and release asset packaging. Tag-only upload and publishing were skipped. Local verification also passed 64 Core and 83 native tests, a universal ReleaseLocal build, `beans check --json`, and `git diff --check`. Human acceptance remains open.
