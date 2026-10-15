@@ -1,14 +1,51 @@
+import AVFAudio
 import AppKit
 import CueFlowCore
+import Speech
 import Testing
 
 @testable import CueFlow
 
+@available(macOS 26.0, *)
+private final class AudioTapInvocation: @unchecked Sendable {
+  private let handler: SpeechAudioTapHandler
+  private let buffer: AVAudioPCMBuffer
+  private let time: AVAudioTime
+  private let lock = NSLock()
+  private var ranOnMainThread = true
+
+  init(handler: @escaping SpeechAudioTapHandler, buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+    self.handler = handler
+    self.buffer = buffer
+    self.time = time
+  }
+
+  func invoke() {
+    lock.lock()
+    ranOnMainThread = Thread.isMainThread
+    lock.unlock()
+    handler(buffer, time)
+  }
+
+  func wasCalledOnMainThread() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return ranOnMainThread
+  }
+}
+
+private struct FakeSpeechAssetError: LocalizedError {
+  var errorDescription: String? { "Speech assets are unavailable for this account." }
+}
+
 @MainActor private final class FakeVoiceCaptureSource: VoiceCaptureSource {
   var localeOptions = [VoiceLocaleOption(identifier: "en-US", displayName: "English (US)")]
   var readinessState = VoiceAssetReadiness.ready
+  var readinessAfterInstallSuccess: VoiceAssetReadiness = .ready
+  var readinessAfterInstallError: VoiceAssetReadiness?
   var readinessShouldWait = false
   var installShouldWait = false
+  var installError: (any Error)?
   private(set) var readinessCount = 0
   private(set) var installCount = 0
   private(set) var cancelInstallCount = 0
@@ -50,7 +87,11 @@ import Testing
         installCompletion = continuation
       }
     }
-    readinessState = .ready
+    if let installError {
+      if let readinessAfterInstallError { readinessState = readinessAfterInstallError }
+      throw installError
+    }
+    readinessState = readinessAfterInstallSuccess
     reportProgress(1)
   }
   func waitForInstallStart() async {
@@ -174,6 +215,107 @@ import Testing
     #expect(source.cancelInstallCount == 1)
     #expect(coordinator.state == .needsModel)
     #expect(!session.voiceSessionActive)
+  }
+
+  @Test func modelInstallationErrorIsVisibleAndCanBeRetried() async throws {
+    let (session, _, _) = try take()
+    let source = FakeVoiceCaptureSource()
+    source.readinessState = .needsModel
+    source.installError = FakeSpeechAssetError()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+
+    await coordinator.installMissingModel()
+
+    #expect(
+      coordinator.state
+        == .failed(
+          "Speech model installation failed: Speech assets are unavailable for this account. Check your network connection and available storage, then try again."
+        ))
+    #expect(source.installCount == 1)
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+
+    source.installError = nil
+    source.readinessState = .needsModel
+    await coordinator.refreshAvailability()
+    #expect(coordinator.state == .needsModel)
+  }
+
+  @Test func pendingSystemModelDownloadRemainsCheckableAndDoesNotOpenMicrophone() async throws {
+    let (session, _, _) = try take()
+    let source = FakeVoiceCaptureSource()
+    source.readinessState = .downloading
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+
+    #expect(coordinator.state == .waitingForModel)
+    #expect(source.installCount == 0)
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+
+    source.readinessState = .needsModel
+    await coordinator.refreshAvailability()
+    #expect(coordinator.state == .needsModel)
+  }
+
+  @Test func completedInstallationRequestCanRemainWaitingForSystemAssets() async throws {
+    let (session, _, _) = try take()
+    let source = FakeVoiceCaptureSource()
+    source.readinessState = .needsModel
+    source.readinessAfterInstallSuccess = .downloading
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+
+    await coordinator.installMissingModel()
+
+    #expect(coordinator.state == .waitingForModel)
+    #expect(source.installCount == 1)
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+  }
+
+  @Test func audioTapProcessesBuffersFromRealtimeQueue() async throws {
+    guard #available(macOS 26.0, *) else { return }
+    let format = try #require(
+      AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: false))
+    let converter = try #require(AVAudioConverter(from: format, to: format))
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512))
+    buffer.frameLength = 512
+    if let samples = buffer.int16ChannelData?.pointee {
+      samples.update(repeating: 0, count: Int(buffer.frameLength))
+    }
+    let pair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(
+      of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(2))
+    let pipe = AudioInputPipe(
+      converter: converter, targetFormat: format, continuation: pair.continuation,
+      onError: { _ in })
+    let invocation = AudioTapInvocation(
+      handler: makeSpeechAudioTapHandler(for: pipe), buffer: buffer,
+      time: AVAudioTime(sampleTime: 0, atRate: format.sampleRate))
+
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        invocation.invoke()
+        continuation.resume()
+      }
+    }
+
+    var iterator = pair.stream.makeAsyncIterator()
+    let input = try await iterator.next()
+    pair.continuation.finish()
+    #expect(input != nil)
+    #expect(!invocation.wasCalledOnMainThread())
   }
 
   @Test func deniedMicrophoneNeverStartsCaptureAndMissingUsageTextFailsClosed() async throws {

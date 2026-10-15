@@ -778,6 +778,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     case .unsupportedLocale: "The selected language is not supported on this Mac."
     case .needsModel: "The selected Apple speech model needs to be installed with your consent."
     case .downloading(let progress): "Installing speech model · \(Int(progress * 100))%"
+    case .waitingForModel:
+      "macOS is still downloading the speech model or waiting for network conditions. Check again shortly."
     case .ready:
       "English is the validated language. Other supported languages depend on macOS. Audio stays on this Mac and is not recorded."
     case .requestingMicrophone: "Waiting for microphone permission…"

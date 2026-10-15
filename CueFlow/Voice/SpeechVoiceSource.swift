@@ -44,7 +44,7 @@ import Speech
       return installed.contains(where: { $0.identifier == locale.identifier })
         ? .ready : .needsModel
     case .downloading:
-      return .needsModel
+      return .downloading
     case .supported:
       return .needsModel
     case .unsupported:
@@ -60,9 +60,9 @@ import Speech
     let request = try await AssetInventory.assetInstallationRequest(
       supporting: [makeTranscriber(locale: locale)])
     try Task.checkCancellation()
-    guard let request else {
-      throw VoiceSourceError.modelInstallationUnavailable
-    }
+    // AssetInventory returns nil when the required assets are already installed. Let the
+    // coordinator recheck readiness instead of presenting that normal race as a failure.
+    guard let request else { return }
     installationRequest = request
     let progressTask = Task { @MainActor in
       while !Task.isCancelled {
@@ -152,9 +152,9 @@ import Speech
       self?.finishHardwareAfterResults()
     }
 
-    inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
-      pipe.append(buffer)
-    }
+    inputNode.installTap(
+      onBus: 0, bufferSize: 1024, format: inputFormat,
+      block: makeSpeechAudioTapHandler(for: pipe))
     configurationObserver = NotificationCenter.default.addObserver(
       forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
     ) { [weak self] _ in
@@ -271,7 +271,7 @@ import Speech
 }
 
 @available(macOS 26.0, *)
-private final class AudioInputPipe: @unchecked Sendable {
+final class AudioInputPipe: @unchecked Sendable {
   private let converter: AVAudioConverter
   private let targetFormat: AVAudioFormat
   private let continuation: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation
@@ -331,6 +331,16 @@ private final class AudioInputPipe: @unchecked Sendable {
 }
 
 @available(macOS 26.0, *)
+typealias SpeechAudioTapHandler = @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
+
+/// AVAudioNode calls tap handlers from its audio messenger queue. Keep this closure in a
+/// nonisolated file-level factory so it doesn't inherit SpeechVoiceSource's MainActor isolation.
+@available(macOS 26.0, *)
+func makeSpeechAudioTapHandler(for pipe: AudioInputPipe) -> SpeechAudioTapHandler {
+  { buffer, _ in pipe.append(buffer) }
+}
+
+@available(macOS 26.0, *)
 private final class OneShotAudioInput: @unchecked Sendable {
   private let lock = NSLock()
   private var buffer: AVAudioPCMBuffer?
@@ -348,7 +358,6 @@ private final class OneShotAudioInput: @unchecked Sendable {
 
 @available(macOS 26.0, *)
 private enum VoiceSourceError: LocalizedError {
-  case modelInstallationUnavailable
   case modelNotReady
   case noCompatibleAudioFormat
   case microphoneFormatUnavailable
@@ -358,7 +367,6 @@ private enum VoiceSourceError: LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case .modelInstallationUnavailable: "macOS did not offer a speech model installation request."
     case .modelNotReady: "The selected speech model is not installed and ready."
     case .noCompatibleAudioFormat: "No audio format is available for this speech model."
     case .microphoneFormatUnavailable: "The microphone did not provide a usable audio format."

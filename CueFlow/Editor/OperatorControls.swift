@@ -182,15 +182,18 @@ struct OperatorControls: View {
               ForEach(state.voiceLocales) { locale in
                 Text(locale.displayName).tag(locale.identifier)
               }
-            }.disabled(state.voiceLocales.isEmpty || state.voiceActive)
+            }
+            .disabled(state.voiceLocales.isEmpty || state.voiceActive)
+            .help("Choose a supported language. Selecting one does not open the microphone.")
             Text(
               "English is the validated language. Other languages depend on the models available in macOS."
             )
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
             Text(
               "Speech is analyzed on this Mac. CueGlass does not record or save audio or transcript text."
             )
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(.secondary).fixedSize(
+              horizontal: false, vertical: true)
             followVoiceControls
           }
         }
@@ -255,6 +258,19 @@ struct OperatorControls: View {
     }.frame(height: 28)
   }
   @ViewBuilder private var followVoiceControls: some View {
+    if let voiceStatus {
+      HStack(spacing: 6) {
+        Image(systemName: voiceStatus.symbol)
+        Text(voiceStatus.title)
+      }
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundStyle(voiceStatus.color)
+      .padding(.horizontal, 9)
+      .padding(.vertical, 5)
+      .background(voiceStatus.color.opacity(0.12), in: Capsule())
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("Follow Voice status: \(voiceStatus.title)")
+    }
     switch state.voiceState {
     case .hidden:
       EmptyView()
@@ -265,34 +281,67 @@ struct OperatorControls: View {
     case .unsupportedLocale:
       Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
     case .needsModel:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).textSelection(.enabled)
       Button("Install Speech Model…") { controller.installVoiceModel() }
+        .buttonStyle(.borderedProminent).tint(.accentColor)
     case .downloading(let progress):
       ProgressView(value: progress) { Text(state.voiceMessage).font(.caption) }
       Button("Cancel Installation") { controller.cancelVoiceModelInstallation() }
+        .buttonStyle(.bordered)
+    case .waitingForModel:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
+        horizontal: false, vertical: true)
+      Button("Check Again") { controller.refreshVoiceAvailability() }
+        .buttonStyle(.bordered)
     case .ready:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
+        horizontal: false, vertical: true)
       Button("Start Follow Voice") { controller.startVoiceFollow() }
+        .buttonStyle(.borderedProminent).tint(.accentColor)
     case .requestingMicrophone, .starting:
       ProgressView(state.voiceMessage).controlSize(.small)
     case .microphoneDenied:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
+        horizontal: false, vertical: true)
       HStack {
         Button("Open Microphone Settings…") { controller.openMicrophoneSettings() }
         Button("Try Again") { controller.startVoiceFollow() }
       }
     case .listening, .holding:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary)
       Button("Stop Follow Voice") { controller.stopVoiceFollow() }
+        .buttonStyle(.bordered).tint(.red)
     case .suspended:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
+        horizontal: false, vertical: true)
       HStack {
         Button("Resume Following") { controller.startVoiceFollow(resume: true) }
         Button("Stop Following") { controller.stopVoiceFollow() }
       }
     case .failed:
-      Text(state.voiceMessage).font(.caption).foregroundStyle(.secondary)
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
       Button("Check Again") { controller.refreshVoiceAvailability() }
+        .buttonStyle(.bordered)
+    }
+  }
+  private var voiceStatus: (title: String, symbol: String, color: Color)? {
+    switch state.voiceState {
+    case .hidden: nil
+    case .checking: ("Checking", "ellipsis.circle.fill", Color(nsColor: .secondaryLabelColor))
+    case .unavailable: ("Unavailable", "xmark.circle.fill", .red)
+    case .unsupportedLocale: ("Language unavailable", "globe", .orange)
+    case .needsModel: ("Model needed", "arrow.down.circle.fill", .orange)
+    case .downloading: ("Installing", "arrow.down.circle.fill", .blue)
+    case .waitingForModel: ("Waiting for model", "hourglass", .orange)
+    case .ready: ("Ready", "checkmark.circle.fill", .green)
+    case .requestingMicrophone: ("Microphone permission", "mic", .blue)
+    case .microphoneDenied: ("Microphone off", "mic.slash.fill", .red)
+    case .starting: ("Starting", "waveform", .blue)
+    case .listening: ("Listening", "waveform", .red)
+    case .holding: ("Holding", "pause.circle.fill", .orange)
+    case .suspended: ("Paused", "pause.circle.fill", Color(nsColor: .secondaryLabelColor))
+    case .failed: ("Needs attention", "exclamationmark.triangle.fill", .red)
     }
   }
 }
@@ -307,7 +356,7 @@ private struct InspectorSection<Content: View>: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title.uppercased()).font(.system(size: 10, weight: .semibold))
-        .tracking(0.8).foregroundStyle(.secondary)
+        .tracking(0.8).foregroundStyle(Color.primary.opacity(0.78))
       content
       Divider().padding(.top, 4)
     }

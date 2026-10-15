@@ -30,6 +30,7 @@ enum VoiceFollowUIState: Equatable {
   case unsupportedLocale
   case needsModel
   case downloading(Double)
+  case waitingForModel
   case ready
   case requestingMicrophone
   case microphoneDenied
@@ -211,7 +212,16 @@ private actor VoiceAlignmentWorker {
       } catch {
         guard epoch == requestedEpoch else { return }
         installationTask = nil
-        state = .failed("Speech model installation failed. Check your connection and try again.")
+        await refreshAvailability()
+        guard epoch == requestedEpoch else { return }
+        switch state {
+        case .ready, .waitingForModel:
+          break
+        case .needsModel:
+          state = .failed(Self.installationFailureMessage(error))
+        default:
+          break
+        }
       }
     }
     await installationTask?.value
@@ -541,9 +551,17 @@ private actor VoiceAlignmentWorker {
     case .unavailable: .unavailable
     case .unsupportedLocale: .unsupportedLocale
     case .needsModel: .needsModel
-    case .downloading: .downloading(0)
+    case .downloading: .waitingForModel
     case .ready: .ready
     }
+  }
+
+  private static func installationFailureMessage(_ error: Error) -> String {
+    let reason = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+    let detail = reason.isEmpty ? "The system could not install the selected speech assets" : reason
+    let punctuation = detail.hasSuffix(".") ? "" : "."
+    return
+      "Speech model installation failed: \(detail)\(punctuation) Check your network connection and available storage, then try again."
   }
 
   private static func message(for reason: HoldReason) -> String {
