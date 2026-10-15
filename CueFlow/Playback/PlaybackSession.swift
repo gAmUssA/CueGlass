@@ -39,6 +39,7 @@ struct VoiceStartIntent: Equatable {
   private(set) var timedDuration: Double?
   private(set) var voiceSessionActive = false
   private(set) var voiceSuspended = false
+  private(set) var voiceCommandPaused = false
   private(set) var voiceEpoch: UInt64 = 0
   private(set) var voiceStartGeneration: UInt64 = 0
   var onVoicePrioritySuspended: ((String, UInt64) -> Void)?
@@ -176,6 +177,7 @@ struct VoiceStartIntent: Equatable {
       voiceEpoch &+= 1
       voiceSessionActive = false
       voiceSuspended = false
+      voiceCommandPaused = false
       onVoiceEnded?()
     }
     deferredStart = nil
@@ -373,13 +375,14 @@ struct VoiceStartIntent: Equatable {
     state = .running
     voiceSessionActive = true
     voiceSuspended = false
+    voiceCommandPaused = false
     voiceEpoch = epoch
     countdownEnd = nil
     countdownDigit = nil
     message = "Waiting for speech"
     onChange?()
   }
-  func voiceGlide(to target: Double, epoch: UInt64) throws {
+  func voiceGlide(to target: Double, velocity: Double? = nil, epoch: UInt64) throws {
     guard voiceSessionActive, !voiceSuspended, voiceEpoch == epoch,
       state == .running, timeline.direction == .forward
     else { return }
@@ -387,7 +390,8 @@ struct VoiceStartIntent: Equatable {
     let current = try timeline.position(at: time)
     guard target.isFinite, target > current else { return }
     let maximum = max(0.1, lineAdvance * configuredMax / 60)
-    try timeline.setVelocity(min(timeline.velocity, maximum), at: time)
+    let requested = velocity ?? timeline.velocity
+    try timeline.setVelocity(min(max(requested, 0.1), maximum), at: time)
     try timeline.setVoiceCeiling(target, at: time)
     onChange?()
   }
@@ -418,8 +422,26 @@ struct VoiceStartIntent: Equatable {
     message = "Following paused — \(reason)"
     onChange?()
   }
+  /// Pauses timeline motion while leaving capture active for a spoken Resume command.
+  func pauseVoiceForCommand(epoch: UInt64) {
+    guard voiceSessionActive, !voiceSuspended, !voiceCommandPaused, voiceEpoch == epoch else {
+      return
+    }
+    let time = effectiveTime
+    try? timeline.clearVoiceCeiling(at: time)
+    try? timeline.pause(at: time)
+    elapsed.pause(at: time)
+    state = .paused
+    countdownEnd = nil
+    countdownDigit = nil
+    voiceCommandPaused = true
+    message = "Paused — listening for CueGlass Resume"
+    onChange?()
+  }
   func resumeVoice(epoch: UInt64) throws {
-    guard voiceSessionActive, voiceSuspended, snapshot != nil else { return }
+    guard voiceSessionActive, voiceSuspended || voiceCommandPaused, snapshot != nil else {
+      return
+    }
     guard timeline.direction == .forward else {
       throw NSError(
         domain: "CueGlass", code: 6,
@@ -433,6 +455,7 @@ struct VoiceStartIntent: Equatable {
     lastPresentedTarget = time
     state = .running
     voiceSuspended = false
+    voiceCommandPaused = false
     message = "Waiting for speech"
     onChange?()
   }
@@ -450,6 +473,7 @@ struct VoiceStartIntent: Equatable {
     }
     voiceSessionActive = false
     voiceSuspended = false
+    voiceCommandPaused = false
     countdownEnd = nil
     countdownDigit = nil
     message = "Follow Voice stopped"
@@ -476,6 +500,7 @@ struct VoiceStartIntent: Equatable {
     countdownEnd = nil
     countdownDigit = nil
     voiceSuspended = true
+    voiceCommandPaused = false
   }
   func noteFrame(target: Double, end: Double?) throws {
     guard target.isFinite, target >= 0 else { throw TimelineError.invalidTime }

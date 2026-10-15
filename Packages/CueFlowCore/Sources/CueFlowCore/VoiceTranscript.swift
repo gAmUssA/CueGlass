@@ -24,16 +24,29 @@ public struct TranscriptEvent: Equatable, Sendable, Codable {
   public var rangeEnd: Double
   public var availableAt: Double
   public var words: [RecognizedWord]
+  /// Up to a few alternative interpretations used only to recover prefixed transport commands.
+  /// Script alignment always consumes `words`, the recognizer's best interpretation.
+  public var commandAlternatives: [[RecognizedWord]]?
+  /// Marks results from the command-only recognition channel so they never enter script alignment.
+  public var isCommandOnly: Bool?
+  /// Audio time before which this transcriber has finalized every result. Volatile wording may
+  /// remain unchanged and never be reissued as a final result, so consumers that need stable
+  /// speech can use this watermark instead of waiting for `isFinal` on the same phrase.
+  public var finalizedThrough: Double?
 
   public init(
     isFinal: Bool, rangeStart: Double, rangeEnd: Double, availableAt: Double,
-    words: [RecognizedWord]
+    words: [RecognizedWord], finalizedThrough: Double? = nil,
+    commandAlternatives: [[RecognizedWord]] = [], isCommandOnly: Bool = false
   ) {
     self.isFinal = isFinal
     self.rangeStart = rangeStart
     self.rangeEnd = rangeEnd
     self.availableAt = availableAt
     self.words = words
+    self.finalizedThrough = finalizedThrough
+    self.commandAlternatives = commandAlternatives
+    self.isCommandOnly = isCommandOnly
   }
 }
 

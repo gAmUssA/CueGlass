@@ -10,14 +10,17 @@ import Speech
   private var engine: AVAudioEngine?
   private var analyzer: SpeechAnalyzer?
   private var transcriber: SpeechTranscriber?
+  private var commandTranscriber: DictationTranscriber?
   private var inputContinuation: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation?
   private var outputContinuation: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
   private var inputPipe: AudioInputPipe?
   private var analyzerTask: Task<Void, Never>?
   private var resultsTask: Task<Void, Never>?
+  private var commandResultsTask: Task<Void, Never>?
   private var configurationObserver: NSObjectProtocol?
   private var installationRequest: AssetInstallationRequest?
   private var captureStartedAt = 0.0
+  private var resultStreamsRemaining = 0
 
   func supportedLocales() async -> [VoiceLocaleOption] {
     guard SpeechTranscriber.isAvailable else { return [] }
@@ -38,11 +41,24 @@ import Speech
       return .unsupportedLocale
     }
     let module = makeTranscriber(locale: locale)
-    switch await AssetInventory.status(forModules: [module]) {
+    let commandModule = await makeCommandTranscriber(localeIdentifier: localeIdentifier)
+    var modules: [any SpeechModule] = [module]
+    if let commandModule { modules.append(commandModule) }
+    switch await AssetInventory.status(forModules: modules) {
     case .installed:
       let installed = await SpeechTranscriber.installedLocales
-      return installed.contains(where: { $0.identifier == locale.identifier })
-        ? .ready : .needsModel
+      guard installed.contains(where: { $0.identifier == locale.identifier }) else {
+        return .needsModel
+      }
+      if commandModule != nil {
+        let commandInstalled = await DictationTranscriber.installedLocales
+        guard
+          commandInstalled.contains(where: {
+            $0.identifier == commandModule?.selectedLocales.first?.identifier
+          })
+        else { return .needsModel }
+      }
+      return .ready
     case .downloading:
       return .downloading
     case .supported:
@@ -57,8 +73,12 @@ import Speech
   func install(localeIdentifier: String, reportProgress: @escaping (Double) -> Void) async throws {
     let locale = Locale(identifier: localeIdentifier)
     guard await readiness(localeIdentifier: localeIdentifier) == .needsModel else { return }
+    var modules: [any SpeechModule] = [makeTranscriber(locale: locale)]
+    if let commandModule = await makeCommandTranscriber(localeIdentifier: localeIdentifier) {
+      modules.append(commandModule)
+    }
     let request = try await AssetInventory.assetInstallationRequest(
-      supporting: [makeTranscriber(locale: locale)])
+      supporting: modules)
     try Task.checkCancellation()
     // AssetInventory returns nil when the required assets are already installed. Let the
     // coordinator recheck readiness instead of presenting that normal race as a failure.
@@ -93,10 +113,20 @@ import Speech
     stop()
 
     let module = makeTranscriber(locale: Locale(identifier: localeIdentifier))
+    let commandModule = await makeCommandTranscriber(localeIdentifier: localeIdentifier)
+    var modules: [any SpeechModule] = [module]
+    if let commandModule { modules.append(commandModule) }
     let analyzer = SpeechAnalyzer(
-      modules: [module],
+      modules: modules,
       options: SpeechAnalyzer.Options(priority: .userInitiated, modelRetention: .whileInUse))
-    guard let targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module])
+    if commandModule != nil {
+      let context = AnalysisContext()
+      context.contextualStrings[.general] = [
+        "CueGlass", "Cue Glass", "Prompter", "pause", "resume", "stop take", "stop following",
+      ]
+      try await analyzer.setContext(context)
+    }
+    guard let targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
     else { throw VoiceSourceError.noCompatibleAudioFormat }
     try Task.checkCancellation()
 
@@ -110,7 +140,7 @@ import Speech
     let inputPair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(
       of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(24))
     let outputPair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream(
-      of: TranscriptEvent.self, bufferingPolicy: .bufferingNewest(12))
+      of: TranscriptEvent.self, bufferingPolicy: .bufferingNewest(32))
     let pipe = AudioInputPipe(
       converter: converter, targetFormat: targetFormat, continuation: inputPair.continuation
     ) { [weak self] error in
@@ -119,9 +149,11 @@ import Speech
     self.engine = engine
     self.analyzer = analyzer
     self.transcriber = module
+    self.commandTranscriber = commandModule
     inputContinuation = inputPair.continuation
     outputContinuation = outputPair.continuation
     inputPipe = pipe
+    resultStreamsRemaining = commandModule == nil ? 1 : 2
 
     try await analyzer.prepareToAnalyze(in: targetFormat)
     try Task.checkCancellation()
@@ -129,9 +161,8 @@ import Speech
       do {
         try await analyzer.start(inputSequence: inputPair.stream)
         try await analyzer.finalizeAndFinishThroughEndOfInput()
-        self?.finishOutput()
       } catch {
-        self?.finishOutput(throwing: error)
+        self?.failResultStream(error)
       }
     }
     let captureStartedAt = ProcessInfo.processInfo.systemUptime
@@ -142,14 +173,38 @@ import Speech
           guard !Task.isCancelled else { return }
           let event = Self.event(
             from: result, availableAt: ProcessInfo.processInfo.systemUptime - captureStartedAt)
-          if !event.words.isEmpty { outputPair.continuation.yield(event) }
+          // Empty results can advance finalization without repeating their volatile wording.
+          if !event.words.isEmpty || !(event.commandAlternatives ?? []).isEmpty || event.isFinal
+            || event.finalizedThrough?.isFinite == true
+          {
+            outputPair.continuation.yield(event)
+          }
         }
         guard !Task.isCancelled else { return }
-        outputPair.continuation.finish()
+        self?.resultStreamFinished()
       } catch {
-        outputPair.continuation.finish(throwing: error)
+        self?.failResultStream(error)
       }
-      self?.finishHardwareAfterResults()
+    }
+    if let commandModule {
+      commandResultsTask = Task { [weak self] in
+        do {
+          for try await result in commandModule.results {
+            guard !Task.isCancelled else { return }
+            let event = Self.commandEvent(
+              from: result, availableAt: ProcessInfo.processInfo.systemUptime - captureStartedAt)
+            if !(event.commandAlternatives ?? []).isEmpty || event.isFinal
+              || event.finalizedThrough?.isFinite == true
+            {
+              outputPair.continuation.yield(event)
+            }
+          }
+          guard !Task.isCancelled else { return }
+          self?.resultStreamFinished()
+        } catch {
+          self?.failResultStream(error)
+        }
+      }
     }
 
     inputNode.installTap(
@@ -186,12 +241,16 @@ import Speech
     inputPipe = nil
     analyzerTask?.cancel()
     resultsTask?.cancel()
+    commandResultsTask?.cancel()
     analyzerTask = nil
     resultsTask = nil
+    commandResultsTask = nil
     if let analyzer { Task { await analyzer.cancelAndFinishNow() } }
     engine = nil
     analyzer = nil
     transcriber = nil
+    commandTranscriber = nil
+    resultStreamsRemaining = 0
     captureStartedAt = 0
   }
 
@@ -201,15 +260,15 @@ import Speech
     stopHardware()
   }
 
-  private func finishOutput(throwing error: (any Error)? = nil) {
-    if let error {
-      outputContinuation?.finish(throwing: error)
-    } else {
-      outputContinuation?.finish()
-    }
+  private func resultStreamFinished() {
+    resultStreamsRemaining = max(0, resultStreamsRemaining - 1)
+    guard resultStreamsRemaining == 0 else { return }
+    outputContinuation?.finish()
+    stopHardware()
   }
 
-  private func finishHardwareAfterResults() {
+  private func failResultStream(_ error: any Error) {
+    outputContinuation?.finish(throwing: error)
     stopHardware()
   }
 
@@ -227,31 +286,86 @@ import Speech
     inputPipe = nil
     analyzerTask?.cancel()
     resultsTask?.cancel()
+    commandResultsTask?.cancel()
     analyzerTask = nil
     resultsTask = nil
+    commandResultsTask = nil
     if let analyzer { Task { await analyzer.cancelAndFinishNow() } }
     engine = nil
     analyzer = nil
     transcriber = nil
+    commandTranscriber = nil
+    resultStreamsRemaining = 0
+  }
+
+  private func makeCommandTranscriber(localeIdentifier: String) async -> DictationTranscriber? {
+    let requestedLocale = Locale(identifier: localeIdentifier)
+    guard requestedLocale.language.languageCode?.identifier == "en",
+      let supportedLocale = await DictationTranscriber.supportedLocale(
+        equivalentTo: requestedLocale)
+    else { return nil }
+    return DictationTranscriber(
+      locale: supportedLocale,
+      contentHints: [.shortForm],
+      transcriptionOptions: [],
+      reportingOptions: [.volatileResults, .alternativeTranscriptions],
+      attributeOptions: [.audioTimeRange, .transcriptionConfidence])
   }
 
   private func makeTranscriber(locale: Locale) -> SpeechTranscriber {
     SpeechTranscriber(
       locale: locale,
       transcriptionOptions: [],
-      reportingOptions: [.volatileResults, .fastResults],
+      reportingOptions: [.volatileResults, .fastResults, .alternativeTranscriptions],
       attributeOptions: [.audioTimeRange, .transcriptionConfidence])
   }
 
   private nonisolated static func event(
     from result: SpeechTranscriber.Result, availableAt: Double
   ) -> TranscriptEvent {
+    let words = recognizedWords(in: result.text)
+    let commandAlternatives = result.alternatives.dropFirst().prefix(3).map {
+      Array(recognizedWords(in: $0, fallbackRange: result.range).suffix(4))
+    }.filter { !$0.isEmpty }
+    return TranscriptEvent(
+      isFinal: result.isFinal,
+      rangeStart: result.range.start.seconds,
+      rangeEnd: CMTimeGetSeconds(CMTimeRangeGetEnd(result.range)),
+      availableAt: availableAt,
+      words: words,
+      finalizedThrough: result.resultsFinalizationTime.seconds,
+      commandAlternatives: commandAlternatives)
+  }
+
+  private nonisolated static func commandEvent(
+    from result: DictationTranscriber.Result, availableAt: Double
+  ) -> TranscriptEvent {
+    let best = Array(recognizedWords(in: result.text, fallbackRange: result.range).suffix(4))
+    let alternatives =
+      ([best]
+      + result.alternatives.dropFirst().prefix(2).map {
+        Array(recognizedWords(in: $0, fallbackRange: result.range).suffix(4))
+      }).filter { !$0.isEmpty }
+    return TranscriptEvent(
+      isFinal: result.isFinal,
+      rangeStart: result.range.start.seconds,
+      rangeEnd: CMTimeGetSeconds(CMTimeRangeGetEnd(result.range)),
+      availableAt: availableAt,
+      words: [],
+      finalizedThrough: result.resultsFinalizationTime.seconds,
+      commandAlternatives: alternatives,
+      isCommandOnly: true)
+  }
+
+  private nonisolated static func recognizedWords(
+    in text: AttributedString, fallbackRange: CMTimeRange? = nil
+  ) -> [RecognizedWord] {
     var words: [RecognizedWord] = []
-    for run in result.text.runs {
+    for run in text.runs {
       guard let time = run[AttributeScopes.SpeechAttributes.TimeRangeAttribute.self] else {
         continue
       }
-      let transcript = String(result.text[run.range].characters)
+      let transcript = String(text[run.range].characters)
       let start = time.start.seconds
       let end = CMTimeGetSeconds(CMTimeRangeGetEnd(time))
       guard start.isFinite, end.isFinite, end >= start else { continue }
@@ -261,12 +375,18 @@ import Speech
           RecognizedWord(text: String(word), start: start, end: end, confidence: confidence))
       }
     }
-    return TranscriptEvent(
-      isFinal: result.isFinal,
-      rangeStart: result.range.start.seconds,
-      rangeEnd: CMTimeGetSeconds(CMTimeRangeGetEnd(result.range)),
-      availableAt: availableAt,
-      words: words)
+    if words.isEmpty, let fallbackRange {
+      let transcript = String(text.characters)
+      let start = fallbackRange.start.seconds
+      let end = CMTimeGetSeconds(CMTimeRangeGetEnd(fallbackRange))
+      guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        start.isFinite, end.isFinite, end >= start
+      else { return words }
+      return transcript.split(whereSeparator: \.isWhitespace).map {
+        RecognizedWord(text: String($0), start: start, end: end, confidence: -1)
+      }
+    }
+    return words
   }
 }
 

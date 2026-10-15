@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-15T14:26:25Z
-updated_at: 2026-10-15T15:11:12Z
+updated_at: 2026-10-15T20:22:37Z
 parent: cueglass-2mil
 ---
 
@@ -19,7 +19,9 @@ User-reported macOS 27 DebugLocal problems (2026-10-15): explicit speech-model i
 - [x] Improve Follow Voice status contrast and make disabled, ready, installing, listening, denied, paused, and failed states visually distinct.
 - [x] Add deterministic regression coverage for the audio callback and model-install state/error behavior.
 - [x] Rebuild the macOS 14 target, rerun Core/native tests and strict formatting, and refresh the manual-test documentation.
-- [ ] Retest model installation, app startup, and inspector readability on macOS 27 after the operator retries the rebuilt app.
+- [ ] Verify speech-model installation completes and reaches Ready on macOS 27+.
+- [x] Verify Follow Voice starts and tracks human speech with AirPods on macOS 27+ (operator confirmed 2026-10-15).
+- [ ] Confirm inspector readability and distinct active/inactive states on the rebuilt app.
 
 ## Current Evidence (2026-10-15)
 
@@ -34,4 +36,8 @@ The operator approved microphone access and reproduced an immediate pause: “Pa
 ## Follow-up acceptance
 
 - [x] Do not run or resume the shared playback timeline until microphone capture startup returns a usable stream; cover delayed startup with a coordinator regression (the delayed two-second startup test passes).
-- [ ] Retest startup and speech-driven scrolling on macOS 27 with AirPods; verify it remains Listening rather than immediately pausing on a display stall.
+- [x] Retest startup and speech-driven scrolling on macOS 27 with AirPods; operator confirmed Follow Voice works after the startup fix (2026-10-15).
+
+## Operator retest (2026-10-15)
+
+The operator confirmed the rebuilt app starts and follows speech using AirPods. Speech-model installation completion and final inspector readability remain unverified.

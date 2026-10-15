@@ -128,6 +128,9 @@ private struct FakeSpeechAssetError: LocalizedError {
     startCompletion?.resume()
     startCompletion = nil
   }
+  func send(_ event: TranscriptEvent) {
+    output?.yield(event)
+  }
   func stop() {
     stopCount += 1
     output?.finish()
@@ -470,6 +473,143 @@ private struct FakeSpeechAssetError: LocalizedError {
     coordinator.stop()
   }
 
+  @Test func spokenPauseKeepsCaptureForResumeAndDoesNotDriveTheScript() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
+
+    source.send(transcript("CueGlass pause", startingAt: 1))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+
+    #expect(session.voiceSessionActive)
+    #expect(session.voiceCommandPaused)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .paused)
+    #expect(!session.timeline.running)
+    #expect(source.stopCount == 0)
+
+    source.send(transcript("North wind carries the lantern", startingAt: 1.5))
+    await Task.yield()
+    await mainTurn()
+    #expect(coordinator.state == .commandPaused)
+    #expect(session.state == .paused)
+    #expect(source.stopCount == 0)
+
+    source.send(transcript("CueGlass resume", startingAt: 2))
+    await waitForVoiceState(.listening, coordinator: coordinator)
+
+    #expect(session.voiceSessionActive)
+    #expect(!session.voiceCommandPaused)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.running)
+    #expect(source.stopCount == 0)
+    coordinator.stop()
+  }
+
+  @Test func commandOnlyRecognitionCarriesTheWakePhraseIntoTheNextUpdate() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
+
+    let wake = transcript("CueGlass", startingAt: 1)
+    source.send(
+      TranscriptEvent(
+        isFinal: false, rangeStart: wake.rangeStart, rangeEnd: wake.rangeEnd,
+        availableAt: wake.availableAt, words: [], commandAlternatives: [wake.words],
+        isCommandOnly: true))
+    await Task.yield()
+    await mainTurn()
+    #expect(coordinator.state == .listening)
+    #expect(session.state == .running)
+
+    let action = transcript("pause", startingAt: 1.3)
+    source.send(
+      TranscriptEvent(
+        isFinal: true, rangeStart: action.rangeStart, rangeEnd: action.rangeEnd,
+        availableAt: action.availableAt, words: [], commandAlternatives: [action.words],
+        isCommandOnly: true))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+
+    #expect(session.voiceCommandPaused)
+    #expect(session.state == .paused)
+    #expect(source.stopCount == 0)
+    coordinator.stop()
+  }
+
+  @Test func manualNavigationDuringSpokenPauseStillClosesCapture() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
+
+    source.send(transcript("CueGlass pause", startingAt: 1))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+    try session.seek(90)
+
+    #expect(coordinator.state == .suspended("Manual navigation"))
+    #expect(session.voiceSuspended)
+    #expect(!session.voiceCommandPaused)
+    #expect(source.stopCount == 1)
+    #expect(session.timeline.anchorPosition == 90)
+    coordinator.stop()
+  }
+
+  @Test func stopTakeSpeechUsesPlaybackStopAction() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    coordinator.onStopTake = { session.stop() }
+    await coordinator.refreshAvailability()
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
+
+    source.send(transcript("CueGlass stop take", startingAt: 1))
+    for _ in 0..<100 where session.state != .idle {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.state == .idle)
+    #expect(!session.voiceSessionActive)
+    #expect(source.stopCount >= 1)
+  }
+
+  @Test func stopFollowingSpeechUsesExistingVoiceStopAction() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    var stopActionCalled = false
+    coordinator.onStopFollowing = { [weak coordinator] in
+      stopActionCalled = true
+      coordinator?.stop()
+    }
+    await coordinator.refreshAvailability()
+    try await start(coordinator, session: session, snapshot: snapshot, table: table, token: -1)
+
+    source.send(transcript("CueGlass stop following", startingAt: 1))
+    await waitForVoiceState(.ready, coordinator: coordinator)
+
+    #expect(stopActionCalled)
+    #expect(!session.voiceSessionActive)
+    #expect(session.state == .paused)
+    #expect(source.stopCount >= 1)
+  }
+
   @Test func stepPaceAndDirectionChangesHoldVoiceTimelineUntilResume() throws {
     for command in ["step", "pace", "direction"] {
       let (session, _, _) = try take()
@@ -648,6 +788,78 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(session.state == .running)
   }
 
+  @Test func confirmedFasterPresenterCadenceRaisesSharedGlideSpeed() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let sourceText = text as NSString
+    let lineTable = VoiceLineTable(
+      lines: ["North wind", "carries the", "lantern home."].enumerated().map { index, line in
+        let range = sourceText.range(of: line)
+        return VoiceLine(
+          utf16Range: range.location..<(range.location + range.length), minY: Double(index) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let baseline = session.timeline.velocity
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+
+    source.send(transcript("North wind", startingAt: 0))
+    source.send(transcript("carries the", startingAt: 0.6))
+    for _ in 0..<200 where session.timeline.velocity <= baseline {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.velocity > baseline)
+    #expect(session.timeline.velocity <= baseline * 1.4)
+    #expect(session.voiceSessionActive)
+    coordinator.stop()
+  }
+
+  @Test func volatileTranscriptProgressDoesNotRaiseGlideSpeed() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let sourceText = text as NSString
+    let lineTable = VoiceLineTable(
+      lines: ["North wind", "carries the", "lantern home."].enumerated().map { index, line in
+        let range = sourceText.range(of: line)
+        return VoiceLine(
+          utf16Range: range.location..<(range.location + range.length), minY: Double(index) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+    let baseline = session.timeline.velocity
+
+    source.send(transcript("North wind", startingAt: 0, isFinal: false, finalizedThrough: 0))
+    source.send(transcript("carries the", startingAt: 0.6, isFinal: false, finalizedThrough: 0))
+    for _ in 0..<100 {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.velocity == baseline)
+    coordinator.stop()
+  }
+
   @Test func textKitBuildsAndInvalidatesTheVoiceLineMapWithItsLayout() async throws {
     let doc = ScriptDocument()
     doc.source = NSAttributedString(
@@ -721,6 +933,35 @@ private struct FakeSpeechAssetError: LocalizedError {
     await withCheckedContinuation { continuation in
       DispatchQueue.main.async { continuation.resume() }
     }
+  }
+
+  private func waitForVoiceState(
+    _ expected: VoiceFollowUIState, coordinator: VoiceFollowCoordinator
+  ) async {
+    for _ in 0..<1000 {
+      if coordinator.state == expected { return }
+      await Task.yield()
+      await mainTurn()
+    }
+    Issue.record("Follow Voice did not reach state \(expected)")
+  }
+
+  private func transcript(
+    _ phrase: String, startingAt start: Double, isFinal: Bool = true,
+    finalizedThrough: Double? = nil
+  ) -> TranscriptEvent {
+    let words = phrase.split(whereSeparator: \.isWhitespace).enumerated().map { index, word in
+      let wordStart = start + Double(index) * 0.25
+      return RecognizedWord(
+        text: String(word), start: wordStart, end: wordStart + 0.2, confidence: 0.9)
+    }
+    return TranscriptEvent(
+      isFinal: isFinal,
+      rangeStart: words.first?.start ?? start,
+      rangeEnd: words.last?.end ?? start,
+      availableAt: words.last?.end ?? start,
+      words: words,
+      finalizedThrough: finalizedThrough)
   }
 
   private func settle(_ controller: OperatorWindowController) async {

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+## 0.2.0 — Unreleased
+
+- Add opt-in macOS 26+ Follow Voice with on-device speech analysis, explicit microphone/model consent, bounded script alignment, and adaptive presenter-paced scrolling while retaining macOS 14 compatibility.
+- Add prefixed Pause, Resume, Stop Following, and Stop Take voice commands with an isolated contextual command channel; keep manual controls authoritative and Timed Scrolling separate ([ADRs 0007–0010](docs/adr/README.md)).
+- Improve Follow Voice model-install diagnostics, microphone startup ordering, and inspector status readability.
+- Keep the release unsigned and unnotarized under the existing GitHub Actions distribution plan; signing and notarization remain deferred.
+
 ## 0.1.1 — 2026-10-14
 
 - Harden Timed Scrolling, pace/style Undo and Redo, and presentation recovery; preserve selected displays when monitors reconnect and reject malformed documents safely.

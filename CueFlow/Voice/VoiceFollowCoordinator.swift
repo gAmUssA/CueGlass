@@ -37,6 +37,7 @@ enum VoiceFollowUIState: Equatable {
   case starting
   case listening
   case holding(String)
+  case commandPaused
   case suspended(String)
   case failed(String)
 }
@@ -75,6 +76,7 @@ enum VoiceFollowUIState: Equatable {
 private struct VoiceDecisionEvent: Sendable {
   let epoch: UInt64
   let decision: FollowDecision
+  let speechTime: Double?
 }
 
 private actor VoiceAlignmentWorker {
@@ -93,18 +95,36 @@ private actor VoiceAlignmentWorker {
     guard candidate == epoch else { return nil }
     accumulator.apply(event)
     let decision = policy.update(hypothesis: accumulator.hypothesis)
-    return decision == .none ? nil : VoiceDecisionEvent(epoch: epoch, decision: decision)
+    guard decision != .none else { return nil }
+    let finalizedThrough = max(
+      event.finalizedThrough ?? -Double.infinity,
+      event.isFinal ? event.rangeEnd : -Double.infinity)
+    let speechTime = event.words.lazy.filter { $0.end <= finalizedThrough }.map(\.end).max()
+    return VoiceDecisionEvent(epoch: epoch, decision: decision, speechTime: speechTime)
   }
 
   func tick(now: Double, epoch candidate: UInt64) -> VoiceDecisionEvent? {
     guard candidate == epoch else { return nil }
     let decision = policy.tick(now: now)
-    return decision == .none ? nil : VoiceDecisionEvent(epoch: epoch, decision: decision)
+    return decision == .none
+      ? nil : VoiceDecisionEvent(epoch: epoch, decision: decision, speechTime: nil)
   }
 
   func clear() {
     accumulator.clear()
     policy = FollowPolicy(script: policy.script)
+  }
+
+  func pauseForCommand() {
+    accumulator.clear()
+    policy.suspend()
+  }
+
+  func resumeAfterCommand(now: Double) {
+    let position = policy.position
+    accumulator.clear()
+    policy = FollowPolicy(script: policy.script, config: policy.config)
+    policy.resume(at: position, now: now)
   }
 }
 
@@ -129,6 +149,12 @@ private actor VoiceAlignmentWorker {
   private var pendingActivationIntent: VoiceStartIntent?
   private var pendingActivationState: VoiceFollowUIState?
   private var readinessState: VoiceFollowUIState = .checking
+  private var commandMatcher = VoiceTransportCommandMatcher()
+  private var commandPaused = false
+  private var commandPauseAudioTime = 0.0
+  private var paceEstimator: FollowPaceEstimator?
+  var onStopFollowing: (() -> Void)?
+  var onStopTake: (() -> Void)?
 
   init(
     session: PlaybackSession, source: VoiceCaptureSource,
@@ -151,7 +177,10 @@ private actor VoiceAlignmentWorker {
   }
 
   var isActive: Bool { session.voiceSessionActive }
-  var isSuspended: Bool { session.voiceSessionActive && session.voiceSuspended }
+  var isSuspended: Bool {
+    session.voiceSessionActive && (session.voiceSuspended || commandPaused)
+  }
+  var isCommandPaused: Bool { commandPaused }
 
   func selectLocale(_ identifier: String) {
     guard locales.contains(where: { $0.identifier == identifier }),
@@ -160,6 +189,7 @@ private actor VoiceAlignmentWorker {
     if installationTask != nil { cancelInstallation() }
     if session.voiceSessionActive { stop() }
     selectedLocaleIdentifier = identifier
+    commandMatcher = VoiceTransportCommandMatcher(enabled: Self.supportsEnglishCommands(identifier))
     UserDefaults.standard.set(identifier, forKey: "voiceFollowLocale")
     Task { await refreshAvailability() }
   }
@@ -248,6 +278,10 @@ private actor VoiceAlignmentWorker {
     snapshot: ScriptSnapshot, lineTable: VoiceLineTable, intent: VoiceStartIntent,
     resolveStart: @escaping @MainActor () -> Int?
   ) async {
+    if commandPaused {
+      await resumeCommandPause(at: commandPauseAudioTime)
+      return
+    }
     guard isSuspended else { return }
     await activate(
       snapshot: snapshot, lineTable: lineTable, intent: intent, resolveStart: resolveStart)
@@ -283,6 +317,10 @@ private actor VoiceAlignmentWorker {
       return
     }
     let requestedEpoch = nextEpoch()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher = VoiceTransportCommandMatcher(
+      enabled: Self.supportsEnglishCommands(selectedLocaleIdentifier))
     pendingActivationIntent = intent
     pendingActivationState = state
     defer {
@@ -355,6 +393,12 @@ private actor VoiceAlignmentWorker {
         await nextWorker.clear()
         return
       }
+      paceEstimator = FollowPaceEstimator(
+        baselineVelocity: session.timeline.velocity,
+        maximumVelocity: session.lineAdvance * session.configuredMax / 60)
+      if let position = try? session.timeline.position(at: session.effectiveTime) {
+        paceEstimator?.reset(anchorPosition: position, at: 0)
+      }
       pendingActivationIntent = nil
       pendingActivationState = nil
       state = .listening
@@ -376,6 +420,9 @@ private actor VoiceAlignmentWorker {
     let next = nextEpoch()
     session.suspendVoice(reason, epoch: next)
     stopCaptureAndClear()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher.clear()
     state = .suspended(reason)
   }
 
@@ -388,6 +435,9 @@ private actor VoiceAlignmentWorker {
     source.cancelModelInstallation()
     source.stop()
     stopTasksAndClearWorker()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher.clear()
     scriptIndex = nil
     lineTable = nil
     if wasActive { session.endVoice() }
@@ -400,6 +450,9 @@ private actor VoiceAlignmentWorker {
     pendingActivationState = nil
     source.stop()
     stopTasksAndClearWorker()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher.clear()
     scriptIndex = nil
     lineTable = nil
     if case .failed = state { return }
@@ -425,6 +478,9 @@ private actor VoiceAlignmentWorker {
     pendingActivationIntent = nil
     pendingActivationState = nil
     stopCaptureAndClear()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher.clear()
     state = .suspended(reason)
   }
 
@@ -464,6 +520,7 @@ private actor VoiceAlignmentWorker {
     captureTask = nil
     silenceTask?.cancel()
     silenceTask = nil
+    paceEstimator = nil
     let oldWorker = worker
     worker = nil
     if let oldWorker { Task { await oldWorker.clear() } }
@@ -477,6 +534,13 @@ private actor VoiceAlignmentWorker {
       do {
         for try await event in stream {
           guard let self, !Task.isCancelled, epoch == streamEpoch else { return }
+          if let command = commandMatcher.consume(event) {
+            await handle(command, event: event, worker: worker, epoch: streamEpoch)
+            continue
+          }
+          if event.isCommandOnly == true { continue }
+          if commandMatcher.hasPendingCandidate { continue }
+          guard !commandPaused else { continue }
           if let result = await worker.ingest(event, epoch: streamEpoch) {
             apply(result)
           }
@@ -495,11 +559,83 @@ private actor VoiceAlignmentWorker {
       while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(200))
         guard let self, !Task.isCancelled, epoch == streamEpoch else { return }
-        let now = ProcessInfo.processInfo.systemUptime - startTime
+        let uptime = ProcessInfo.processInfo.systemUptime
+        if let command = commandMatcher.advance(to: uptime) {
+          let audioTime = commandMatcher.lastResolvedAudioTime ?? 0
+          let event = TranscriptEvent(
+            isFinal: true, rangeStart: audioTime, rangeEnd: audioTime,
+            availableAt: audioTime, words: [], finalizedThrough: audioTime)
+          await handle(command, event: event, worker: worker, epoch: streamEpoch)
+          guard !Task.isCancelled, epoch == streamEpoch else { return }
+        }
+        let now = uptime - startTime
+        guard !commandPaused else { continue }
         if let result = await worker.tick(now: now, epoch: streamEpoch) {
           apply(result)
         }
       }
+    }
+  }
+
+  private func handle(
+    _ command: VoiceTransportCommand, event: TranscriptEvent,
+    worker: VoiceAlignmentWorker, epoch streamEpoch: UInt64
+  ) async {
+    guard epoch == streamEpoch, session.voiceEpoch == streamEpoch,
+      session.voiceSessionActive, !session.voiceSuspended
+    else { return }
+
+    switch command {
+    case .pause:
+      guard !commandPaused else { return }
+      commandPaused = true
+      commandPauseAudioTime = max(event.rangeEnd, event.words.last?.end ?? 0)
+      await worker.pauseForCommand()
+      session.pauseVoiceForCommand(epoch: streamEpoch)
+      state = .commandPaused
+    case .resume:
+      await resumeCommandPause(at: max(event.rangeEnd, event.words.last?.end ?? 0))
+    case .stopFollowing:
+      if let onStopFollowing {
+        onStopFollowing()
+      } else {
+        stop()
+      }
+    case .stopTake:
+      if let onStopTake {
+        onStopTake()
+      } else {
+        session.stop()
+      }
+    }
+  }
+
+  func resumeSpokenCommandPause() {
+    guard commandPaused else { return }
+    let audioTime = commandPauseAudioTime
+    Task { [weak self] in
+      await self?.resumeCommandPause(at: audioTime)
+    }
+  }
+
+  private func resumeCommandPause(at audioTime: Double) async {
+    guard commandPaused, session.voiceSessionActive, !session.voiceSuspended,
+      let worker
+    else { return }
+    let resumeTime = max(audioTime, commandPauseAudioTime)
+    let resumeEpoch = epoch
+    await worker.resumeAfterCommand(now: resumeTime)
+    guard commandPaused, epoch == resumeEpoch, session.voiceEpoch == resumeEpoch else { return }
+    do {
+      try session.resumeVoice(epoch: resumeEpoch)
+      if let position = try? session.timeline.position(at: session.effectiveTime) {
+        paceEstimator?.reset(anchorPosition: position, at: resumeTime)
+      }
+      commandPaused = false
+      commandPauseAudioTime = 0
+      state = .listening
+    } catch {
+      captureFailed("Follow Voice stopped: \(error.localizedDescription)", epoch: resumeEpoch)
     }
   }
 
@@ -514,12 +650,14 @@ private actor VoiceAlignmentWorker {
         guard scriptIndex.tokens.indices.contains(index),
           let y = lineTable.y(for: scriptIndex.tokens[index])
         else { return }
-        try session.voiceGlide(to: y, epoch: epoch)
+        let velocity = result.speechTime.flatMap { paceEstimator?.observe(position: y, at: $0) }
+        try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
         state = .listening
       case .jump(_, let index):
         guard scriptIndex.tokens.indices.contains(index),
           let y = lineTable.y(for: scriptIndex.tokens[index])
         else { return }
+        paceEstimator?.reset(anchorPosition: y, at: result.speechTime)
         try session.voiceJump(to: y, epoch: epoch)
         state = .listening
       case .hold(let reason):
@@ -539,6 +677,9 @@ private actor VoiceAlignmentWorker {
     _ = nextEpoch()
     source.stop()
     stopTasksAndClearWorker()
+    commandPaused = false
+    commandPauseAudioTime = 0
+    commandMatcher.clear()
     scriptIndex = nil
     lineTable = nil
     session.endVoice()
@@ -586,5 +727,9 @@ private actor VoiceAlignmentWorker {
       ?? locales.first(where: { $0.identifier.hasPrefix("en-") || $0.identifier.hasPrefix("en_") })?
       .identifier
       ?? locales.first?.identifier ?? current
+  }
+
+  private static func supportsEnglishCommands(_ identifier: String) -> Bool {
+    Locale(identifier: identifier).language.languageCode?.identifier == "en"
   }
 }

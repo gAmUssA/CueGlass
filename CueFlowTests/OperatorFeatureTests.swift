@@ -988,8 +988,10 @@ extension OperatorFeatureTests {
     let reconnectedDisplay = DisplayDescriptor(
       screen: screen, preference: .init(uuid: "stable-display", name: "Stage"), id: 202)
 
-    c.state.selectedDisplay = oldDisplay.selectionKey
+    // Seed the controller's display-key-to-preference map before selecting this
+    // synthetic display so a persisted disconnected preference cannot shadow it.
     c.refreshScreens([oldDisplay])
+    c.state.selectedDisplay = oldDisplay.selectionKey
     c.refreshScreens([])
     c.refreshScreens([reconnectedDisplay])
 

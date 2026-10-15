@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T01:19:54Z
+updated_at: 2026-10-15T20:31:12Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -21,7 +21,7 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 
 - [x] Update speech-following research, implementation status, manual test plan, iCloud setup, and accepted ADR 0007.
 - [x] Run macOS 14-target DebugLocal build, Core/native tests, strict Swift formatting, Beans consistency and repository checks. iCloud configuration build is conditional; owner Info-iCloud.plist and Owner.xcconfig are absent in this worktree.
-- [ ] Run the documented macOS 26+ live human-speech acceptance matrix. Code and CI gates now pass; the operator-led macOS 26+ human-speech matrix is still pending. No synthetic speech is substituted.
+- [ ] Complete the remaining documented macOS 26+ human-speech acceptance matrix. The operator has confirmed AirPods speech following, prefixed Pause/Resume, and faster adaptive pace; all other required scenarios remain pending. No synthetic speech is substituted.
 
 - [x] Prevent Follow Voice activation from surviving Stop or manual input while layout, readiness, or microphone permission is pending; add deterministic cancellation regressions.
 
@@ -47,3 +47,18 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 
 - On macOS 27.0.1, the app inspector confirms Language English (United States) and says the selected Apple speech model needs installation consent, with an explicit Install Speech Model button. The read-only runtime reports SpeechTranscriber available and `en_US` in supported/installed locale sets, while AssetInventory for the configured `en-US` module is `.supported` (assets need download). No installation or microphone capture has been started.
 - Microphone permission was reset for DebugLocal bundle `com.example.cueflow` to prepare a fresh prompt. The prompt and any allow/deny result remain pending until an explicit Start action.
+
+## 0.2.0 candidate verification (2026-10-15)
+
+- `swift test --package-path Packages/CueFlowCore --scratch-path .build/core`: 64 tests passed.
+- Focused `CueFlowTests/VoiceFollowTests`: 26 tests passed; the full DebugLocal native suite now passes all 82 tests after making the display reconnection regression independent of persisted selection state.
+- Strict Swift formatting, `beans check --json`, and `git diff --check` pass. Current host is macOS 27.0.1; the app/test bundle targets macOS 14.0. A universal ReleaseLocal build, direct `scripts/test-app.sh` run, current-tip independent review, and CI on the release candidate remain outstanding.
+- Human confirmation is partial: AirPods speech following, prefixed Pause/Resume, and pace adjustment work. Stop Following, Stop Take, false-positive resistance, slow/silence pace recovery, permission denial/model completion, silence/ad-libs/skips/rereads, manual takeover, Timed Scrolling separation, and a sustained-take/teardown test remain open.
+
+
+## Candidate recheck (2026-10-15)
+
+- Current local 0.2.0/build 2 candidate: `scripts/test-app.sh` passed all 82 native tests; `swift test --package-path Packages/CueFlowCore --scratch-path .build/core` passed all 64 Core tests.
+- Strict Swift format, `beans check --json`, and `git diff --check` pass. The unsigned universal ReleaseLocal app verifies arm64+x86_64, macOS 14.0 minimum, version 0.2.0/build 2, and microphone usage text; the local unsigned/unnotarized ZIP checksum and `unzip -t` pass.
+- The operator confirms spoken command recognition works in the rebuilt app. Exact Stop Following/Stop Take behavior and the remaining human acceptance matrix are still pending.
+- CI and an independent full review have not run on the current local candidate. Do not mark this feature complete until the required human checks and exact-candidate release gates finish.

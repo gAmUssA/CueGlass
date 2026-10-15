@@ -469,6 +469,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       voiceCoordinator = coordinator
       state.voiceAvailable = true
       coordinator.onChange = { [weak self] in self?.syncVoiceState() }
+      coordinator.onStopFollowing = { [weak self] in self?.stopVoiceFollow() }
+      coordinator.onStopTake = { [weak self] in self?.stop() }
       Task { await coordinator.refreshAvailability() }
     }
     NotificationCenter.default.addObserver(
@@ -696,6 +698,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func startVoiceFollow(resume: Bool = false) {
     guard let coordinator = voiceCoordinator else { return }
+    if resume, coordinator.isCommandPaused {
+      coordinator.resumeSpokenCommandPause()
+      return
+    }
     guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       state.status = "Type, paste or drop a TXT or RTF script to begin."
       return
@@ -788,6 +794,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     case .starting: "Starting on-device speech analysis…"
     case .listening: "Listening · audio is not recorded"
     case .holding(let reason): reason
+    case .commandPaused:
+      "Paused · say ‘CueGlass, resume’ or press Resume Following · microphone stays active for commands"
     case .suspended(let reason): "Following paused · \(reason) · microphone closed"
     case .failed(let message): message
     }

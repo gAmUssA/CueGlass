@@ -108,9 +108,12 @@ struct OperatorControls: View {
         }
         InspectorSection("Output") {
           Picker("Display", selection: $state.selectedDisplay) {
+            if state.displays.isEmpty {
+              Text("No display connected").tag(state.selectedDisplay)
+            }
             ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key)
             }
-          }
+          }.disabled(state.displays.isEmpty)
           Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(of: state.horizontal) {
             controller.reflect()
           }
@@ -194,6 +197,22 @@ struct OperatorControls: View {
             )
             .font(.caption).foregroundStyle(.secondary).fixedSize(
               horizontal: false, vertical: true)
+            Text("Scroll glide eases faster when confirmed speech moves through the script faster.")
+              .font(.caption).foregroundStyle(.secondary).fixedSize(
+                horizontal: false, vertical: true)
+            if Locale(identifier: state.voiceLocale).language.languageCode?.identifier == "en" {
+              Text(
+                "Commands: “CueGlass, pause”, “CueGlass, resume”, “CueGlass, stop” or “CueGlass, stop take”."
+              )
+              .font(.caption).foregroundStyle(.secondary).fixedSize(
+                horizontal: false, vertical: true)
+              Text("CueGlass confirms commands after speech settles.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(
+                  horizontal: false, vertical: true)
+            } else {
+              Text("Spoken transport commands currently require English.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
             followVoiceControls
           }
         }
@@ -311,6 +330,13 @@ struct OperatorControls: View {
       Text(state.voiceMessage).font(.caption).foregroundStyle(.primary)
       Button("Stop Follow Voice") { controller.stopVoiceFollow() }
         .buttonStyle(.bordered).tint(.red)
+    case .commandPaused:
+      Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
+        horizontal: false, vertical: true)
+      HStack {
+        Button("Resume Following") { controller.startVoiceFollow(resume: true) }
+        Button("Stop Following") { controller.stopVoiceFollow() }
+      }
     case .suspended:
       Text(state.voiceMessage).font(.caption).foregroundStyle(.primary).fixedSize(
         horizontal: false, vertical: true)
@@ -340,6 +366,7 @@ struct OperatorControls: View {
     case .starting: ("Starting", "waveform", .blue)
     case .listening: ("Listening", "waveform", .red)
     case .holding: ("Holding", "pause.circle.fill", .orange)
+    case .commandPaused: ("Paused · command ready", "pause.circle.fill", .orange)
     case .suspended: ("Paused", "pause.circle.fill", Color(nsColor: .secondaryLabelColor))
     case .failed: ("Needs attention", "exclamationmark.triangle.fill", .red)
     }
