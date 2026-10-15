@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T01:17:58Z
+updated_at: 2026-10-15T01:19:54Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -45,5 +45,5 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 - A fresh scoped independent review cleared B1/B2/A1/A2 with no new blocker. It is not the full review required before release.
 - The macOS 26+ human-speech acceptance matrix remains pending and must be completed from observed permission, model, silence, ad-lib, skip, reread, manual-control, Timed Scrolling, sustained-take, and teardown behavior.
 
-- Read-only macOS 27.0.1 preflight found SpeechTranscriber available; supported and installed locale sets include `en_US`. The configured `en-US` module reports AssetInventory `.supported` (download required). The in-app inspector still needs confirmation; no model was installed.
+- On macOS 27.0.1, the app inspector confirms Language English (United States) and says the selected Apple speech model needs installation consent, with an explicit Install Speech Model button. The read-only runtime reports SpeechTranscriber available and `en_US` in supported/installed locale sets, while AssetInventory for the configured `en-US` module is `.supported` (assets need download). No installation or microphone capture has been started.
 - Microphone permission was reset for DebugLocal bundle `com.example.cueflow` to prepare a fresh prompt. The prompt and any allow/deny result remain pending until an explicit Start action.
