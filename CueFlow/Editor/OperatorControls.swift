@@ -202,7 +202,7 @@ struct OperatorControls: View {
                 horizontal: false, vertical: true)
             if Locale(identifier: state.voiceLocale).language.languageCode?.identifier == "en" {
               Text(
-                "Commands: “CueGlass, pause”, “CueGlass, resume”, “CueGlass, stop” or “CueGlass, stop take”."
+                "Say “CueGlass” or “Prompter”, then “pause”, “resume”, “stop” or “stop take”."
               )
               .font(.caption).foregroundStyle(.secondary).fixedSize(
                 horizontal: false, vertical: true)

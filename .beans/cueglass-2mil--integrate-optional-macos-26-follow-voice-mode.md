@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T20:38:44Z
+updated_at: 2026-10-15T21:20:25Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -67,3 +67,7 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 ## GitHub Actions verification (2026-10-15)
 
 Commit `eed609beb43a0a972ad3a3819df116ad3b7459be` passed workflow run [38802743545](https://github.com/gAmUssA/CueGlass/actions/runs/38802743545): Core and native tests, strict Swift formatting, universal unsigned build, and release asset verification. The tag-only publishing step was skipped. Human acceptance and the independent full review remain incomplete.
+
+## 0.2.0 follow-up status (2026-10-15)
+
+The operator approved Prompter as an alternative command wake phrase. The implementation already supports it; the UI, docs, ADR, changelog, and deterministic tests now state that contract. Core tests (64), native app tests (82), strict formatting, Beans checks, and an unsigned universal ReleaseLocal build passed. The follow-up diff still needs CI and an accepted current-tip full independent review. Human acceptance remains open for model download/permission-denial recovery, each wake phrase and exact Stop actions/false positives, silence/ad-libs/skips/rereads, manual takeover, Timed Scrolling, pace recovery, and a sustained take/teardown.

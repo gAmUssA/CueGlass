@@ -7,6 +7,10 @@ import Testing
     ("CUEGLASS resume!", VoiceTransportCommand.resume),
     ("CueGlass stop following.", VoiceTransportCommand.stopFollowing),
     ("CueGlass, stop take!", VoiceTransportCommand.stopTake),
+    ("Prompter, pause.", VoiceTransportCommand.pause),
+    ("Prompter resume!", VoiceTransportCommand.resume),
+    ("Prompter stop following.", VoiceTransportCommand.stopFollowing),
+    ("Prompter, stop take!", VoiceTransportCommand.stopTake),
   ])
   func recognizesPrefixedCommands(
     phrase: String, expected: VoiceTransportCommand
@@ -17,7 +21,7 @@ import Testing
     #expect(matcher.consume(event(words)) == expected)
   }
 
-  @Test func requiresCueGlassPrefixAndFinalizedSpeech() {
+  @Test func requiresASupportedWakePhraseAndFinalizedSpeech() {
     var matcher = VoiceTransportCommandMatcher()
     let words = recognizedWords("CueGlass pause")
 
@@ -61,17 +65,18 @@ import Testing
     #expect(matcher.advance(to: 11.26) == .stopFollowing)
   }
 
-  @Test func shortStopMeansStopFollowingAndWaitsForStopTakeContinuation() {
+  @Test(arguments: ["CueGlass", "Prompter"])
+  func shortStopMeansStopFollowingAndWaitsForStopTakeContinuation(wakePhrase: String) {
     var matcher = VoiceTransportCommandMatcher()
-    let stop = recognizedWords("CueGlass stop")
+    let stop = recognizedWords("\(wakePhrase) stop")
 
     #expect(matcher.consume(event(stop), at: 10) == nil)
     #expect(matcher.advance(to: 10.74) == nil)
     #expect(matcher.advance(to: 10.76) == .stopFollowing)
 
     var takeMatcher = VoiceTransportCommandMatcher()
-    let first = recognizedWords("CueGlass stop")
-    let complete = recognizedWords("CueGlass stop take")
+    let first = recognizedWords("\(wakePhrase) stop")
+    let complete = recognizedWords("\(wakePhrase) stop take")
     #expect(takeMatcher.consume(event(first, isFinal: true), at: 20) == nil)
     #expect(takeMatcher.consume(event(complete, isFinal: true), at: 20.1) == .stopTake)
   }

@@ -4,7 +4,7 @@ Confirm stable Follow Voice commands and support the short stop phrase
 
 # Status
 
-accepted
+superseded by 0011
 
 # Date
 

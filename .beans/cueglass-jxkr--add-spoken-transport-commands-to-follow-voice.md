@@ -5,11 +5,11 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T20:38:44Z
+updated_at: 2026-10-15T21:20:25Z
 parent: cueglass-2mil
 ---
 
-Add opt-in spoken transport controls to Follow Voice, initially covering Pause, Resume, Stop Following, and Stop Take. Reuse existing PlaybackSession/OperatorWindowController actions, preserve manual-control priority, and prevent script text from accidentally issuing commands. Add deterministic command-phrase parsing and coordinator tests, document command behavior and manual verification. Commands require the 'CueGlass' prefix and resolve at finalization or after unchanged wording remains stable briefly; known low-confidence words are rejected, and unavailable confidence is treated as unknown. 'CueGlass, stop' maps to Stop Following.
+Add opt-in spoken transport controls to Follow Voice, initially covering Pause, Resume, Stop Following, and Stop Take. Reuse existing PlaybackSession/OperatorWindowController actions, preserve manual-control priority, and prevent script text from accidentally issuing commands. Add deterministic command-phrase parsing and coordinator tests, document command behavior and manual verification. Commands accept either CueGlass (including the split Cue Glass transcript) or Prompter as the English wake phrase and resolve at finalization or after unchanged wording remains stable briefly; known low-confidence words are rejected, and unavailable confidence is treated as unknown. Either wake phrase plus stop maps to Stop Following.
 
 
 ## Acceptance
@@ -93,3 +93,15 @@ The operator now confirms that spoken command recognition works in the rebuilt a
 ## Candidate CI result (2026-10-15)
 
 GitHub Actions run [38802743545](https://github.com/gAmUssA/CueGlass/actions/runs/38802743545) passed the Core/native tests and strict formatting on candidate commit `eed609b`. The operator confirms command recognition works; exact Stop Following/Stop Take outcomes and false-positive resistance remain pending.
+
+## Wake phrase update (2026-10-15)
+
+- [x] Accept CueGlass/Cue Glass and Prompter as exact prefixes for the existing command set; add parser tests, inspector help and ADR/design/changelog documentation.
+- [ ] Verify each wake phrase and Stop Following/Stop Take false-positive resistance in live human speech.
+
+## Wake phrase verification (2026-10-15)
+
+- `swift test --package-path Packages/CueFlowCore --scratch-path .build/core`: 64 tests passed, including CueGlass/Prompter command variants and short-stop waiting behavior.
+- `scripts/test-app.sh`: 82 native tests passed. Universal unsigned ReleaseLocal build passed for arm64 and x86_64 at macOS 14.0 minimum, version 0.2.0/build 2.
+- `xcrun swift-format lint --strict --recursive CueFlow Packages`, `beans check --json`, and `git diff --check` passed.
+- Live confirmation of each wake phrase, Stop Following/Stop Take, and false-positive resistance remains open.
