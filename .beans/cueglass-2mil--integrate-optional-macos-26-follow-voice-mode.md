@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T20:31:12Z
+updated_at: 2026-10-15T20:38:44Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -62,3 +62,8 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 - Strict Swift format, `beans check --json`, and `git diff --check` pass. The unsigned universal ReleaseLocal app verifies arm64+x86_64, macOS 14.0 minimum, version 0.2.0/build 2, and microphone usage text; the local unsigned/unnotarized ZIP checksum and `unzip -t` pass.
 - The operator confirms spoken command recognition works in the rebuilt app. Exact Stop Following/Stop Take behavior and the remaining human acceptance matrix are still pending.
 - CI and an independent full review have not run on the current local candidate. Do not mark this feature complete until the required human checks and exact-candidate release gates finish.
+
+
+## GitHub Actions verification (2026-10-15)
+
+Commit `eed609beb43a0a972ad3a3819df116ad3b7459be` passed workflow run [38802743545](https://github.com/gAmUssA/CueGlass/actions/runs/38802743545): Core and native tests, strict Swift formatting, universal unsigned build, and release asset verification. The tag-only publishing step was skipped. Human acceptance and the independent full review remain incomplete.

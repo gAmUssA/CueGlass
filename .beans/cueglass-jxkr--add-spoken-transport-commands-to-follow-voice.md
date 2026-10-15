@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T20:31:12Z
+updated_at: 2026-10-15T20:38:44Z
 parent: cueglass-2mil
 ---
 
@@ -88,3 +88,8 @@ The latest build includes three independent command hypotheses and per-transcrib
 ## Operator retest update (2026-10-15)
 
 The operator now confirms that spoken command recognition works in the rebuilt app. Pause/Resume was already confirmed. Stop Following and Stop Take outcomes, and false-positive resistance, remain open pending direct checks.
+
+
+## Candidate CI result (2026-10-15)
+
+GitHub Actions run [38802743545](https://github.com/gAmUssA/CueGlass/actions/runs/38802743545) passed the Core/native tests and strict formatting on candidate commit `eed609b`. The operator confirms command recognition works; exact Stop Following/Stop Take outcomes and false-positive resistance remain pending.
