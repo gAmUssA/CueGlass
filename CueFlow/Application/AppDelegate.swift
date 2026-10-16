@@ -103,6 +103,9 @@ import AppKit
       view, "Floating Prompter", #selector(floatingAction), "f",
       modifiers: [.command, .option])
     add(
+      view, "Camera Dock", #selector(cameraDockAction), "d",
+      modifiers: [.command, .option])
+    add(
       view, "Show Inspector", #selector(toggleInspector), "i",
       modifiers: [.command, .control])
     let window = menu("Window")
@@ -145,6 +148,7 @@ import AppKit
   @objc func stopTakeAction() { current?.stopTakeAction() }
   @objc func controlsAction() { current?.controlsAction() }
   @objc func floatingAction() { current?.floatingAction() }
+  @objc func cameraDockAction() { current?.cameraDockAction() }
   @objc func toggleInspector() { current?.toggleInspector() }
   @objc func toggle() { current?.toggle() }
   @objc func faster() { current?.adjustSpeed(1) }

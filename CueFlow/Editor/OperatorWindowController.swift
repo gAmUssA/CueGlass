@@ -42,6 +42,21 @@ struct VoiceFollowPlatformCapability: Equatable {
   @Published var voiceActive = false
   @Published var voiceSuspended = false
   @Published var voiceMessage = ""
+  @Published var cameraDockWidth = 360.0
+  @Published var cameraDockLineCount = CameraDockGeometry.defaultLineCount
+  @Published var cameraDockHorizontalNudge = 0.0
+}
+
+private enum CameraDockReturnSurface {
+  case preview(CGSize)
+  case floating(CGSize)
+  case output(String, CGSize)
+
+  var logicalSize: CGSize {
+    switch self {
+    case .preview(let size), .floating(let size), .output(_, let size): size
+    }
+  }
 }
 @MainActor final class OperatorWindow: NSWindow {
   weak var controller: OperatorWindowController?
@@ -240,6 +255,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let preview = ScaledPreviewContainer(frame: .zero)
   var output: OutputWindowController?
   var floating: FloatingPrompterWindowController?
+  var cameraDock: FloatingPrompterWindowController? {
+    floating?.isCameraDock == true ? floating : nil
+  }
   var panel: ControlPanelController?
   let readout = TakeReadout()
   let splitController = NSSplitViewController()
@@ -257,6 +275,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var progressTimer: Timer?
   private var displayPreferencesBySelectionKey: [String: DisplayPreference] = [:]
   private var disconnectedDisplayPreference: DisplayPreference?
+  private var cameraDockPreferenceCatalog = CameraDockPreferenceCatalog()
+  private var cameraDockReturnSurface: CameraDockReturnSurface?
   var pendingPlay: Bool {
     get { session.deferredStart == .play }
     set {
@@ -308,6 +328,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     window.minSize = CGSize(width: 980, height: 640)
     window.toolbarStyle = .unified
     state.style = script.model.readingStyle
+    if let data = UserDefaults.standard.data(forKey: "cameraDockPreferences") {
+      do {
+        cameraDockPreferenceCatalog = try JSONDecoder().decode(
+          CameraDockPreferenceCatalog.self, from: data)
+      } catch {
+        state.status = "Camera Dock settings could not be read (\(error)). Defaults will be used."
+      }
+    }
     state.speed = script.model.preferredSpeedLinesPerMinute
     if let value = UserDefaults.standard.object(forKey: "maximumLPM") as? Double {
       state.maximum = min(240, max(10, value))
@@ -497,6 +525,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       name: Notification.Name.NSUndoManagerDidCloseUndoGroup, object: editor.undoManager)
     CommandRouter.load()
     refreshScreens()
+    refreshCameraDockPreferencesForTarget()
     render()
     refresh()
     Task { await script.refreshCloudStatus() }
@@ -557,6 +586,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func stop() {
     pendingVoiceRequest = nil
     voiceCoordinator?.stop()
+    cameraDockReturnSurface = nil
     hideOutput()
     panel?.close()
     panel = nil
@@ -835,6 +865,13 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       sample = snapshot
     }
     let style = session.state == .idle ? state.style : session.style
+    if let cameraDock {
+      guard let size = cameraDock.updateCameraDockPresentation(style: style) else {
+        cameraDockPlacementUnavailable()
+        return
+      }
+      session.logicalSize = size
+    }
     preview.logicalSize = session.logicalSize
     updatePresentationBackground(style)
     if session.logicalSize.width > 0, session.logicalSize.height > 0 {
@@ -852,7 +889,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       snapshot: snapshot, style: style, size: session.logicalSize)
     floating?.root?.logicalSize = session.logicalSize
     floating?.reflection.viewport.configure(
-      snapshot: snapshot, style: style, size: session.logicalSize)
+      snapshot: snapshot, style: style, size: session.logicalSize,
+      guideFractionOverride: cameraDock == nil ? nil : 0.2,
+      fadesTopEdge: cameraDock == nil)
     for (viewport, reflection) in [
       (preview.reflection.viewport, preview.reflection),
       (output?.reflection.viewport, output?.reflection),
@@ -961,7 +1000,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     {
       item.label =
         output != nil
-        ? "Presenting · Output" : floating != nil ? "Presenting · Floating" : "Present"
+        ? "Presenting · Output"
+        : cameraDock != nil
+          ? "Presenting · Camera Dock"
+          : floating != nil ? "Presenting · Floating" : "Present"
       item.menu = presentationMenu()
       if let button = item.view as? NSPopUpButton {
         let menu = presentationMenu()
@@ -997,8 +1039,13 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       UserDefaults.standard.set(state.horizontal, forKey: "reflectHorizontal")
       UserDefaults.standard.set(state.vertical, forKey: "reflectVertical")
     }
-    floating?.reflection.horizontal = state.horizontal
-    floating?.reflection.vertical = state.vertical
+    if floating?.isCameraDock == true {
+      floating?.reflection.horizontal = false
+      floating?.reflection.vertical = false
+    } else {
+      floating?.reflection.horizontal = state.horizontal
+      floating?.reflection.vertical = state.vertical
+    }
     output?.reflection.horizontal = state.horizontal
     output?.reflection.vertical = state.vertical
     preview.reflection.horizontal = state.calibrated && state.horizontal
@@ -1062,6 +1109,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     perform {
       try claimAndPrepare()
+      cameraDockReturnSurface = nil
       let wasRunning = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
@@ -1092,10 +1140,40 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func hideOutput() {
+    if let cameraDock {
+      let destination = cameraDockReturnSurface ?? .preview(session.logicalSize)
+      pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
+      cameraDockReturnSurface = nil
+      cameraDock.onClose = nil
+      cameraDock.close()
+      floating = nil
+      switch destination {
+      case .floating(_):
+        showFloating()
+      case .output(let displayKey, _):
+        state.selectedDisplay = displayKey
+        showOutput(confirm: { _ in .alertFirstButtonReturn })
+      case .preview(let size):
+        returnToPreview(size: size)
+      }
+      return
+    }
     output?.close()
     floating?.close()
     floating = nil
     refresh()
+  }
+  private func returnToPreview(size: CGSize) {
+    perform {
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
+      try session.pause()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = running
+      session.logicalSize = size
+      render()
+      refresh()
+    }
   }
   func outputClosed() {
     perform { try session.pauseSafely("Output stopped — position retained") }
@@ -1104,10 +1182,36 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     refresh()
   }
   @objc func screensChanged() {
-    handleAvailableDisplayIDs(DisplayDescriptor.all().map(\.id))
-    refreshScreens()
+    let displays = DisplayDescriptor.all()
+    if let cameraDock, let displayUUID = cameraDock.displayUUID,
+      let remapped = displays.first(where: {
+        ($0.preference.uuid ?? $0.preference.name) == displayUUID
+      })
+    {
+      cameraDock.displayID = remapped.id
+    }
+    handleAvailableDisplayIDs(displays.map(\.id))
+    refreshScreens(displays)
+    if let cameraDock,
+      let display = displays.first(where: { $0.id == cameraDock.displayID }),
+      !cameraDock.updateCameraDockPlacement(
+        on: display.screen, preferences: cameraDock.dockPreferences, style: session.style)
+    {
+      cameraDockPlacementUnavailable()
+    }
   }
   func handleAvailableDisplayIDs(_ ids: [CGDirectDisplayID]) {
+    if let cameraDock, let id = cameraDock.displayID, !ids.contains(id) {
+      pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
+      cameraDockReturnSurface = nil
+      perform { try session.pauseSafely("Camera Dock display disconnected — position retained") }
+      cameraDock.onClose = nil
+      cameraDock.close()
+      floating = nil
+      refresh()
+      state.status = "Camera Dock display disconnected — position retained"
+      return
+    }
     if let floating, let id = floating.displayID, !ids.contains(id) {
       perform { try session.pauseSafely("Floating display disconnected — position retained") }
       if let screen = window?.screen ?? NSScreen.main, let frame = floating.window?.frame {
@@ -1160,6 +1264,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     state.displays = displays.map(\.selectionKey)
     displayPreferencesBySelectionKey = Dictionary(
       uniqueKeysWithValues: displays.map { ($0.selectionKey, $0.preference) })
+    refreshCameraDockPreferencesForTarget(displays: displays)
   }
   func displayName(_ key: String) -> String {
     guard
@@ -1300,6 +1405,7 @@ extension OperatorWindowController {
         refresh()
       }
     case .exit: hideOutput()
+    case .cameraDock: showCameraDock()
     }
   }
   func showControls() {
@@ -1307,9 +1413,127 @@ extension OperatorWindowController {
     panel?.placeSafely()
     refresh()
   }
+
+  static let cameraDockExplainer =
+    "Camera Dock places a compact prompt below the Mac's camera safe area and never covers the camera housing. On other displays it uses the top-center position and assumes the camera is there. The prompt remains visible in screen recordings, and may overlap recording-app controls near the top of the screen. CueGlass does not access the camera or microphone for Camera Dock."
+
+  var cameraDockMenuTitle: String {
+    if cameraDock?.dockLocation == .camera { return "Camera Dock" }
+    guard let display = cameraDockTarget(in: DisplayDescriptor.all()) else { return "Camera Dock" }
+    return display.isBuiltIn && display.screen.safeAreaInsets.top > 0
+      ? "Camera Dock" : "Camera Dock (top of display)"
+  }
+
+  var selectedPresentationSurface: String {
+    if output != nil { return "output" }
+    if cameraDock != nil { return "cameraDock" }
+    if floating != nil { return "floating" }
+    return "preview"
+  }
+
+  func selectPresentationSurface(_ surface: String) {
+    switch surface {
+    case "preview":
+      if cameraDock != nil {
+        cameraDockReturnSurface = .preview(
+          cameraDockReturnSurface?.logicalSize ?? session.logicalSize)
+        hideOutput()
+      } else if output != nil || floating != nil {
+        hideOutput()
+      }
+    case "output": showOutput()
+    case "floating": showFloating()
+    case "cameraDock":
+      if cameraDock == nil { showCameraDock() }
+    default: break
+    }
+  }
+
+  var cameraDockCameraMayBeElsewhere: Bool {
+    guard let cameraDock, let displayID = cameraDock.displayID else { return false }
+    let connected = DisplayDescriptor.all()
+    guard connected.contains(where: { $0.id == displayID && !$0.isBuiltIn }) else { return false }
+    return connected.contains(where: \.isBuiltIn)
+  }
+
+  private func presentCameraDockExplainerIfNeeded() {
+    guard ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1",
+      !UserDefaults.standard.bool(forKey: "cameraDockExplainerSeen")
+    else { return }
+    let alert = NSAlert()
+    alert.messageText = "Camera Dock"
+    alert.informativeText = Self.cameraDockExplainer
+    alert.addButton(withTitle: "Continue")
+    alert.runModal()
+    UserDefaults.standard.set(true, forKey: "cameraDockExplainerSeen")
+  }
+
+  func showCameraDock() {
+    if cameraDock != nil {
+      hideOutput()
+      return
+    }
+    presentCameraDockExplainerIfNeeded()
+    perform {
+      try claimAndPrepare()
+      guard let display = cameraDockTarget(in: DisplayDescriptor.all()) else {
+        state.status = "No display is available for Camera Dock. Connect or select a display."
+        return
+      }
+      let preferences = cameraDockPreferences(for: display)
+      state.cameraDockWidth = preferences.width
+      state.cameraDockLineCount = preferences.lineCount
+      state.cameraDockHorizontalNudge = preferences.horizontalNudge
+      guard
+        let next = FloatingPrompterWindowController(
+          cameraDockOn: display.screen, controller: self, preferences: preferences)
+      else {
+        state.status =
+          "Camera Dock does not fit this display. Choose a larger display or reduce text size."
+        return
+      }
+
+      let previous: CameraDockReturnSurface =
+        output != nil
+        ? .output(state.selectedDisplay, session.logicalSize)
+        : floating != nil ? .floating(session.logicalSize) : .preview(session.logicalSize)
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
+      try session.pause()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = running
+      output?.onClose = nil
+      output?.close()
+      output = nil
+      floating?.onClose = nil
+      floating?.close()
+      floating = next
+      cameraDockReturnSurface = previous
+      session.logicalSize = next.viewportSize
+      next.reflection.viewport.driver = DisplayLinkDriver(
+        viewport: next.reflection.viewport, session: session)
+      next.reflection.viewport.driver?.authoritative = true
+      next.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
+      next.onClose = { [weak self] in
+        guard let self else { return }
+        self.cameraDockReturnSurface = nil
+        self.perform { try self.session.pauseSafely("Camera Dock stopped — position retained") }
+        self.floating = nil
+        self.refresh()
+      }
+      render()
+      next.showWindow(nil)
+      showControls()
+      refresh()
+    }
+  }
+
+  @objc func cameraDockAction() { showCameraDock() }
+
   func showFloating() {
     perform {
       try claimAndPrepare()
+      cameraDockReturnSurface = nil
       let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
@@ -1390,11 +1614,17 @@ extension OperatorWindowController {
   }
   func updateFloatingOptions() {
     floating?.root?.grip.alphaValue = session.state == .running ? 0 : 1
-    floating?.window?.backgroundColor = NSColor.black.withAlphaComponent(
-      state.clickThrough && session.state == .running ? 0 : 0.02)
-    floating?.window?.alphaValue = min(1, max(0.3, state.floatingOpacity))
+    floating?.window?.backgroundColor =
+      cameraDock != nil
+      ? NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
+      : NSColor.black.withAlphaComponent(state.clickThrough && session.state == .running ? 0 : 0.02)
+    floating?.window?.alphaValue =
+      cameraDock != nil
+      ? 1 : min(1, max(0.3, state.floatingOpacity))
     floating?.window?.collectionBehavior =
-      state.overFullScreen ? [.canJoinAllSpaces, .fullScreenAuxiliary] : []
+      cameraDock != nil
+      ? [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications]
+      : state.overFullScreen ? [.canJoinAllSpaces, .fullScreenAuxiliary] : []
     var inks = [state.style.foregroundRGBA]
     if state.style.mode == .preserveSource {
       inks = []
@@ -1412,7 +1642,8 @@ extension OperatorWindowController {
     let ratio =
       inks.map {
         Contrast.worst(
-          text: $0, background: state.style.backgroundRGBA, windowAlpha: state.floatingOpacity,
+          text: $0, background: state.style.backgroundRGBA,
+          windowAlpha: cameraDock == nil ? state.floatingOpacity : 1,
           panelAlpha: state.style.textPanelOpacity)
       }.min() ?? 1
     state.contrastWarning =
@@ -1420,6 +1651,127 @@ extension OperatorWindowController {
       ? String(
         format: "Low contrast (%.1f:1 over some backgrounds). Increase opacity or change colors.",
         ratio) : ""
+  }
+
+  func cameraDockResized(to size: CGSize) {
+    guard cameraDock != nil else { return }
+    perform {
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
+      try session.pause()
+      preservePreparationAnchor()
+      pendingPlay = false
+      pendingResume = running
+      session.logicalSize = size
+      render()
+    }
+  }
+
+  private func cameraDockTarget(in displays: [DisplayDescriptor]) -> DisplayDescriptor? {
+    let candidates = displays.map {
+      CameraDockDisplayCandidate(
+        id: $0.selectionKey, isBuiltIn: $0.isBuiltIn, isMirrored: $0.isMirrored)
+    }
+    guard
+      let id = CameraDockDisplaySelection.preferred(
+        in: candidates, selectedID: state.selectedDisplay)
+    else { return nil }
+    return displays.first { $0.selectionKey == id }
+  }
+
+  private func cameraDockPreferences(for display: DisplayDescriptor) -> CameraDockPreferences {
+    cameraDockPreferenceCatalog.preference(
+      forDisplayUUID: display.preference.uuid ?? display.preference.name,
+      screenWidth: Double(display.screen.frame.width))
+  }
+
+  private func refreshCameraDockPreferencesForTarget(
+    displays: [DisplayDescriptor] = DisplayDescriptor.all()
+  ) {
+    guard cameraDock == nil else { return }
+    guard let display = cameraDockTarget(in: displays) else {
+      state.cameraDockWidth = CameraDockGeometry.minimumWidth
+      state.cameraDockLineCount = CameraDockGeometry.defaultLineCount
+      state.cameraDockHorizontalNudge = 0
+      return
+    }
+    let preference = cameraDockPreferences(for: display)
+    state.cameraDockWidth = preference.width
+    state.cameraDockLineCount = preference.lineCount
+    state.cameraDockHorizontalNudge = preference.horizontalNudge
+  }
+
+  private func persistCameraDockPreferences(
+    _ preference: CameraDockPreferences, for display: DisplayDescriptor
+  ) {
+    cameraDockPreferenceCatalog.set(
+      preference, forDisplayUUID: display.preference.uuid ?? display.preference.name)
+    guard ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" else { return }
+    perform {
+      UserDefaults.standard.set(
+        try JSONEncoder().encode(cameraDockPreferenceCatalog), forKey: "cameraDockPreferences")
+    }
+  }
+
+  private func setCameraDockPreference(_ preference: CameraDockPreferences) {
+    let normalized = preference.normalized()
+    state.cameraDockWidth = normalized.width
+    state.cameraDockLineCount = normalized.lineCount
+    state.cameraDockHorizontalNudge = normalized.horizontalNudge
+    let displays = DisplayDescriptor.all()
+    let display =
+      cameraDock.flatMap { dock in displays.first { $0.id == dock.displayID } }
+      ?? cameraDockTarget(in: displays)
+    guard let display else { return }
+    persistCameraDockPreferences(normalized, for: display)
+    if let cameraDock,
+      !cameraDock.updateCameraDockPlacement(
+        on: display.screen, preferences: normalized, style: session.style)
+    {
+      cameraDockPlacementUnavailable()
+    }
+  }
+
+  func setCameraDockWidth(_ width: Double) {
+    setCameraDockPreference(
+      CameraDockPreferences(
+        width: width, lineCount: state.cameraDockLineCount,
+        horizontalNudge: state.cameraDockHorizontalNudge))
+  }
+
+  func setCameraDockLineCount(_ lineCount: Int) {
+    setCameraDockPreference(
+      CameraDockPreferences(
+        width: state.cameraDockWidth, lineCount: lineCount,
+        horizontalNudge: state.cameraDockHorizontalNudge))
+  }
+
+  func setCameraDockHorizontalNudge(_ nudge: Double) {
+    setCameraDockPreference(
+      CameraDockPreferences(
+        width: state.cameraDockWidth, lineCount: state.cameraDockLineCount,
+        horizontalNudge: nudge))
+  }
+
+  func resetCameraDockPreferences() {
+    guard
+      let display = cameraDock.flatMap({ dock in
+        DisplayDescriptor.all().first { $0.id == dock.displayID }
+      }) ?? cameraDockTarget(in: DisplayDescriptor.all())
+    else { return }
+    setCameraDockPreference(.defaults(screenWidth: Double(display.screen.frame.width)))
+  }
+
+  private func cameraDockPlacementUnavailable() {
+    guard let cameraDock else { return }
+    pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
+    cameraDockReturnSurface = nil
+    perform { try session.pauseSafely("Camera Dock unavailable — position retained") }
+    cameraDock.onClose = nil
+    cameraDock.close()
+    floating = nil
+    refresh()
+    state.status =
+      "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
   }
   func updateReadout() {
     func stamp(_ seconds: Double) -> String {
@@ -1677,6 +2029,10 @@ extension OperatorWindowController {
       title: "Floating Prompter", action: #selector(floatingAction), keyEquivalent: "")
     floating.target = self
     menu.addItem(floating)
+    let cameraDock = NSMenuItem(
+      title: cameraDockMenuTitle, action: #selector(cameraDockAction), keyEquivalent: "")
+    cameraDock.target = self
+    menu.addItem(cameraDock)
     let stop = NSMenuItem(
       title: "Stop Presenting (Esc)", action: #selector(stopPresenting), keyEquivalent: "")
     stop.target = self

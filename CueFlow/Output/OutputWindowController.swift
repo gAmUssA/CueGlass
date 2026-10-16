@@ -6,6 +6,8 @@ import CueFlowCore
   let preference: DisplayPreference
   let id: CGDirectDisplayID
   var selectionKey: String { String(id) }
+  var isBuiltIn: Bool { CGDisplayIsBuiltin(id) != 0 }
+  var isMirrored: Bool { CGDisplayIsInMirrorSet(id) != 0 }
   static func all() -> [Self] {
     NSScreen.screens.compactMap { screen in
       guard

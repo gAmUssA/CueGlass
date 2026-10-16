@@ -467,6 +467,162 @@ import Testing
       #expect(c.session.state == .paused)
     }
   }
+  @Test func cameraDockPanelAndReturnToPreviewPreserveTheTake() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let oldSize = c.session.logicalSize
+    let oldSnapshot = try #require(c.session.snapshot?.id)
+    c.seek(c.session.paragraphPositions[40])
+    let oldAnchor = try #require(c.authoritative.captureAnchor())
+
+    c.selectPresentationSurface("cameraDock")
+    let dock = try #require(c.cameraDock)
+    let panel = try #require(dock.window)
+    let screen = try #require(panel.screen)
+    let visible = screen.visibleFrame
+    #expect(dock.isCameraDock)
+    #expect(panel.styleMask.contains(.borderless))
+    #expect(panel.styleMask.contains(.nonactivatingPanel))
+    #expect(panel.canBecomeKey)
+    #expect(!panel.isMovable)
+    #expect(!panel.isMovableByWindowBackground)
+    #expect(panel.isOpaque)
+    #expect(panel.level == .floating)
+    #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+    #expect(panel.collectionBehavior.contains(.canJoinAllSpaces))
+    #expect(panel.collectionBehavior.contains(.canJoinAllApplications))
+    #expect(panel.frame.minX >= visible.minX - 0.5)
+    #expect(panel.frame.maxX <= visible.maxX + 0.5)
+    #expect(panel.frame.minY >= visible.minY - 0.5)
+    #expect(panel.frame.maxY <= visible.maxY + 0.5)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == oldSnapshot)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == oldAnchor.utf16Offset)
+    #expect(c.selectedPresentationSurface == "cameraDock")
+
+    c.selectPresentationSurface("preview")
+    await settle(c)
+    #expect(c.cameraDock == nil)
+    #expect(c.output == nil)
+    #expect(c.floating == nil)
+    #expect(c.selectedPresentationSurface == "preview")
+    #expect(c.session.logicalSize == oldSize)
+    #expect(c.session.snapshot?.id == oldSnapshot)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == oldAnchor.utf16Offset)
+  }
+
+  @Test func cameraDockPreservesTimedPlaybackAcrossSurfaceChange() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[100])
+    try c.session.enableTimed(seconds: 600)
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...40 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+
+    c.showCameraDock()
+    let viewport = try #require(c.cameraDock?.reflection.viewport)
+    viewport.driver?.stop()
+    viewport.driver = nil
+    #expect(c.session.measuring)
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.timedDuration == 600)
+    #expect(c.session.elapsedSeconds == 10)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    #expect(c.cameraDock != nil)
+    c.stop()
+  }
+
+  @Test func cameraDockDisplayLossClosesAndRetainsPausedPosition() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.seek(c.session.paragraphPositions[60])
+    let snapshot = try #require(c.session.snapshot?.id)
+    let position = c.session.timeline.anchorPosition
+
+    c.showCameraDock()
+    let viewport = try #require(c.cameraDock?.reflection.viewport)
+    viewport.driver?.stop()
+    viewport.driver = nil
+    #expect(c.cameraDock != nil)
+
+    c.handleAvailableDisplayIDs([])
+    #expect(c.cameraDock == nil)
+    #expect(c.floating == nil)
+    #expect(c.output == nil)
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.session.timeline.anchorPosition == position)
+    #expect(c.state.status == "Camera Dock display disconnected — position retained")
+  }
+
+  @Test func cameraDockCanOpenForAnEmptyScriptWithoutStartingPlayback() async throws {
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: "")
+    let c = OperatorWindowController(document: document)
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+
+    c.selectPresentationSurface("cameraDock")
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+
+    #expect(c.script.source.string.isEmpty)
+    #expect(c.session.snapshot != nil)
+    #expect(c.session.state != .running)
+    #expect(!c.session.timeline.running)
+    #expect(c.cameraDock != nil)
+  }
+
+  @Test func cameraDockExplainerDisclosesHousingAndScreenRecordingBehavior() {
+    #expect(
+      OperatorWindowController.cameraDockExplainer.contains("never covers the camera housing"))
+    #expect(OperatorWindowController.cameraDockExplainer.contains("visible in screen recordings"))
+    #expect(
+      OperatorWindowController.cameraDockExplainer.contains(
+        "does not access the camera or microphone"))
+  }
+
+  @Test func cameraDockEdgeFadeKeepsTheCameraFacingEdgeOpaque() throws {
+    let snapshot = ScriptSnapshot(
+      id: UUID(), documentID: UUID(), revision: 0, attributed: NSAttributedString(string: "Prompt"))
+    var style = ReadingStyle()
+    style.edgeFadeFraction = 0.2
+    let viewport = PrompterViewport(frame: NSRect(x: 0, y: 0, width: 360, height: 180))
+    viewport.configure(
+      snapshot: snapshot, style: style, size: CGSize(width: 360, height: 180),
+      guideFractionOverride: 0.2, fadesTopEdge: false)
+    #expect(viewport.topPadding == 36)
+    let mask = try #require(viewport.scroll.layer?.mask as? CAGradientLayer)
+    let colors = try #require(mask.colors as? [CGColor])
+    #expect(colors.count == 4)
+    #expect(colors[0].alpha == 0)
+    #expect(colors[1].alpha == 1)
+    #expect(colors[2].alpha == 1)
+    #expect(colors[3].alpha == 1)
+    #expect(mask.startPoint.y == (mask.isGeometryFlipped ? 1 : 0))
+    #expect(mask.endPoint.y == (mask.isGeometryFlipped ? 0 : 1))
+    #expect(mask.locations?.map(\.doubleValue) == [0, 0.2, 0.8, 1])
+  }
+
   @Test func infeasibleRestartCancelsPlanAndAllowsManualPlay() async throws {
     let c = try await prepared()
     defer { c.close() }
@@ -595,6 +751,17 @@ import Testing
     floatingWindow.setContentSize(CGSize(width: 680, height: 380))
     c.floatingResized()
     await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    c.showCameraDock()
+    c.cameraDock?.reflection.viewport.driver?.stop()
+    c.cameraDock?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.cameraDock != nil)
+    #expect(c.session.voiceSessionActive)
+    #expect(c.session.voiceSuspended)
     #expect(c.session.state == .paused)
     #expect(!c.session.timeline.running)
     #expect(!c.pendingResume)

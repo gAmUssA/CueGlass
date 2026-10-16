@@ -28,6 +28,25 @@ Hide/minimize/occlude operator while external output plays: output continues. Sl
 
 Use Calibration and intended optical glass. Check all four reflection combinations; UP/DOWN and LEFT/RIGHT plus numbered asymmetric lines must map correctly. Both together must match 180-degree rotation. Editor/controls remain readable. Check Escape and Stop Output with separate Spaces/Mission Control, menu bar and app deactivation. Output window level is a hypothesis until this passes.
 
+## Camera Dock hardware and runtime acceptance
+
+Camera Dock is opt-in and uses the existing playback session. Its Foundation geometry tests cover a fixed notched fixture, no-inset placement, a negative-origin external display, width/nudge bounds, malformed input, too-small frames, UUID-keyed preferences, and built-in/mirrored display selection. Native tests cover the non-activating floating panel, one-surface replacement, retained snapshot/anchor, Timed Scrolling continuity, and return to the prior preview. These checks do not replace the observations below. Do not enter a pass without recording the device, OS/build, resolution/scale, and direct observation; do not record private display UUIDs or script contents.
+
+| Case | Required observation | Status |
+|---|---|---|
+| M1 — housing clearance | On a notched MacBook, inspect the visible panel against the physical camera housing and Photo Booth preview. The top edge must remain below the housing and no Dock pixels may cover the camera. | Pending |
+| M2 — near-lens gaze | Record a short FaceTime or Photo Booth take while reading a fixed script. Owner reviews whether gaze remains visibly near-lens; this is a human judgment with no numeric threshold. | Pending |
+| M3 — full-screen recording apps | Test full-screen FaceTime, Photo Booth, and QuickTime separately. Dock remains visible below the housing and the recording app remains frontmost and receives its own controls. | Pending |
+| M4 — non-activating keyboard | With a recording app frontmost, click the Dock, then use Space, Page Up/Down, R, and Escape. CueGlass commands work while the recording app stays active; Escape returns to the prior surface. | Pending |
+| M5 — VoiceOver | Confirm VoiceOver announces “CueGlass prompt,” names each grip action distinctly, and can reach the controls through keyboard/menu routes. | Pending |
+| M6 — accessibility display settings | Test Increase Contrast, Reduce Transparency, and Reduce Motion independently. Check guide contrast, opaque readable panel, and immediate show/hide without an animated morph. | Pending |
+| M7 — live display changes | On a notched MacBook with an external display, change scaling/More Space, menu-bar auto-hide, connect/disconnect, and clamshell state. Geometry follows fresh safe-area data; loss pauses/closes with position retained; reconnect does not open a surface until explicit selection. | Pending |
+| M8 — no-notch/external fallback | Test a non-notched Mac and an external display. Dock is at top center and reads “Camera Dock (top of display)”; the explanation says camera location is assumed. If the built-in camera may be on another display, confirm the visible hint. | Pending |
+| M9 — existing playback modes | Compare Timed Scrolling with Floating. On supported macOS 26+, test Follow Voice with an unlocked Mac, supported model/device, and human reader. Confirm the same target/duration, guide line, and manual takeover/resume behavior. Do not log script text or recognized speech. | Pending |
+| M10 — Get Info compatibility mode | Before changing any plist compatibility key, record the current Get Info checkbox state and verify placement stays below the reported safe area with it on and off. The key remains deferred until the hardware audit. | Pending |
+| M11 — screen recording visibility | Record the desktop while Camera Dock is open. Confirm the captured desktop contains the prompt and matches the first-use disclosure. | Pending |
+| M12 — macOS 14 runtime | On a Mac running macOS 14, launch the app and opt into Camera Dock. Place, switch, and exit it without an availability failure. A build targeting 14.0 on a newer OS is not runtime evidence. | Pending |
+
 ## Signed sandbox and iCloud (two Macs)
 
 Complete ICLOUD_SETUP.md with real owner values. Verify signed entitlements/processed plist. Save a script/style on Mac A to integrated iCloud; wait for actual metadata upload; open on Mac B and compare ID/content/style. Playback position, reflection, selected screen and geometry must remain local. Do not infer delivery from Mac A's save result.

@@ -80,6 +80,15 @@ import SwiftUI
   required init?(coder: NSCoder) { fatalError("Use init(controller:)") }
   func placeSafely() {
     guard let controller = operatorController, let window else { return }
+    if let dockScreen = controller.cameraDock?.window?.screen {
+      var frame = window.frame
+      frame.origin = CGPoint(
+        x: dockScreen.visibleFrame.midX - frame.width / 2,
+        y: dockScreen.visibleFrame.minY + 16)
+      window.setFrame(FrameClamp.clamp(frame, to: dockScreen.visibleFrame), display: true)
+      window.orderFront(nil)
+      return
+    }
     let outputScreen = controller.output?.window?.screen
     guard let safe = NSScreen.screens.first(where: { $0 != outputScreen }) else {
       window.orderOut(nil)

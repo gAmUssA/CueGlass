@@ -20,6 +20,17 @@ Owner-expanded R01–R16 and Quiet Studio implementation are delivered for devel
 | R14 commands | Default aliases, remapping/conflicts/reserved validation, local versioned persistence, native responder routing | Core guards/roundtrip and native editor/panel tests; physical peripherals/manual focus routes pending |
 | R15 timing | Direction-aware remaining, playing-only elapsed, cancellable mirrored countdown, timed solve/re-solve and bound hold | Deterministic 300-second finish/reverse/restart/cancel; actual countdown visuals manual |
 | R16 aids | Guide line/triangles/opacity, gradient fade, side margins, text-panel alpha and hide/restore chrome | Static-aid versus margin relayout tests; contrast and accessibility/real backdrops manual |
+| Camera Dock | Opt-in shared-session surface below built-in safe area; top-center selected-display fallback; per-display width/line/nudge preferences; app-local menu and command routing | Deterministic geometry, preference, panel, and surface tests; M1–M12 physical/runtime acceptance remains pending |
+
+## Camera Dock implementation (2026-10-16)
+
+Camera Dock is an opt-in placement of the existing floating presentation controller. Its pure geometry uses the built-in screen's safe-area top edge and auxiliary-area midpoint, or the visible-frame top center when there is no usable built-in camera display. The non-activating panel is opaque, fixed in place, and joins Spaces/full-screen applications at floating level. It shares the existing playback session, snapshot, guide anchor, Timed Scrolling, Follow Voice, and app-local commands. The Output inspector, Present menu, View menu, and CommandMap expose the mode. Width defaults to 44% of display width and clamps to 360–760 pt; line count defaults to 3 and clamps to 2–5; horizontal nudge defaults to zero. Preferences are keyed by display UUID.
+
+The first-use explanation states that the prompt appears in screen recordings, external camera placement is assumed, and CueGlass does not use the camera or microphone for Camera Dock. On external fallback when a built-in display is still connected, the grip indicates that the camera may be on another display. A vanished display or invalid fit pauses and closes the Dock while retaining the position; it does not choose another surface automatically.
+
+M1–M12 are all **pending**: physical housing clearance, near-lens gaze, full-screen recorder behavior, non-activating keyboard use, VoiceOver, accessibility display settings, live display changes/clamshell, non-notched/external fallback observation, Timed Scrolling/Follow Voice hardware behavior, Get Info compatibility mode, screen-recording visibility, and macOS 14 runtime. Automated tests and the build do not count as these observations. See [ADR 0012](adr/0012-camera-dock-placement.md) and the Camera Dock section of the [manual plan](MANUAL_TEST_PLAN.md).
+
+Automated verification on the available macOS 27.0.1 host with Xcode 27.0 (27A266a): the DebugLocal app builds for `arm64-apple-macos14.0`, all 81 CueFlowCore tests pass, all 103 native tests pass, strict Swift formatting passes, and Beans consistency passes. This is build/test evidence on macOS 27, not macOS 14 runtime or notched-hardware acceptance.
 
 ## Findings resolved in source and outcome tests
 

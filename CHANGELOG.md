@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add an opt-in Camera Dock presentation surface with safe-area placement, top-center fallback, per-display placement controls, and shared playback-session behavior. Physical and runtime acceptance remains open (ADR 0012).
+
 ## 0.2.0 — 2026-10-15
 
 - Add opt-in macOS 26+ Follow Voice with on-device speech analysis, explicit microphone/model consent, bounded script alignment, and adaptive presenter-paced scrolling while retaining macOS 14 compatibility.

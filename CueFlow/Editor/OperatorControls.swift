@@ -11,6 +11,7 @@ struct OperatorControls: View {
   @AppStorage("timingExpanded") private var timingExpanded = false
   @AppStorage("keysExpanded") private var keysExpanded = false
   @AppStorage("floatingExpanded") private var floatingExpanded = false
+  @AppStorage("cameraDockExpanded") private var cameraDockExpanded = false
   private func binding<T>(_ path: WritableKeyPath<ReadingStyle, T>) -> Binding<T> {
     Binding(
       get: { state.style[keyPath: path] },
@@ -107,6 +108,17 @@ struct OperatorControls: View {
           valueSlider("Edge fade", path: \.edgeFadeFraction, range: 0...0.3)
         }
         InspectorSection("Output") {
+          Picker(
+            "Surface",
+            selection: Binding(
+              get: { controller.selectedPresentationSurface },
+              set: { controller.selectPresentationSurface($0) })
+          ) {
+            Text("Preview").tag("preview")
+            Text("Display Output").tag("output")
+            Text("Floating").tag("floating")
+            Text(controller.cameraDockMenuTitle).tag("cameraDock")
+          }
           Picker("Display", selection: $state.selectedDisplay) {
             if state.displays.isEmpty {
               Text("No display connected").tag(state.selectedDisplay)
@@ -114,16 +126,48 @@ struct OperatorControls: View {
             ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key)
             }
           }.disabled(state.displays.isEmpty)
-          Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(of: state.horizontal) {
-            controller.reflect()
+          if controller.cameraDock == nil {
+            Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(
+              of: state.horizontal
+            ) {
+              controller.reflect()
+            }
+            Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
+              controller.reflect()
+            }
+            Toggle("Preview as output", isOn: $state.calibrated).onChange(
+              of: state.calibrated
+            ) {
+              controller.reflect()
+            }
+            Button("Calibration Pattern…") { controller.calibration() }
           }
-          Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
-            controller.reflect()
+          DisclosureGroup("Camera Dock Placement", isExpanded: $cameraDockExpanded) {
+            Slider(
+              value: Binding(
+                get: { state.cameraDockWidth },
+                set: { controller.setCameraDockWidth($0) }),
+              in: 360...760, step: 20
+            )
+            .accessibilityLabel("Camera Dock width")
+            Text("Width · \(Int(state.cameraDockWidth.rounded())) pt").font(.caption)
+            Stepper(
+              "Visible lines · \(state.cameraDockLineCount)",
+              value: Binding(
+                get: { state.cameraDockLineCount },
+                set: { controller.setCameraDockLineCount($0) }),
+              in: 2...5)
+            Slider(
+              value: Binding(
+                get: { state.cameraDockHorizontalNudge },
+                set: { controller.setCameraDockHorizontalNudge($0) }),
+              in: -120...120, step: 8
+            )
+            .accessibilityLabel("Camera Dock horizontal nudge")
+            Text("Horizontal nudge · \(Int(state.cameraDockHorizontalNudge.rounded())) pt")
+              .font(.caption)
+            Button("Reset Placement") { controller.resetCameraDockPreferences() }
           }
-          Toggle("Preview as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
-            controller.reflect()
-          }
-          Button("Calibration Pattern…") { controller.calibration() }
           DisclosureGroup("Floating Window", isExpanded: $floatingExpanded) {
             Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {
               controller.updateFloatingOptions()

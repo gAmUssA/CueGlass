@@ -14,6 +14,7 @@ import QuartzCore
   let panelBackground = NSView()
   let countdown = NSTextField(labelWithString: "")
   private var measurementGeneration = 0
+  private var fadesTopEdge = true
   private(set) var layoutCount = 0
   private(set) var measurementChunkCount = 0
   private(set) var measurementWorstSeconds = 0.0
@@ -28,6 +29,7 @@ import QuartzCore
   private(set) var endPosition: Double?
   private(set) var voiceLineTable: VoiceLineTable?
   var fractionalTranslation = true
+  var compactCountdown = false
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -71,14 +73,18 @@ import QuartzCore
     if newWindow == nil { driver?.stop() }
     super.viewWillMove(toWindow: newWindow)
   }
-  func configure(snapshot: ScriptSnapshot, style: ReadingStyle, size: CGSize) {
+  func configure(
+    snapshot: ScriptSnapshot, style: ReadingStyle, size: CGSize,
+    guideFractionOverride: Double? = nil, fadesTopEdge: Bool = true
+  ) {
     measurementGeneration += 1
     layoutCount += 1
     snapshotID = snapshot.id
     voiceLineTable = nil
     self.style = style
+    self.fadesTopEdge = fadesTopEdge
     frame.size = size
-    topPadding = size.height * style.readingGuideFraction
+    topPadding = size.height * (guideFractionOverride ?? style.readingGuideFraction)
     scroll.frame = bounds
     let width = max(80, size.width * style.columnWidthFraction * (1 - 2 * style.sideMarginFraction))
     let insetX = (size.width - width) / 2
@@ -97,6 +103,10 @@ import QuartzCore
     if digit == nil && countdown.isHidden { return }
     countdown.isHidden = digit == nil
     if let digit, countdown.stringValue != String(digit) { countdown.stringValue = String(digit) }
+    if compactCountdown {
+      countdown.font = .monospacedDigitSystemFont(
+        ofSize: min(96, max(28, bounds.height * 0.45)), weight: .semibold)
+    }
     countdown.frame = CGRect(x: 0, y: bounds.height * 0.25, width: bounds.width, height: 120)
   }
   func updateAids(_ next: ReadingStyle) {
@@ -121,9 +131,19 @@ import QuartzCore
     if next.edgeFadeFraction > 0 {
       let mask = CAGradientLayer()
       mask.frame = bounds
-      mask.colors = [
-        NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor,
-      ]
+      mask.isGeometryFlipped = scroll.layer?.isGeometryFlipped ?? scroll.isFlipped
+      mask.startPoint = CGPoint(x: 0.5, y: mask.isGeometryFlipped ? 1 : 0)
+      mask.endPoint = CGPoint(x: 0.5, y: mask.isGeometryFlipped ? 0 : 1)
+      mask.colors =
+        fadesTopEdge
+        ? [
+          NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+          NSColor.clear.cgColor,
+        ]
+        : [
+          NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+          NSColor.black.cgColor,
+        ]
       mask.locations = [
         0, NSNumber(value: next.edgeFadeFraction), NSNumber(value: 1 - next.edgeFadeFraction), 1,
       ]
