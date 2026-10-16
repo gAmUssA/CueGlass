@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-16T18:28:24Z
-updated_at: 2026-10-16T18:37:03Z
+updated_at: 2026-10-16T18:38:03Z
 parent: cueglass-wky0
 ---
 
@@ -18,4 +18,9 @@ Owner reported that selecting Camera Dock on a notched MacBook displays “Camer
 - [x] Correct the fit/recovery behavior while preserving camera-housing clearance and typography.
 - [x] Add deterministic geometry regressions for incomplete, reversed, and invalid auxiliary-area metadata.
 - [x] Run the 93-test Core suite, 130-test native suite, strict formatting, Bean validation, and a fresh DebugLocal build.
-- [ ] Prepare a fresh test app for owner retest and record remaining physical checks.
+- [x] Prepare a fresh test app for owner retest and keep M1–M14 hardware observations pending.
+
+
+- [ ] Owner confirms the new build opens Camera Dock on the notched MacBook and reports whether the housing/map alignment is correct.
+
+Build commit: a57b4d3. iCloud Drive artifact: CueGlass/CueGlass-0.2.0-Camera-Dock-FitFix-a57b4d3.zip (SHA-256 bf34545a6a0ac22df1e98c4d4f28410b644c2d762ec95244761a240016bdc716).
