@@ -4,6 +4,44 @@ import Testing
 
 @testable import CueFlow
 
+@MainActor private final class CameraDockVoiceCaptureProbe: VoiceCaptureSource {
+  var startCount = 0
+  var stopCount = 0
+  private var continuation: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
+
+  func supportedLocales() async -> [VoiceLocaleOption] {
+    [VoiceLocaleOption(identifier: "en-US", displayName: "English (US)")]
+  }
+  func readiness(localeIdentifier: String) async -> VoiceAssetReadiness { .ready }
+  func install(localeIdentifier: String, reportProgress: @escaping (Double) -> Void) async throws {}
+  func cancelModelInstallation() {}
+  func start(localeIdentifier: String) async throws -> AsyncThrowingStream<
+    TranscriptEvent, any Error
+  > {
+    startCount += 1
+    let pair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream()
+    continuation = pair.continuation
+    return pair.stream
+  }
+  func send(_ event: TranscriptEvent) { continuation?.yield(event) }
+  func stop() {
+    stopCount += 1
+    continuation?.finish()
+    continuation = nil
+  }
+}
+
+@MainActor private final class CameraDockMicrophoneProbe: MicrophonePermissionChecking {
+  var permission: MicrophonePermissionState
+  private(set) var requestCount = 0
+
+  init(_ permission: MicrophonePermissionState) { self.permission = permission }
+  func requestPermission() async -> Bool {
+    requestCount += 1
+    return permission == .granted
+  }
+}
+
 @Suite(.serialized) @MainActor struct OperatorFeatureTests {
   init() { _ = NSApplication.shared }
   private func settle(_ controller: OperatorWindowController) async {
@@ -14,6 +52,11 @@ import Testing
       }
     }
     Issue.record("Measurement did not settle in 2000 main queue turns")
+  }
+  private func mainTurn() async {
+    await withCheckedContinuation { continuation in
+      DispatchQueue.main.async { continuation.resume() }
+    }
   }
   private func prepared(_ paragraphs: Int = 200) async throws -> OperatorWindowController {
     let doc = ScriptDocument()
@@ -29,6 +72,29 @@ import Testing
     await settle(controller)
     #expect((controller.authoritative.measurementChunkCount > 1) == (paragraphs > 64))
     return controller
+  }
+  private func dockParameters(
+    for screen: NSScreen, safeTop: Double = 0, topInset: Double = 0,
+    left: CameraDockRect? = nil, right: CameraDockRect? = nil
+  ) -> CameraDockScreenParameters {
+    let screenFrame = screen.frame
+    let visible = screen.visibleFrame
+    return CameraDockScreenParameters(
+      screenFrame: CameraDockRect(
+        x: screenFrame.minX, y: screenFrame.minY, width: screenFrame.width,
+        height: screenFrame.height),
+      visibleFrame: CameraDockRect(
+        x: visible.minX, y: visible.minY, width: visible.width,
+        height: max(0, visible.height - topInset)),
+      safeTop: safeTop, auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right)
+  }
+  private func syntheticDisplay(
+    screen: NSScreen, id: CGDirectDisplayID, uuid: String, isBuiltIn: Bool = false,
+    isMirrored: Bool = false, parameters: CameraDockScreenParameters? = nil
+  ) -> DisplayDescriptor {
+    DisplayDescriptor(
+      screen: screen, preference: DisplayPreference(uuid: uuid, name: uuid), id: id,
+      isBuiltIn: isBuiltIn, isMirrored: isMirrored, cameraDockParameters: parameters)
   }
   @Test func finalFragmentGeometryKeepsAnchorAndTimedDeadline() async throws {
     for count in [20, 64, 65, 200] {
@@ -531,6 +597,8 @@ import Testing
       time = Double(frame) / 4
       try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
     }
+    let session = c.session
+    let snapshot = try #require(session.snapshot?.id)
 
     c.showCameraDock()
     let viewport = try #require(c.cameraDock?.reflection.viewport)
@@ -540,26 +608,57 @@ import Testing
     await settle(c)
     #expect(c.session.state == .running)
     #expect(c.session.timedDuration == 600)
+    #expect(c.session === session)
+    #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.elapsedSeconds == 10)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    #expect(c.session.timeline.upperBound != nil)
     #expect(c.cameraDock != nil)
+
+    try c.session.pause()
+    time = 40
+    c.resumeAfterMeasurement()
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.elapsedSeconds == 10)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    #expect(c.session.timeline.upperBound != nil)
+
+    c.setCameraDockLineCount(4)
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(c.session.elapsedSeconds == 10)
+    #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
+    #expect(c.session.timeline.upperBound != nil)
     c.stop()
   }
 
-  @Test func cameraDockDisplayLossClosesAndRetainsPausedPosition() async throws {
+  @Test func cameraDockDisplayLossPausesActivePlaybackAndRetainsPosition() async throws {
     let c = try await prepared()
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
     c.seek(c.session.paragraphPositions[60])
     let snapshot = try #require(c.session.snapshot?.id)
-    let position = c.session.timeline.anchorPosition
+    var time = 0.0
+    c.session.clock = { time }
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    for frame in 1...8 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
 
     c.showCameraDock()
     let viewport = try #require(c.cameraDock?.reflection.viewport)
     viewport.driver?.stop()
     viewport.driver = nil
+    await settle(c)
     #expect(c.cameraDock != nil)
+    #expect(c.session.state == .running)
+    time = 4
+    try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    let position = c.session.timeline.anchorPosition
 
     c.handleAvailableDisplayIDs([])
     #expect(c.cameraDock == nil)
@@ -569,6 +668,444 @@ import Testing
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.timeline.anchorPosition == position)
     #expect(c.state.status == "Camera Dock display disconnected — position retained")
+  }
+
+  @Test func cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let window = try #require(dock.window)
+    let driver = try #require(dock.reflection.viewport.driver)
+    let snapshotID = try #require(c.session.snapshot?.id)
+    let anchor = try #require(dock.reflection.viewport.captureAnchor())
+
+    c.showCameraDock()
+
+    #expect(c.cameraDock === dock)
+    #expect(c.cameraDock?.window === window)
+    #expect(c.cameraDock?.reflection.viewport.driver === driver)
+    #expect(c.selectedPresentationSurface == "cameraDock")
+    #expect(c.session.snapshot?.id == snapshotID)
+    #expect(c.cameraDock?.reflection.viewport.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+
+    c.hideOutput()
+    c.hideOutput()
+    #expect(c.cameraDock == nil)
+    #expect(c.output == nil && c.floating == nil)
+    #expect(c.selectedPresentationSurface == "preview")
+  }
+
+  @Test func cameraDockUsesSelectedExternalAndLabelsFallbackAccurately() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let mirror = syntheticDisplay(
+      screen: screen, id: 101, uuid: "mirrored-camera", isBuiltIn: true, isMirrored: true,
+      parameters: parameters)
+    let external = syntheticDisplay(
+      screen: screen, id: 202, uuid: "selected-external", parameters: parameters)
+    let connected = [mirror, external]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.state.selectedDisplay = mirror.selectionKey
+    #expect(c.cameraDockTarget(in: connected) == nil)
+    #expect(c.cameraDockMenuTitle == "Camera Dock")
+
+    c.state.selectedDisplay = external.selectionKey
+    c.refreshScreens(connected)
+    #expect(c.cameraDockTarget(in: connected)?.id == external.id)
+    #expect(c.cameraDockMenuTitle == "Camera Dock (top of display)")
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    #expect(dock.displayID == external.id)
+    #expect(c.cameraDockMenuTitle == "Camera Dock (top of display)")
+  }
+
+  @Test func cameraDockLeavesExactlyOneSurfaceActiveAcrossAllSurfaceTypes() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    func expectOneSurface(_ expected: String) {
+      let active = [
+        c.output != nil, c.floating != nil, c.output == nil && c.floating == nil,
+      ].filter { $0 }.count
+      #expect(active == 1)
+      #expect(c.selectedPresentationSurface == expected)
+      #expect(c.output == nil || c.floating == nil)
+    }
+    expectOneSurface("preview")
+
+    c.showFloating()
+    c.floating?.reflection.viewport.driver?.stop()
+    c.floating?.reflection.viewport.driver = nil
+    await settle(c)
+    expectOneSurface("floating")
+
+    c.showCameraDock()
+    c.cameraDock?.reflection.viewport.driver?.stop()
+    c.cameraDock?.reflection.viewport.driver = nil
+    await settle(c)
+    expectOneSurface("cameraDock")
+
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    expectOneSurface("output")
+
+    c.stopPresenting()
+    expectOneSurface("preview")
+  }
+
+  @Test func cameraDockExitRestoresPriorFloatingAndOutputSurfaces() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+
+    c.showFloating()
+    c.floating?.reflection.viewport.driver?.stop()
+    c.floating?.reflection.viewport.driver = nil
+    await settle(c)
+    let floatingAnchor = try #require(c.authoritative.captureAnchor())
+    c.showCameraDock()
+    c.cameraDock?.reflection.viewport.driver?.stop()
+    c.cameraDock?.reflection.viewport.driver = nil
+    await settle(c)
+    c.stopPresenting()
+    await settle(c)
+    #expect(c.selectedPresentationSurface == "floating")
+    #expect(c.floating?.isCameraDock == false)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == floatingAnchor.utf16Offset)
+
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    let outputAnchor = try #require(c.authoritative.captureAnchor())
+    c.showCameraDock()
+    c.cameraDock?.reflection.viewport.driver?.stop()
+    c.cameraDock?.reflection.viewport.driver = nil
+    await settle(c)
+    let dock = try #require(c.cameraDock)
+    let dockWindow = try #require(dock.window)
+    let escape = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: dockWindow.windowNumber, context: nil,
+        characters: String(UnicodeScalar(NSCarriageReturnCharacter)!),
+        charactersIgnoringModifiers: String(UnicodeScalar(NSCarriageReturnCharacter)!),
+        isARepeat: false, keyCode: 53))
+    #expect(CommandRouter.route(escape, window: dockWindow, controller: c))
+    await settle(c)
+    #expect(c.selectedPresentationSurface == "output")
+    #expect(c.output != nil && c.floating == nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == outputAnchor.utf16Offset)
+  }
+
+  @Test func cameraDockSwitchPreservesRunningAnchorAndSnapshot() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    var time = 0.0
+    c.session.clock = { time }
+    c.seek(c.session.paragraphPositions[72])
+    let session = c.session
+    let snapshot = try #require(session.snapshot?.id)
+    session.countdownSeconds = 0
+    try session.toggle(c.script)
+    for frame in 1...8 {
+      time = Double(frame) / 4
+      try session.noteFrame(target: time, end: session.timeline.upperBound)
+    }
+    let runningAnchor = try #require(c.authoritative.captureAnchor())
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+
+    #expect(c.session === session)
+    #expect(session.snapshot?.id == snapshot)
+    #expect(session.state == .running)
+    #expect(!session.pendingRevision)
+    #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == runningAnchor.utf16Offset)
+    let restored = try #require(dock.reflection.viewport.restore(runningAnchor))
+    #expect(abs(session.timeline.anchorPosition - restored) < 1)
+  }
+
+  @Test func cameraDockScreenParameterCallbackRecomputesWithoutDirtyingDocument() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let originalParameters = dockParameters(for: screen)
+    let original = syntheticDisplay(
+      screen: screen, id: 301, uuid: "callback-display", parameters: originalParameters)
+    var connected = [original]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.state.selectedDisplay = original.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let frameBefore = try #require(dock.window).frame
+    let anchorBefore = try #require(dock.reflection.viewport.captureAnchor())
+    let snapshotBefore = try #require(c.session.snapshot?.id)
+    let sourceBefore = c.script.source.copy() as! NSAttributedString
+    let revisionBefore = c.script.revision
+    let editedBefore = c.script.isDocumentEdited
+    let nextParameters = dockParameters(for: screen, topInset: 24)
+    connected = [
+      syntheticDisplay(
+        screen: screen, id: original.id, uuid: "callback-display", parameters: nextParameters)
+    ]
+
+    c.screensChanged()
+
+    let frameAfter = try #require(dock.window).frame
+    #expect(frameAfter.maxY < frameBefore.maxY)
+    #expect(abs(frameAfter.maxY - (frameBefore.maxY - 24)) < 0.5)
+    #expect(dock.displayID == original.id)
+    #expect(c.session.snapshot?.id == snapshotBefore)
+    #expect(c.script.source.isEqual(to: sourceBefore))
+    #expect(c.script.revision == revisionBefore)
+    #expect(c.script.isDocumentEdited == editedBefore)
+    #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == anchorBefore.utf16Offset)
+  }
+
+  @Test func cameraDockDisplayReconnectRequiresReselectionAndRestoresUUIDPreferences()
+    async throws
+  {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let original = syntheticDisplay(
+      screen: screen, id: 401, uuid: "reconnect-stage", parameters: parameters)
+    var connected = [original]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.state.selectedDisplay = original.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    c.setCameraDockWidth(520)
+    c.setCameraDockLineCount(4)
+    c.setCameraDockHorizontalNudge(24)
+    await settle(c)
+    let anchor = try #require(c.cameraDock?.reflection.viewport.captureAnchor())
+    let snapshot = try #require(c.session.snapshot?.id)
+
+    connected = []
+    c.screensChanged()
+    #expect(c.cameraDock == nil)
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == snapshot)
+
+    let reconnected = syntheticDisplay(
+      screen: screen, id: 402, uuid: "reconnect-stage", parameters: parameters)
+    connected = [reconnected]
+    c.screensChanged()
+    #expect(c.cameraDock == nil)
+    #expect(c.state.selectedDisplay == reconnected.selectionKey)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(c.state.cameraDockHorizontalNudge == 24)
+
+    c.selectPresentationSurface("cameraDock")
+    let reopened = try #require(c.cameraDock)
+    reopened.reflection.viewport.driver?.stop()
+    reopened.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(reopened.displayID == reconnected.id)
+    #expect(
+      reopened.dockPreferences
+        == CameraDockPreferences(
+          width: 520, lineCount: 4, horizontalNudge: 24))
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.session.state == .paused)
+  }
+
+  @Test func cameraDockPlacementFailureClosesPausesAndRetainsTake() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    var connected = [
+      syntheticDisplay(
+        screen: screen, id: 501, uuid: "failure-display", parameters: dockParameters(for: screen))
+    ]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.state.selectedDisplay = connected[0].selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let snapshot = try #require(c.session.snapshot?.id)
+    let anchor = try #require(dock.reflection.viewport.captureAnchor())
+    let safeFrame = try #require(dock.window).frame
+    let valid = connected[0].cameraDockParameters
+    let tooShort = CameraDockScreenParameters(
+      screenFrame: valid.screenFrame,
+      visibleFrame: CameraDockRect(
+        x: valid.visibleFrame.x, y: valid.visibleFrame.y, width: valid.visibleFrame.width,
+        height: 100), safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    connected = [
+      syntheticDisplay(
+        screen: screen, id: 501, uuid: "failure-display", parameters: tooShort)
+    ]
+
+    c.screensChanged()
+
+    #expect(c.cameraDock == nil)
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.state.status.contains("Camera Dock unavailable — position retained"))
+    #expect(safeFrame.minX.isFinite && safeFrame.minY.isFinite)
+    #expect(safeFrame.width.isFinite && safeFrame.height.isFinite)
+
+    connected = [
+      syntheticDisplay(
+        screen: screen, id: 501, uuid: "failure-display", parameters: valid)
+    ]
+    c.showCameraDock()
+    let malformedDock = try #require(c.cameraDock)
+    malformedDock.reflection.viewport.driver?.stop()
+    malformedDock.reflection.viewport.driver = nil
+    await settle(c)
+    let malformedSafeFrame = try #require(malformedDock.window).frame
+    let malformed = CameraDockScreenParameters(
+      screenFrame: CameraDockRect(
+        x: .infinity, y: valid.screenFrame.y, width: valid.screenFrame.width,
+        height: valid.screenFrame.height),
+      visibleFrame: valid.visibleFrame, safeTop: valid.safeTop,
+      auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    connected = [
+      syntheticDisplay(
+        screen: screen, id: 501, uuid: "failure-display", parameters: malformed)
+    ]
+    c.screensChanged()
+    #expect(c.cameraDock == nil)
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.state.status.contains("Camera Dock unavailable — position retained"))
+    #expect(malformedSafeFrame.minX.isFinite && malformedSafeFrame.minY.isFinite)
+  }
+
+  @Test func cameraDockPreferenceControlsClampAndUpdatePlacement() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 601, uuid: "preferences-display", parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+
+    c.setCameraDockWidth(359)
+    #expect(c.state.cameraDockWidth == 360)
+    c.setCameraDockWidth(761)
+    #expect(c.state.cameraDockWidth == 760)
+    c.setCameraDockLineCount(1)
+    #expect(c.state.cameraDockLineCount == 2)
+    c.setCameraDockLineCount(6)
+    #expect(c.state.cameraDockLineCount == 5)
+    c.setCameraDockHorizontalNudge(-1000)
+    #expect(c.state.cameraDockHorizontalNudge == -120)
+    c.setCameraDockHorizontalNudge(1000)
+    #expect(c.state.cameraDockHorizontalNudge == 120)
+    let window = try #require(dock.window)
+    #expect(
+      dock.dockPreferences
+        == CameraDockPreferences(
+          width: 760, lineCount: 5, horizontalNudge: 120))
+    #expect(!window.isMovable)
+    #expect(!window.isMovableByWindowBackground)
+  }
+
+  @Test func cameraDockPromptAndControlsExposeAccessibilityAndKeyboardFocus() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let root = try #require(dock.root)
+    let panel = try #require(dock.window)
+    #expect(root.isAccessibilityElement())
+    #expect(root.accessibilityLabel() == "CueGlass prompt")
+    #expect(panel.canBecomeKey)
+    #expect(CameraDockGrip.closeAccessibilityLabel == "Close Camera Dock")
+    #expect(CameraDockGrip.playbackAccessibilityLabel == "Play or pause")
+    #expect(CameraDockGrip.adjustAccessibilityLabel == "Adjust Camera Dock")
+    panel.makeKeyAndOrderFront(nil)
+    panel.selectNextKeyView(nil)
+    #expect(panel.firstResponder !== panel)
+
+    let originalMap = CommandRouter.map
+    defer { CommandRouter.map = originalMap }
+    CommandRouter.map = CommandMap()
+    #expect(panel.makeFirstResponder(panel.contentView))
+    let commandEvent = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
+        windowNumber: panel.windowNumber, context: nil, characters: "d",
+        charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
+    #expect(CommandRouter.route(commandEvent, window: panel, controller: c))
+    #expect(c.cameraDock === dock)
+
+    let operatorWindow = try #require(c.window)
+    operatorWindow.makeKeyAndOrderFront(nil)
+    #expect(operatorWindow.makeFirstResponder(c.editor))
+    c.editor.setSelectedRange(NSRange(location: 0, length: 0))
+    let before = c.editor.string
+    let space = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: operatorWindow.windowNumber, context: nil, characters: " ",
+        charactersIgnoringModifiers: " ", isARepeat: false, keyCode: 49))
+    #expect(!CommandRouter.route(space, window: operatorWindow, controller: c))
+    c.stop()
+    #expect(c.editor.isEditable)
+    #expect(operatorWindow.makeFirstResponder(c.editor))
+    c.editor.insertText(" ", replacementRange: NSRange(location: 0, length: 0))
+    #expect(c.editor.string != before)
+  }
+
+  @Test func cameraDockCommandWithoutDocumentDoesNotOpenDocumentPicker() throws {
+    let panel = PresentationPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+      styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    let documentsBefore = NSDocumentController.shared.documents.count
+    let event = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
+        windowNumber: panel.windowNumber, context: nil, characters: "d",
+        charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
+    #expect(!CommandRouter.route(event, window: panel, controller: nil))
+    #expect(NSDocumentController.shared.documents.count == documentsBefore)
+    panel.close()
   }
 
   @Test func cameraDockCanOpenForAnEmptyScriptWithoutStartingPlayback() async throws {
@@ -590,6 +1127,171 @@ import Testing
     #expect(c.session.state != .running)
     #expect(!c.session.timeline.running)
     #expect(c.cameraDock != nil)
+    #expect(CameraDockGrip(state: c.state, controller: c).statusText == "Ready")
+    #expect(!CameraDockGrip(state: c.state, controller: c).canPlay)
+  }
+
+  @Test func cameraDockDoesNotRequestMicrophoneAndTimedPlaybackWorksWhenDenied()
+    async throws
+  {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let source = CameraDockVoiceCaptureProbe()
+    let microphone = CameraDockMicrophoneProbe(.notDetermined)
+    let coordinator = VoiceFollowCoordinator(
+      session: c.session, source: source, microphone: microphone,
+      usageDescription: { "Microphone access is used only for Follow Voice." })
+    c.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+    #expect(coordinator.state == .ready)
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(microphone.requestCount == 0)
+    #expect(source.startCount == 0)
+
+    c.startVoiceFollow()
+    for _ in 0..<1000 where coordinator.state != .microphoneDenied { await mainTurn() }
+    #expect(coordinator.state == .microphoneDenied)
+    #expect(microphone.requestCount == 1)
+    #expect(source.startCount == 0)
+
+    var time = 0.0
+    c.session.clock = { time }
+    c.session.countdownSeconds = 0
+    try c.session.enableTimed(seconds: 600)
+    #expect(c.session.timedDuration == 600)
+    try c.session.toggle(c.script)
+    #expect(c.session.state == .running)
+    for frame in 1...4 {
+      time = Double(frame) / 4
+      try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
+    }
+    #expect(c.session.timedDuration == 600)
+    #expect(c.session.elapsedSeconds == 1)
+    #expect(microphone.requestCount == 1)
+    #expect(source.startCount == 0)
+  }
+
+  @Test func cameraDockFollowVoiceUsesDockLineMapAndManualSeekStopsCapture()
+    async throws
+  {
+    let document = ScriptDocument()
+    document.source = NSAttributedString(
+      string: "North wind carries the lantern home.\nEast wind carries the harbor light.")
+    let c = OperatorWindowController(document: document)
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.session.clock = { 0 }
+    try c.session.prepare(document)
+    c.render()
+    await settle(c)
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let table = try #require(c.authoritative.voiceLineTable)
+    let snapshot = try #require(c.session.snapshot)
+    let index = ScriptIndex(text: snapshot.attributed.string)
+    let firstY = try #require(table.y(for: index.tokens[0]))
+    let laterY = try #require(table.y(for: index.tokens.last!))
+    #expect(laterY > firstY)
+
+    let source = CameraDockVoiceCaptureProbe()
+    let coordinator = VoiceFollowCoordinator(
+      session: c.session, source: source, microphone: CameraDockMicrophoneProbe(.granted),
+      usageDescription: { "Microphone access is used only for Follow Voice." })
+    c.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+    c.startVoiceFollow()
+    for _ in 0..<1000 where coordinator.state != .listening { await mainTurn() }
+    #expect(coordinator.state == .listening)
+    #expect(source.startCount == 1)
+
+    let words = ["North", "wind", "carries", "the", "lantern", "home", "East", "wind"]
+      .enumerated().map { offset, text in
+        let start = Double(offset) * 0.25
+        return RecognizedWord(text: text, start: start, end: start + 0.2, confidence: 0.9)
+      }
+    let eventEnd = try #require(words.last?.end)
+    source.send(
+      TranscriptEvent(
+        isFinal: true, rangeStart: 0, rangeEnd: eventEnd, availableAt: eventEnd,
+        words: words, finalizedThrough: eventEnd))
+    for _ in 0..<200 where c.session.timeline.voiceCeiling == nil {
+      try await Task.sleep(for: .milliseconds(5))
+      await mainTurn()
+    }
+    let ceiling = try #require(c.session.timeline.voiceCeiling)
+    #expect(table.lines.contains { abs($0.minY - ceiling) < 0.5 })
+
+    c.seek(100)
+    #expect(c.session.voiceSuspended)
+    #expect(coordinator.state == .suspended("Manual navigation"))
+    #expect(source.stopCount == 1)
+    #expect(c.session.timeline.anchorPosition == 100)
+  }
+
+  @Test func cameraDockUsesOnlyThePreparedSnapshotWhenSourceFileIsAbsent() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let missingURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .deletingLastPathComponent().appendingPathComponent(
+        ".build/camera-dock-source-that-does-not-exist.cueflow")
+    #expect(!FileManager.default.fileExists(atPath: missingURL.path))
+    c.script.fileURL = missingURL
+    let snapshot = try #require(c.session.snapshot)
+    let source = c.script.source.copy() as! NSAttributedString
+    let anchor = try #require(c.authoritative.captureAnchor())
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+
+    #expect(!FileManager.default.fileExists(atPath: missingURL.path))
+    #expect(c.session.snapshot?.id == snapshot.id)
+    #expect(c.session.snapshot?.attributed == snapshot.attributed)
+    #expect(c.script.source.isEqual(to: source))
+    #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+  }
+
+  @Test func malformedImportDoesNotReplaceTheActiveCameraDockTake() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let snapshot = try #require(c.session.snapshot)
+    let source = c.script.source.copy() as! NSAttributedString
+    let anchor = try #require(dock.reflection.viewport.captureAnchor())
+
+    #expect(throws: (any Error).self) {
+      try c.script.read(
+        from: Data("not a CueGlass document".utf8), ofType: ScriptDocument.nativeType)
+    }
+
+    #expect(c.cameraDock === dock)
+    #expect(c.session.snapshot?.id == snapshot.id)
+    #expect(c.session.snapshot?.attributed == snapshot.attributed)
+    #expect(c.script.source.isEqual(to: source))
+    #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.script.saveBlockedReason != nil)
   }
 
   @Test func cameraDockExplainerDisclosesHousingAndScreenRecordingBehavior() {

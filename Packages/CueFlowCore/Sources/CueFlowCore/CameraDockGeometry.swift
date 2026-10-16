@@ -42,6 +42,25 @@ public struct CameraDockPlacement: Equatable, Sendable {
   public let location: CameraDockLocation
 }
 
+public struct CameraDockScreenParameters: Equatable, Sendable {
+  public let screenFrame: CameraDockRect
+  public let visibleFrame: CameraDockRect
+  public let safeTop: Double
+  public let auxiliaryTopLeftArea: CameraDockRect?
+  public let auxiliaryTopRightArea: CameraDockRect?
+
+  public init(
+    screenFrame: CameraDockRect, visibleFrame: CameraDockRect, safeTop: Double,
+    auxiliaryTopLeftArea: CameraDockRect?, auxiliaryTopRightArea: CameraDockRect?
+  ) {
+    self.screenFrame = screenFrame
+    self.visibleFrame = visibleFrame
+    self.safeTop = safeTop
+    self.auxiliaryTopLeftArea = auxiliaryTopLeftArea
+    self.auxiliaryTopRightArea = auxiliaryTopRightArea
+  }
+}
+
 public enum CameraDockGeometry {
   public static let minimumWidth = 360.0
   public static let maximumWidth = 760.0
@@ -62,6 +81,17 @@ public enum CameraDockGeometry {
       (minimumLineCount...maximumLineCount).contains(lineCount)
     else { return nil }
     return ceil(lineAdvance * (Double(lineCount) + 0.25) + 16)
+  }
+
+  public static func placement(
+    on parameters: CameraDockScreenParameters, isBuiltIn: Bool, width: Double, height: Double,
+    horizontalNudge: Double
+  ) -> CameraDockPlacement? {
+    placement(
+      screenFrame: parameters.screenFrame, visibleFrame: parameters.visibleFrame,
+      safeTop: parameters.safeTop, auxiliaryTopLeftArea: parameters.auxiliaryTopLeftArea,
+      auxiliaryTopRightArea: parameters.auxiliaryTopRightArea, isBuiltIn: isBuiltIn,
+      width: width, height: height, horizontalNudge: horizontalNudge)
   }
 
   public static func placement(
@@ -190,6 +220,11 @@ public enum CameraDockDisplaySelection {
     if let builtIn = displays.first(where: { $0.isBuiltIn && !$0.isMirrored }) {
       return builtIn.id
     }
-    return displays.first(where: { $0.id == selectedID })?.id
+    return displays.first(where: { $0.id == selectedID && !$0.isBuiltIn })?.id
+  }
+
+  public static func menuTitle(isBuiltIn: Bool, isMirrored: Bool, safeTop: Double) -> String {
+    isBuiltIn && !isMirrored && safeTop.isFinite && safeTop > 0
+      ? "Camera Dock" : "Camera Dock (top of display)"
   }
 }

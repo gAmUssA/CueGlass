@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T03:23:54Z
-updated_at: 2026-10-16T06:10:13Z
+updated_at: 2026-10-16T07:04:00Z
 ---
 
 User idea: offer an optional Dynamic Island-inspired presentation mode around or immediately below the Mac camera/notch so the presenter can read while maintaining eye contact with the audience. The owner has authorized an autonomous next-release prototype based on the accepted research.
@@ -45,3 +45,12 @@ Before release, verify safe-area placement, full-screen behavior, keyboard routi
 - [x] Implement against the accepted plan while preserving the macOS 14 minimum, shared PlaybackSession, Follow Voice and Timed Scrolling behavior, and the existing explicit microphone-consent boundary.
 - [x] Run repository build/test/format/Beans gates.
 - [ ] Complete M1–M12 hardware and runtime checks only after direct observation.
+
+
+## Developer correction (2026-10-16)
+
+- [x] Make repeated Camera Dock open requests idempotent and repeated closes safe; preserve the existing panel, playback snapshot, and anchor.
+- [x] Add deterministic placement, selected-display fallback, geometry-failure, preference, surface restoration, display callback/reconnect, accessibility, keyboard, adversarial source/import, timed playback, and Follow Voice/manual-takeover coverage.
+- [x] Confirm the second-open regression with a counterfactual run: the old close-on-second-open branch fails `cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe`; the restored idempotent guard passes.
+- [x] Run app build, core/native tests, strict Swift formatting, Beans consistency, and diff checks.
+- [ ] Complete M1–M12 direct notched-Mac hardware and macOS 14 runtime acceptance before release.

@@ -67,18 +67,18 @@ enum PrompterPlacement: Equatable {
   }
 
   init?(
-    cameraDockOn screen: NSScreen, controller: OperatorWindowController,
+    cameraDockOn display: DisplayDescriptor, controller: OperatorWindowController,
     preferences: CameraDockPreferences
   ) {
     placement = .cameraDock
     operatorController = controller
     dockPreferences = preferences.normalized()
-    let display = DisplayDescriptor.all().first { $0.screen == screen }
-    displayID = display?.id
-    displayUUID = display?.preference.uuid ?? screen.localizedName
+    let screen = display.screen
+    displayID = display.id
+    displayUUID = display.preference.uuid ?? screen.localizedName
     guard
       let geometry = Self.cameraDockGeometry(
-        screen: screen, preferences: dockPreferences, style: controller.state.style)
+        display: display, preferences: dockPreferences, style: controller.state.style)
     else { return nil }
     dockLocation = geometry.placement.location
     let window = PresentationPanel(
@@ -133,28 +133,17 @@ enum PrompterPlacement: Equatable {
   required init?(coder: NSCoder) { fatalError("Use an explicit presentation initializer") }
 
   private static func cameraDockGeometry(
-    screen: NSScreen, preferences: CameraDockPreferences, style: ReadingStyle
+    display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
   ) -> (placement: CameraDockPlacement, frame: CGRect, viewportSize: CGSize)? {
     guard
       let viewportHeight = CameraDockGeometry.viewportHeight(
         lineAdvance: PresentationFont.lineAdvance(style), lineCount: preferences.lineCount)
     else { return nil }
-    let isBuiltIn = DisplayDescriptor.all().first { $0.screen == screen }?.isBuiltIn == true
-    let safeTop = isBuiltIn ? Double(screen.safeAreaInsets.top) : 0
-    func coreRect(_ rect: CGRect?) -> CameraDockRect? {
-      guard let rect else { return nil }
-      return CameraDockRect(
-        x: Double(rect.minX), y: Double(rect.minY), width: Double(rect.width),
-        height: Double(rect.height))
-    }
     let viewportSize = CGSize(width: preferences.width, height: viewportHeight)
     let panelHeight = viewportHeight + 44
-    guard let screenFrame = coreRect(screen.frame),
-      let visibleFrame = coreRect(screen.visibleFrame),
+    guard
       let placement = CameraDockGeometry.placement(
-        screenFrame: screenFrame, visibleFrame: visibleFrame,
-        safeTop: safeTop, auxiliaryTopLeftArea: coreRect(screen.auxiliaryTopLeftArea),
-        auxiliaryTopRightArea: coreRect(screen.auxiliaryTopRightArea), isBuiltIn: isBuiltIn,
+        on: display.cameraDockParameters, isBuiltIn: display.isBuiltIn && !display.isMirrored,
         width: preferences.width, height: panelHeight, horizontalNudge: preferences.horizontalNudge)
     else { return nil }
     let frame = CGRect(
@@ -164,10 +153,10 @@ enum PrompterPlacement: Equatable {
   }
 
   @discardableResult func updateCameraDockPlacement(
-    on screen: NSScreen, preferences: CameraDockPreferences, style: ReadingStyle
+    on display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
   ) -> Bool {
     let priorSize = viewportSize
-    guard applyCameraDockPresentation(on: screen, preferences: preferences, style: style) else {
+    guard applyCameraDockPresentation(on: display, preferences: preferences, style: style) else {
       return false
     }
     if priorSize != viewportSize { operatorController?.cameraDockResized(to: viewportSize) }
@@ -176,23 +165,24 @@ enum PrompterPlacement: Equatable {
 
   @discardableResult func updateCameraDockPresentation(style: ReadingStyle) -> CGSize? {
     guard isCameraDock, let screen = window?.screen,
-      applyCameraDockPresentation(on: screen, preferences: dockPreferences, style: style)
+      let display = operatorController?.displayProvider().first(where: { $0.id == displayID })
+        ?? operatorController?.displayDescriptor(on: screen),
+      applyCameraDockPresentation(on: display, preferences: dockPreferences, style: style)
     else { return nil }
     return viewportSize
   }
 
   private func applyCameraDockPresentation(
-    on screen: NSScreen, preferences: CameraDockPreferences, style: ReadingStyle
+    on display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
   ) -> Bool {
     guard isCameraDock, let window,
-      let geometry = Self.cameraDockGeometry(screen: screen, preferences: preferences, style: style)
+      let geometry = Self.cameraDockGeometry(
+        display: display, preferences: preferences, style: style)
     else { return false }
     dockPreferences = preferences.normalized()
     dockLocation = geometry.placement.location
-    displayID = DisplayDescriptor.all().first { $0.screen == screen }?.id
-    displayUUID =
-      DisplayDescriptor.all().first { $0.screen == screen }?.preference.uuid
-      ?? screen.localizedName
+    displayID = display.id
+    displayUUID = display.preference.uuid ?? display.screen.localizedName
     window.setFrame(geometry.frame, display: true)
     root?.logicalSize = geometry.viewportSize
     return true
@@ -204,8 +194,8 @@ enum PrompterPlacement: Equatable {
   }
   func windowDidMove(_ notification: Notification) { saveFrame() }
   func windowDidChangeScreen(_ notification: Notification) {
-    if let screen = window?.screen {
-      displayID = DisplayDescriptor.all().first { $0.screen == screen }?.id
+    if !isCameraDock, let screen = window?.screen {
+      displayID = operatorController?.displayDescriptor(on: screen)?.id
     }
     if !isCameraDock { saveFrame() }
   }
@@ -345,8 +335,11 @@ struct FloatingGrip: View {
 struct CameraDockGrip: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
+  static let closeAccessibilityLabel = "Close Camera Dock"
+  static let playbackAccessibilityLabel = "Play or pause"
+  static let adjustAccessibilityLabel = "Adjust Camera Dock"
 
-  private var canPlay: Bool {
+  var canPlay: Bool {
     !controller.script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
@@ -358,7 +351,7 @@ struct CameraDockGrip: View {
         Image(systemName: "xmark")
       }
       .help("Return to the previous presentation surface · Escape")
-      .accessibilityLabel("Close Camera Dock")
+      .accessibilityLabel(Self.closeAccessibilityLabel)
 
       Button {
         controller.toggle()
@@ -370,7 +363,7 @@ struct CameraDockGrip: View {
       }
       .disabled(!canPlay)
       .help("Play or pause · Space")
-      .accessibilityLabel("Play or pause")
+      .accessibilityLabel(Self.playbackAccessibilityLabel)
 
       Text(statusText)
         .font(.system(size: 10, weight: .medium))
@@ -404,7 +397,7 @@ struct CameraDockGrip: View {
         Image(systemName: "slider.horizontal.3")
       }
       .help("Adjust Camera Dock width, visible lines, and horizontal position")
-      .accessibilityLabel("Adjust Camera Dock")
+      .accessibilityLabel(Self.adjustAccessibilityLabel)
     }
     .buttonStyle(.borderless)
     .controlSize(.small)
@@ -413,13 +406,19 @@ struct CameraDockGrip: View {
     .foregroundStyle(.primary)
   }
 
-  private var statusText: String {
+  var statusText: String {
     if controller.cameraDockCameraMayBeElsewhere {
       let status = state.running ? "Playing" : "Paused"
       return "\(status) · camera may be on another display"
     }
     if state.voiceActive && !state.voiceMessage.isEmpty { return state.voiceMessage }
     if state.running { return "Playing" }
+    if controller.session.snapshot?.attributed.string.trimmingCharacters(
+      in: .whitespacesAndNewlines
+    )
+    .isEmpty == true {
+      return "Ready"
+    }
     return controller.session.state == .idle ? "Ready" : "Paused · Space to resume"
   }
 }

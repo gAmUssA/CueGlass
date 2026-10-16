@@ -5,9 +5,43 @@ import CueFlowCore
   let screen: NSScreen
   let preference: DisplayPreference
   let id: CGDirectDisplayID
+  let isBuiltIn: Bool
+  let isMirrored: Bool
+  let cameraDockParameters: CameraDockScreenParameters
   var selectionKey: String { String(id) }
-  var isBuiltIn: Bool { CGDisplayIsBuiltin(id) != 0 }
-  var isMirrored: Bool { CGDisplayIsInMirrorSet(id) != 0 }
+
+  init(
+    screen: NSScreen, preference: DisplayPreference, id: CGDirectDisplayID,
+    isBuiltIn: Bool? = nil, isMirrored: Bool? = nil,
+    cameraDockParameters: CameraDockScreenParameters? = nil
+  ) {
+    self.screen = screen
+    self.preference = preference
+    self.id = id
+    self.isBuiltIn = isBuiltIn ?? (CGDisplayIsBuiltin(id) != 0)
+    self.isMirrored = isMirrored ?? (CGDisplayIsInMirrorSet(id) != 0)
+    self.cameraDockParameters =
+      cameraDockParameters
+      ?? Self.cameraDockParameters(for: screen, isBuiltIn: self.isBuiltIn)
+  }
+
+  private static func cameraDockParameters(
+    for screen: NSScreen, isBuiltIn: Bool
+  ) -> CameraDockScreenParameters {
+    func rect(_ value: CGRect) -> CameraDockRect {
+      CameraDockRect(
+        x: value.minX, y: value.minY, width: value.width, height: value.height)
+    }
+    func optionalRect(_ value: CGRect?) -> CameraDockRect? {
+      value.map(rect)
+    }
+    return CameraDockScreenParameters(
+      screenFrame: rect(screen.frame), visibleFrame: rect(screen.visibleFrame),
+      safeTop: isBuiltIn ? screen.safeAreaInsets.top : 0,
+      auxiliaryTopLeftArea: optionalRect(screen.auxiliaryTopLeftArea),
+      auxiliaryTopRightArea: optionalRect(screen.auxiliaryTopRightArea))
+  }
+
   static func all() -> [Self] {
     NSScreen.screens.compactMap { screen in
       guard

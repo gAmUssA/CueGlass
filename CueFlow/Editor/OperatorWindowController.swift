@@ -277,6 +277,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   private var disconnectedDisplayPreference: DisplayPreference?
   private var cameraDockPreferenceCatalog = CameraDockPreferenceCatalog()
   private var cameraDockReturnSurface: CameraDockReturnSurface?
+  var displayProvider: () -> [DisplayDescriptor] = { DisplayDescriptor.all() }
   var pendingPlay: Bool {
     get { session.deferredStart == .play }
     set {
@@ -1182,7 +1183,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     refresh()
   }
   @objc func screensChanged() {
-    let displays = DisplayDescriptor.all()
+    handleScreenParametersChanged(displayProvider())
+  }
+  func handleScreenParametersChanged(_ displays: [DisplayDescriptor]) {
     if let cameraDock, let displayUUID = cameraDock.displayUUID,
       let remapped = displays.first(where: {
         ($0.preference.uuid ?? $0.preference.name) == displayUUID
@@ -1195,7 +1198,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     if let cameraDock,
       let display = displays.first(where: { $0.id == cameraDock.displayID }),
       !cameraDock.updateCameraDockPlacement(
-        on: display.screen, preferences: cameraDock.dockPreferences, style: session.style)
+        on: display, preferences: cameraDock.dockPreferences, style: session.style)
     {
       cameraDockPlacementUnavailable()
     }
@@ -1226,7 +1229,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       state.status = "Output display disconnected — choose a display"
     }
   }
-  func refreshScreens(_ displays: [DisplayDescriptor] = DisplayDescriptor.all()) {
+  func refreshScreens(_ suppliedDisplays: [DisplayDescriptor]? = nil) {
+    let displays = suppliedDisplays ?? displayProvider()
     let preferences = displays.map(\.preference)
     let selectedPreference =
       displayPreferencesBySelectionKey[state.selectedDisplay] ?? disconnectedDisplayPreference
@@ -1418,10 +1422,7 @@ extension OperatorWindowController {
     "Camera Dock places a compact prompt below the Mac's camera safe area and never covers the camera housing. On other displays it uses the top-center position and assumes the camera is there. The prompt remains visible in screen recordings, and may overlap recording-app controls near the top of the screen. CueGlass does not access the camera or microphone for Camera Dock."
 
   var cameraDockMenuTitle: String {
-    if cameraDock?.dockLocation == .camera { return "Camera Dock" }
-    guard let display = cameraDockTarget(in: DisplayDescriptor.all()) else { return "Camera Dock" }
-    return display.isBuiltIn && display.screen.safeAreaInsets.top > 0
-      ? "Camera Dock" : "Camera Dock (top of display)"
+    cameraDockMenuTitle(for: displayProvider())
   }
 
   var selectedPresentationSurface: String {
@@ -1451,7 +1452,7 @@ extension OperatorWindowController {
 
   var cameraDockCameraMayBeElsewhere: Bool {
     guard let cameraDock, let displayID = cameraDock.displayID else { return false }
-    let connected = DisplayDescriptor.all()
+    let connected = displayProvider()
     guard connected.contains(where: { $0.id == displayID && !$0.isBuiltIn }) else { return false }
     return connected.contains(where: \.isBuiltIn)
   }
@@ -1469,14 +1470,12 @@ extension OperatorWindowController {
   }
 
   func showCameraDock() {
-    if cameraDock != nil {
-      hideOutput()
-      return
-    }
+    guard cameraDock == nil else { return }
     presentCameraDockExplainerIfNeeded()
     perform {
       try claimAndPrepare()
-      guard let display = cameraDockTarget(in: DisplayDescriptor.all()) else {
+      let displays = displayProvider()
+      guard let display = cameraDockTarget(in: displays) else {
         state.status = "No display is available for Camera Dock. Connect or select a display."
         return
       }
@@ -1486,7 +1485,7 @@ extension OperatorWindowController {
       state.cameraDockHorizontalNudge = preferences.horizontalNudge
       guard
         let next = FloatingPrompterWindowController(
-          cameraDockOn: display.screen, controller: self, preferences: preferences)
+          cameraDockOn: display, controller: self, preferences: preferences)
       else {
         state.status =
           "Camera Dock does not fit this display. Choose a larger display or reduce text size."
@@ -1666,7 +1665,20 @@ extension OperatorWindowController {
     }
   }
 
-  private func cameraDockTarget(in displays: [DisplayDescriptor]) -> DisplayDescriptor? {
+  func displayDescriptor(on screen: NSScreen) -> DisplayDescriptor? {
+    displayProvider().first { $0.screen == screen }
+  }
+
+  func cameraDockMenuTitle(for displays: [DisplayDescriptor]) -> String {
+    if cameraDock?.dockLocation == .camera { return "Camera Dock" }
+    guard let display = cameraDockTarget(in: displays) else { return "Camera Dock" }
+    return CameraDockDisplaySelection.menuTitle(
+      isBuiltIn: display.isBuiltIn && !display.isMirrored,
+      isMirrored: display.isMirrored,
+      safeTop: display.cameraDockParameters.safeTop)
+  }
+
+  func cameraDockTarget(in displays: [DisplayDescriptor]) -> DisplayDescriptor? {
     let candidates = displays.map {
       CameraDockDisplayCandidate(
         id: $0.selectionKey, isBuiltIn: $0.isBuiltIn, isMirrored: $0.isMirrored)
@@ -1685,8 +1697,9 @@ extension OperatorWindowController {
   }
 
   private func refreshCameraDockPreferencesForTarget(
-    displays: [DisplayDescriptor] = DisplayDescriptor.all()
+    displays suppliedDisplays: [DisplayDescriptor]? = nil
   ) {
+    let displays = suppliedDisplays ?? displayProvider()
     guard cameraDock == nil else { return }
     guard let display = cameraDockTarget(in: displays) else {
       state.cameraDockWidth = CameraDockGeometry.minimumWidth
@@ -1717,7 +1730,7 @@ extension OperatorWindowController {
     state.cameraDockWidth = normalized.width
     state.cameraDockLineCount = normalized.lineCount
     state.cameraDockHorizontalNudge = normalized.horizontalNudge
-    let displays = DisplayDescriptor.all()
+    let displays = displayProvider()
     let display =
       cameraDock.flatMap { dock in displays.first { $0.id == dock.displayID } }
       ?? cameraDockTarget(in: displays)
@@ -1725,7 +1738,7 @@ extension OperatorWindowController {
     persistCameraDockPreferences(normalized, for: display)
     if let cameraDock,
       !cameraDock.updateCameraDockPlacement(
-        on: display.screen, preferences: normalized, style: session.style)
+        on: display, preferences: normalized, style: session.style)
     {
       cameraDockPlacementUnavailable()
     }
@@ -1755,8 +1768,8 @@ extension OperatorWindowController {
   func resetCameraDockPreferences() {
     guard
       let display = cameraDock.flatMap({ dock in
-        DisplayDescriptor.all().first { $0.id == dock.displayID }
-      }) ?? cameraDockTarget(in: DisplayDescriptor.all())
+        displayProvider().first { $0.id == dock.displayID }
+      }) ?? cameraDockTarget(in: displayProvider())
     else { return }
     setCameraDockPreference(.defaults(screenWidth: Double(display.screen.frame.width)))
   }
