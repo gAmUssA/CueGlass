@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-16T18:28:24Z
-updated_at: 2026-10-16T19:08:42Z
+updated_at: 2026-10-16T19:16:43Z
 parent: cueglass-wky0
 ---
 
@@ -40,5 +40,7 @@ The owner likes Sapphire’s integrated notch treatment. Sapphire and another.no
 - [x] Infer the safe-band height only from a valid, paired, top-aligned auxiliary-area set when `safeAreaInsets.top` is zero; retain the explicit fallback for incomplete/misaligned values.
 - [x] Keep the editor stage as the live prompt preview; move the placement map into the Camera Dock inspector disclosure.
 - [x] Run the full 96-test Core and 130-test native suites, strict formatting, `git diff --check`, and Bean validation.
-- [ ] Build and share the fresh DebugLocal test app.
+- [x] Build and share the fresh DebugLocal test app.
 - [ ] Owner checks notch blend, text/control clearance, and editor preview on the physical MacBook.
+
+Fresh artifact: `CueGlass/CueGlass-0.2.0-Camera-Dock-Notch-30acc42-UNSIGNED-UNNOTARIZED.zip` in iCloud Drive; SHA-256 `476e4730df54de0ddab8923a1ea86a322fad3796f988f2f8ed98d5e2815adbf7`. The archive and copied checksum passed verification. Minimum macOS is 14.0. Physical MacBook notch/preview confirmation remains open.
