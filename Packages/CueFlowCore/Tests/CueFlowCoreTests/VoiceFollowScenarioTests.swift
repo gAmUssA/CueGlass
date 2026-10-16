@@ -75,6 +75,35 @@ private func displays(_ result: ReplayResult, from start: Double, to end: Double
       hypothesis: words, allowDiscontinuities: true, reevaluateUnchangedHypothesis: true)
     #expect(finalized == .jump(from: 0, to: distantStart + words.count - 1))
   }
+
+  @Test func nearbyRepeatedPhrasesAreCompetingReacquisitionLocations() {
+    let phrase = "amber light crosses quiet water"
+    let index = ScriptIndex(
+      text: "Opening words establish the current passage. "
+        + String(repeating: "distant filler moves beyond the window. ", count: 5)
+        + phrase + " " + phrase + " closing words end the passage.")
+    var policy = FollowPolicy(script: index)
+    policy.resume(at: 0, now: 0)
+
+    let unrelated = "quartz xylophone nebula cobalt saffron kestrel vellum zircon"
+      .split(separator: " ").enumerated().map { offset, word in
+        RecognizedWord(
+          text: String(word), start: Double(offset), end: Double(offset) + 0.2)
+      }
+    _ = policy.update(hypothesis: unrelated)
+    #expect(policy.confidence == .lost)
+
+    let repeated = phrase.split(separator: " ").enumerated().map {
+      offset, word in
+      RecognizedWord(
+        text: String(word), start: 10 + Double(offset), end: 10 + Double(offset) + 0.2)
+    }
+    let decision = policy.update(hypothesis: repeated)
+
+    if case .jump = decision { Issue.record("ambiguous repeated phrase caused a unique jump") }
+    #expect(policy.position == 0)
+    #expect(decision == .hold(.lost) || decision == .hold(.mismatch))
+  }
 }
 
 @Suite struct EvaluationTests {

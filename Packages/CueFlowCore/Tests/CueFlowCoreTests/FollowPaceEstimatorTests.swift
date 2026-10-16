@@ -40,4 +40,24 @@ import Testing
     let recovery = estimator.observe(position: 100, at: 5)
     #expect(recovery != nil && recovery! >= 40 && recovery! < 42)
   }
+
+  @Test func sameLineWordsKeepTheAnchorUntilAUsableLineChange() {
+    var estimator = FollowPaceEstimator(baselineVelocity: 40, maximumVelocity: 240)
+    estimator.reset(anchorPosition: 0, at: 0)
+
+    #expect(estimator.observe(position: 0, at: 1) == nil)
+    #expect(estimator.observe(position: 0, at: 2) == nil)
+    #expect(estimator.observe(position: 80, at: 3) == 40)
+  }
+
+  @Test func subThresholdSamplesAccumulateFromTheLastUsableAnchor() {
+    var estimator = FollowPaceEstimator(baselineVelocity: 40, maximumVelocity: 240)
+    estimator.reset(anchorPosition: 0, at: 0)
+
+    #expect(estimator.observe(position: 20, at: 0.1) == nil)
+    #expect(estimator.observe(position: 40, at: 0.15) == nil)
+    let speed = estimator.observe(position: 80, at: 0.25)
+
+    #expect(speed != nil && speed! > 40 && speed! <= 56)
+  }
 }

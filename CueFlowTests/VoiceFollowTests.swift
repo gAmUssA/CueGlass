@@ -24,6 +24,29 @@ import Testing
   #expect(!gate.acceptsCallback(replacement))
 }
 
+@MainActor @Test func manualOverrideInvalidatesAnAwaitingCommandPauseContinuation() throws {
+  let doc = ScriptDocument()
+  doc.source = NSAttributedString(string: "North wind carries the lantern home.")
+  let session = PlaybackSession()
+  try session.prepare(doc)
+  try session.beginVoice(epoch: 4)
+  let pauseEpoch = session.voiceEpoch
+
+  #expect(
+    CommandPauseCompletionGuard.isCurrent(
+      expectedEpoch: pauseEpoch, sessionEpoch: session.voiceEpoch,
+      voiceSessionActive: session.voiceSessionActive, voiceSuspended: session.voiceSuspended,
+      commandPausePending: true))
+  try session.seek(90)
+
+  #expect(session.voiceSessionActive && session.voiceSuspended)
+  #expect(
+    !CommandPauseCompletionGuard.isCurrent(
+      expectedEpoch: pauseEpoch, sessionEpoch: session.voiceEpoch,
+      voiceSessionActive: session.voiceSessionActive, voiceSuspended: session.voiceSuspended,
+      commandPausePending: true))
+}
+
 @available(macOS 26.0, *)
 private final class AudioTapInvocation: @unchecked Sendable {
   private let handler: SpeechAudioTapHandler
@@ -773,6 +796,41 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(source.startCount == 0)
   }
 
+  @Test func followVoiceSupersedesPlayQueuedDuringMeasurement() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(
+      string: (0..<200).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
+        separator: "\n"))
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    controller.session.clock = { 0 }
+    controller.state.countdown = 0
+    controller.voiceCoordinator?.stop()
+    let source = FakeVoiceCaptureSource()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    microphone.requestShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.toggle()
+    #expect(controller.session.measuring && controller.pendingPlay)
+    controller.startVoiceFollow()
+
+    #expect(!controller.pendingPlay && !controller.pendingResume)
+    #expect(controller.pendingTimedDuration == nil)
+    await settle(controller)
+    await microphone.waitForRequest()
+
+    #expect(source.startCount == 0)
+    #expect(!controller.session.timeline.running)
+    microphone.completeRequest(true)
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    coordinator.stop()
+  }
+
   @Test func startingFollowVoicePausesAnExistingTakeBeforePermissionWait() async throws {
     let doc = ScriptDocument()
     doc.source = NSAttributedString(string: "North wind carries the lantern home.")
@@ -1026,6 +1084,43 @@ private struct FakeSpeechAssetError: LocalizedError {
 
     #expect(session.timeline.velocity > baseline)
     #expect(session.timeline.velocity <= baseline * 1.4)
+    coordinator.stop()
+  }
+
+  @Test func earlyFinalizationCannotPairItsTimeWithLaterVolatilePosition() async throws {
+    let text = "North\nwind\ncarries\nthe\nlantern\nhome."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let index = ScriptIndex(text: text)
+    let lineTable = VoiceLineTable(
+      lines: index.tokens.enumerated().map { offset, token in
+        let y = offset < 3 ? Double(offset) : Double(offset - 2) * 1000 + 2
+        return VoiceLine(utf16Range: token.range, minY: y)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let baseline = session.nominalVelocity
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+
+    source.send(
+      transcript(
+        "North wind carries the lantern home", startingAt: 3, isFinal: false,
+        finalizedThrough: 3.7))
+    for _ in 0..<200 where session.timeline.voiceCeiling != 3002 {
+      await Task.yield()
+      await mainTurn()
+    }
+    #expect(session.timeline.voiceCeiling == 3002)
+
+    #expect(session.timeline.velocity == baseline)
     coordinator.stop()
   }
 

@@ -97,6 +97,30 @@ public enum Aligner {
       }
     }
     guard let end = bestCell else { return nil }
+
+    func matchedScriptSpan(queryRow: Int, scriptColumn: Int) -> Range<Int> {
+      var row = queryRow
+      var column = scriptColumn
+      var lower = column
+      var upper = column
+      while row > 0, column > 0, h[row * width + column] > 0 {
+        let cell = row * width + column
+        switch move[cell] {
+        case 1:
+          if matchedCell[cell] {
+            lower = min(lower, column)
+            upper = max(upper, column)
+          }
+          row -= 1
+          column -= 1
+        case 2: row -= 1
+        case 3: column -= 1
+        default: return (lo + lower - 1)..<(lo + upper)
+        }
+      }
+      return (lo + lower - 1)..<(lo + upper)
+    }
+
     var i = end.i
     var j = end.j
     var matches = 0
@@ -121,10 +145,16 @@ public enum Aligner {
       default: i = 0
       }
     }
-    let exclusion = m + 2
     var runnerUp = 0
-    for j in 1...n where abs(j - end.j) > exclusion && matchedCell[end.i * width + j] {
-      runnerUp = max(runnerUp, h[end.i * width + j])
+    let bestSpan = (lo + start.j - 1)..<(lo + end.j)
+    for candidateColumn in 1...n where matchedCell[end.i * width + candidateColumn] {
+      let candidateSpan = matchedScriptSpan(queryRow: end.i, scriptColumn: candidateColumn)
+      let isAlternativePathThroughBestOccurrence =
+        candidateSpan.lowerBound >= bestSpan.lowerBound
+        && candidateSpan.upperBound <= bestSpan.upperBound
+      if !isAlternativePathThroughBestOccurrence {
+        runnerUp = max(runnerUp, h[end.i * width + candidateColumn])
+      }
     }
     return AlignmentCandidate(
       scriptStart: lo + start.j - 1, scriptEnd: lo + end.j - 1,

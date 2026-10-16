@@ -115,8 +115,11 @@ public struct TranscriptAccumulator: Sendable {
   }
 
   private mutating func appendFinalized(_ words: [RecognizedWord]) {
+    // Compare every incoming word with the state from before this batch. Speech can put several
+    // word attributes on the same audio range; appending the first one must not suppress the rest.
+    let previouslyFinalized = finalized
     for word in words
-    where !finalized.contains(where: {
+    where !previouslyFinalized.contains(where: {
       $0.start < word.end - Self.epsilon && $0.end > word.start + Self.epsilon
     }) {
       finalized.append(word)

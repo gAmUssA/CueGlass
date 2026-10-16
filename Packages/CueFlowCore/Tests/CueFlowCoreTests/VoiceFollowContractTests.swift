@@ -116,3 +116,23 @@ import Testing
       finalizedThrough: 0.6))
   #expect(accumulator.finalized == words)
 }
+
+@Test func transcriptBatchesPreserveDistinctWordsSharingOneAudioRange() {
+  var accumulator = TranscriptAccumulator()
+  let words = ["steady", "hands", "forward"].map {
+    RecognizedWord(text: $0, start: 0.2, end: 0.9)
+  }
+
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: false, rangeStart: 0.2, rangeEnd: 0.9, availableAt: 1.0, words: words,
+      finalizedThrough: 0.9))
+  #expect(accumulator.finalized == words)
+  #expect(accumulator.volatile.isEmpty)
+
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: true, rangeStart: 0.2, rangeEnd: 0.9, availableAt: 1.1, words: words,
+      finalizedThrough: 0.9))
+  #expect(accumulator.finalized == words)
+}

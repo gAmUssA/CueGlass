@@ -78,11 +78,24 @@ private struct VoiceDecisionEvent: Sendable {
   let decision: FollowDecision
   let speechTime: Double?
   let progressIndex: Int
+  /// Script position advanced by finalized speech alone; pace must never pair a final timestamp
+  /// with the speculative position reached by the volatile part of a transcript.
+  let paceProgressIndex: Int?
+}
+
+enum CommandPauseCompletionGuard {
+  static func isCurrent(
+    expectedEpoch: UInt64, sessionEpoch: UInt64, voiceSessionActive: Bool,
+    voiceSuspended: Bool, commandPausePending: Bool
+  ) -> Bool {
+    expectedEpoch == sessionEpoch && voiceSessionActive && !voiceSuspended && commandPausePending
+  }
 }
 
 private actor VoiceAlignmentWorker {
   private var accumulator = TranscriptAccumulator()
   private var policy: FollowPolicy
+  private var pacePolicy: FollowPolicy
   private let epoch: UInt64
   private var finalizationWatermark = -Double.infinity
   private var finalizedSpeechTime = -Double.infinity
@@ -91,6 +104,7 @@ private actor VoiceAlignmentWorker {
     var next = FollowPolicy(script: script)
     next.resume(at: tokenIndex, now: 0)
     policy = next
+    pacePolicy = next
     self.epoch = epoch
   }
 
@@ -106,14 +120,25 @@ private actor VoiceAlignmentWorker {
       hypothesis: accumulator.hypothesis,
       allowDiscontinuities: accumulator.volatile.isEmpty,
       reevaluateUnchangedHypothesis: watermarkAdvanced)
+    let paceDecision = pacePolicy.update(hypothesis: accumulator.finalized)
     let speechTime = accumulator.finalized.lazy
       .filter { $0.end > self.finalizedSpeechTime }
       .map(\.end)
       .max()
     if let speechTime { finalizedSpeechTime = max(finalizedSpeechTime, speechTime) }
     guard decision != .none || speechTime != nil else { return nil }
+    let paceProgressIndex: Int?
+    if speechTime != nil {
+      switch paceDecision {
+      case .advance, .jump: paceProgressIndex = pacePolicy.position
+      case .none, .hold: paceProgressIndex = nil
+      }
+    } else {
+      paceProgressIndex = nil
+    }
     return VoiceDecisionEvent(
-      epoch: epoch, decision: decision, speechTime: speechTime, progressIndex: policy.position)
+      epoch: epoch, decision: decision, speechTime: speechTime, progressIndex: policy.position,
+      paceProgressIndex: paceProgressIndex)
   }
 
   func tick(now: Double, epoch candidate: UInt64) -> VoiceDecisionEvent? {
@@ -122,12 +147,14 @@ private actor VoiceAlignmentWorker {
     return decision == .none
       ? nil
       : VoiceDecisionEvent(
-        epoch: epoch, decision: decision, speechTime: nil, progressIndex: policy.position)
+        epoch: epoch, decision: decision, speechTime: nil, progressIndex: policy.position,
+        paceProgressIndex: nil)
   }
 
   func clear() {
     accumulator.clear()
     policy = FollowPolicy(script: policy.script)
+    pacePolicy = FollowPolicy(script: policy.script)
     finalizationWatermark = -Double.infinity
     finalizedSpeechTime = -Double.infinity
   }
@@ -135,6 +162,7 @@ private actor VoiceAlignmentWorker {
   func pauseForCommand() {
     accumulator.clear()
     policy.suspend()
+    pacePolicy.suspend()
     finalizationWatermark = -Double.infinity
     finalizedSpeechTime = -Double.infinity
   }
@@ -144,6 +172,8 @@ private actor VoiceAlignmentWorker {
     accumulator.clear()
     policy = FollowPolicy(script: policy.script, config: policy.config)
     policy.resume(at: position, now: now)
+    pacePolicy = FollowPolicy(script: policy.script, config: policy.config)
+    pacePolicy.resume(at: position, now: now)
     finalizationWatermark = -Double.infinity
     finalizedSpeechTime = -Double.infinity
   }
@@ -641,6 +671,12 @@ private actor VoiceAlignmentWorker {
       commandPaused = true
       commandPauseAudioTime = max(event.rangeEnd, event.words.last?.end ?? 0)
       await worker.pauseForCommand()
+      guard
+        CommandPauseCompletionGuard.isCurrent(
+          expectedEpoch: streamEpoch, sessionEpoch: session.voiceEpoch,
+          voiceSessionActive: session.voiceSessionActive,
+          voiceSuspended: session.voiceSuspended, commandPausePending: commandPaused)
+      else { return }
       session.pauseVoiceForCommand(epoch: streamEpoch)
       state = .commandPaused
     case .resume:
@@ -700,7 +736,7 @@ private actor VoiceAlignmentWorker {
         guard scriptIndex.tokens.indices.contains(index),
           let y = lineTable.y(for: scriptIndex.tokens[index])
         else { return }
-        let velocity = result.speechTime.flatMap { paceEstimator?.observe(position: y, at: $0) }
+        let velocity = paceVelocity(for: result)
         try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
         state = .listening
       case .jump(_, let index):
@@ -719,12 +755,20 @@ private actor VoiceAlignmentWorker {
           scriptIndex.tokens.indices.contains(result.progressIndex),
           let y = lineTable.y(for: scriptIndex.tokens[result.progressIndex])
         else { break }
-        let velocity = result.speechTime.flatMap { paceEstimator?.observe(position: y, at: $0) }
+        let velocity = paceVelocity(for: result)
         try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
       }
     } catch {
       captureFailed("Follow Voice stopped: \(error.localizedDescription)", epoch: epoch)
     }
+  }
+
+  private func paceVelocity(for result: VoiceDecisionEvent) -> Double? {
+    guard let index = result.paceProgressIndex, let speechTime = result.speechTime,
+      let scriptIndex, let lineTable, scriptIndex.tokens.indices.contains(index),
+      let y = lineTable.y(for: scriptIndex.tokens[index])
+    else { return nil }
+    return paceEstimator?.observe(position: y, at: speechTime)
   }
 
   private func captureFailed(_ message: String, epoch failedEpoch: UInt64) {

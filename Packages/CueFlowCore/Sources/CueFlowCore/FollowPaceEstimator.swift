@@ -46,10 +46,11 @@ public struct FollowPaceEstimator: Sendable {
 
     let duration = time - previousTime
     let distance = position - previousPosition
-    guard duration > 0 else { return nil }
+    // Several words can share one visual line and therefore one Y coordinate. Keep the last
+    // useful line/time anchor until confirmed forward movement spans a measurable interval.
+    guard duration >= 0.2, distance > 0 else { return nil }
     self.previousPosition = position
     self.previousTime = time
-    guard distance > 0 else { return nil }
 
     let cap = min(maximumVelocity, baselineVelocity * maximumMultiplier)
     if duration > 4 {
@@ -58,8 +59,6 @@ public struct FollowPaceEstimator: Sendable {
       filteredVelocity = min(cap, max(baselineVelocity, eased))
       return filteredVelocity
     }
-    guard duration >= 0.2 else { return nil }
-
     let measured = distance / duration
     guard measured.isFinite else { return nil }
     let desired = min(cap, max(baselineVelocity, measured * leadFactor))

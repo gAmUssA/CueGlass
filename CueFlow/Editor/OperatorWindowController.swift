@@ -721,6 +721,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       present(error)
       return
     }
+    // Follow Voice supersedes actions queued during measurement; otherwise they are replayed
+    // first when measurement completes and can invalidate the new voice-start intent.
+    pendingPlay = false
+    pendingResume = false
+    pendingTimedDuration = nil
     guard let intent = session.beginVoiceStartIntent() else { return }
     let request = PendingVoiceRequest(intent: intent, resume: resume)
     if session.measuring {
