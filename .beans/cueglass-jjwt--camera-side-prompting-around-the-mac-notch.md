@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T03:23:54Z
-updated_at: 2026-10-16T12:07:12Z
+updated_at: 2026-10-16T14:43:51Z
 ---
 
 User idea: offer an optional Dynamic Island-inspired presentation mode around or immediately below the Mac camera/notch so the presenter can read while maintaining eye contact with the audience. The owner has authorized an autonomous next-release prototype based on the accepted research.
@@ -79,3 +79,14 @@ Review evidence: `/Users/vikgamov/.local/state/cueglass/notch-r2/correction1/ver
 - [x] Capture the Timed Scrolling target and finish before the surface switch; verify target/duration and finish within 1e-6 seconds after switching, resuming measurement, and resizing.
 - [x] Update implementation-status test counts and native pass claims from the exact green run.
 - [x] Run focused regressions and all repository gates, then push the corrected branch.
+
+
+## Correction round 5 — failed Camera Dock open preserves state (2026-10-16)
+
+- [x] Resolve the display target and verify a Camera Dock panel can be constructed before claiming presentation ownership or preparing an idle PlaybackSession.
+- [x] On no-display and does-not-fit failures, preserve an idle session, the pre-existing presentation owner/surface, and per-display placement preferences; keep the existing persistent status copy.
+- [x] Preserve any already non-idle session unchanged on either failed-first-open path; do not pause or start playback.
+- [x] Add deterministic regression coverage for both failure guards, session state, owner/surface, preferences, persistent notices, and refresh behavior.
+- [ ] Run the required build, Core/native tests, formatting, Beans, and diff checks; commit and push this bounded correction.
+- [ ] Pass scoped re-check of this finding and fresh full reviewer/tester verification on the corrected tip.
+- [ ] Complete M1–M12 direct hardware/macOS 14 runtime acceptance before release.

@@ -1485,16 +1485,12 @@ extension OperatorWindowController {
     guard cameraDock == nil else { return }
     presentCameraDockExplainerIfNeeded()
     perform {
-      try claimAndPrepare()
       let displays = displayProvider()
       guard let display = cameraDockTarget(in: displays) else {
         setPersistentStatus("No display is available for Camera Dock. Connect or select a display.")
         return
       }
       let preferences = cameraDockPreferences(for: display)
-      state.cameraDockWidth = preferences.width
-      state.cameraDockLineCount = preferences.lineCount
-      state.cameraDockHorizontalNudge = preferences.horizontalNudge
       guard
         let next = FloatingPrompterWindowController(
           cameraDockOn: display, controller: self, preferences: preferences)
@@ -1504,6 +1500,11 @@ extension OperatorWindowController {
         )
         return
       }
+
+      try claimAndPrepare()
+      state.cameraDockWidth = preferences.width
+      state.cameraDockLineCount = preferences.lineCount
+      state.cameraDockHorizontalNudge = preferences.horizontalNudge
 
       let previous: CameraDockReturnSurface =
         output != nil

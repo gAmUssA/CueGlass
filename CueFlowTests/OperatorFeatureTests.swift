@@ -58,6 +58,9 @@ import Testing
       DispatchQueue.main.async { continuation.resume() }
     }
   }
+  private func presentationWindowIDs() -> Set<ObjectIdentifier> {
+    Set(NSApp.windows.compactMap { $0 as? PresentationPanel }.map { ObjectIdentifier($0) })
+  }
   private func awaitVoiceUpdate(
     _ coordinator: VoiceFollowCoordinator, matching condition: @escaping () -> Bool,
     label: String, timeoutTurns: Int = 2_000, perform action: @escaping () -> Void
@@ -1407,6 +1410,177 @@ import Testing
     #expect(
       fitController.state.status
         == "Camera Dock does not fit this display. Choose a larger display or reduce text size.")
+  }
+
+  @Test func cameraDockFailedFirstOpenPreservesIdleStateAndPreferences() async throws {
+    PresentationCoordinator.shared.owner?.stop()
+    let preferenceKey = "cameraDockPreferences"
+    let priorPreferences = UserDefaults.standard.data(forKey: preferenceKey)
+    defer {
+      if let priorPreferences {
+        UserDefaults.standard.set(priorPreferences, forKey: preferenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: preferenceKey)
+      }
+    }
+    let displayUUID = "failed-first-open-display"
+    var catalog = CameraDockPreferenceCatalog()
+    catalog.set(
+      CameraDockPreferences(width: 620, lineCount: 5, horizontalNudge: 75),
+      forDisplayUUID: displayUUID)
+    let savedPreferences = try JSONEncoder().encode(catalog)
+    UserDefaults.standard.set(savedPreferences, forKey: preferenceKey)
+
+    let screen = try #require(NSScreen.screens.first)
+    let base = dockParameters(for: screen)
+    let tooShort = CameraDockScreenParameters(
+      screenFrame: base.screenFrame,
+      visibleFrame: CameraDockRect(
+        x: base.visibleFrame.x, y: base.visibleFrame.y, width: base.visibleFrame.width,
+        height: 100),
+      safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    let display = syntheticDisplay(
+      screen: screen, id: 702, uuid: displayUUID, parameters: tooShort)
+
+    func checkFailure(display: DisplayDescriptor?, notice: String) async throws {
+      let document = ScriptDocument()
+      document.source = NSAttributedString(string: "An idle take must remain idle.")
+      let controller = OperatorWindowController(document: document)
+      defer {
+        controller.stop()
+        controller.close()
+      }
+      controller.session.clock = { 0 }
+      controller.displayProvider = { display.map { [$0] } ?? [] }
+      if let display { controller.state.selectedDisplay = display.selectionKey }
+      controller.state.cameraDockWidth = 470
+      controller.state.cameraDockLineCount = 2
+      controller.state.cameraDockHorizontalNudge = -35
+
+      #expect(controller.session.state == .idle)
+      #expect(PresentationCoordinator.shared.owner == nil)
+      let windowsBefore = presentationWindowIDs()
+      controller.showCameraDock()
+
+      #expect(controller.session.state == .idle)
+      #expect(controller.session.snapshot == nil)
+      #expect(PresentationCoordinator.shared.owner == nil)
+      #expect(presentationWindowIDs() == windowsBefore)
+      #expect(controller.selectedPresentationSurface == "preview")
+      #expect(controller.output == nil)
+      #expect(controller.floating == nil)
+      #expect(controller.cameraDock == nil)
+      #expect(controller.state.cameraDockWidth == 470)
+      #expect(controller.state.cameraDockLineCount == 2)
+      #expect(controller.state.cameraDockHorizontalNudge == -35)
+      #expect(UserDefaults.standard.data(forKey: preferenceKey) == savedPreferences)
+      #expect(controller.state.status == notice)
+      controller.refresh()
+      #expect(controller.state.status == notice)
+      #expect(controller.session.state == .idle)
+      #expect(PresentationCoordinator.shared.owner == nil)
+    }
+
+    try await checkFailure(
+      display: nil,
+      notice: "No display is available for Camera Dock. Connect or select a display.")
+    try await checkFailure(
+      display: display,
+      notice: "Camera Dock does not fit this display. Choose a larger display or reduce text size.")
+  }
+
+  @Test func cameraDockFailedFirstOpenPreservesRunningFloatingSurface() async throws {
+    PresentationCoordinator.shared.owner?.stop()
+    let preferenceKey = "cameraDockPreferences"
+    let priorPreferences = UserDefaults.standard.data(forKey: preferenceKey)
+    defer {
+      if let priorPreferences {
+        UserDefaults.standard.set(priorPreferences, forKey: preferenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: preferenceKey)
+      }
+    }
+    let displayUUID = "failed-running-open-display"
+    var catalog = CameraDockPreferenceCatalog()
+    catalog.set(
+      CameraDockPreferences(width: 620, lineCount: 5, horizontalNudge: 75),
+      forDisplayUUID: displayUUID)
+    let savedPreferences = try JSONEncoder().encode(catalog)
+    UserDefaults.standard.set(savedPreferences, forKey: preferenceKey)
+
+    let screen = try #require(NSScreen.screens.first)
+    let base = dockParameters(for: screen)
+    let tooShort = CameraDockScreenParameters(
+      screenFrame: base.screenFrame,
+      visibleFrame: CameraDockRect(
+        x: base.visibleFrame.x, y: base.visibleFrame.y, width: base.visibleFrame.width,
+        height: 100),
+      safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    let display = syntheticDisplay(
+      screen: screen, id: 703, uuid: displayUUID, parameters: tooShort)
+
+    func checkFailure(display: DisplayDescriptor?, notice: String) async throws {
+      let controller = try await prepared(20)
+      defer {
+        controller.stop()
+        controller.close()
+      }
+      controller.displayProvider = { display.map { [$0] } ?? [] }
+      if let display { controller.state.selectedDisplay = display.selectionKey }
+      controller.showFloating()
+      let floating = try #require(controller.floating)
+      let window = try #require(floating.window)
+      floating.reflection.viewport.driver?.stop()
+      floating.reflection.viewport.driver = nil
+      await settle(controller)
+
+      controller.session.clock = { 0 }
+      controller.session.countdownSeconds = 0
+      try controller.session.toggle(controller.script)
+      #expect(controller.session.state == .running)
+      #expect(PresentationCoordinator.shared.owner === controller)
+      let snapshotID = try #require(controller.session.snapshot?.id)
+      let position = controller.session.timeline.anchorPosition
+      let elapsed = controller.session.elapsedSeconds
+      let remaining = controller.session.remainingSeconds
+      controller.state.cameraDockWidth = 470
+      controller.state.cameraDockLineCount = 2
+      controller.state.cameraDockHorizontalNudge = -35
+      let windowsBefore = presentationWindowIDs()
+
+      controller.showCameraDock()
+
+      #expect(controller.session.state == .running)
+      #expect(controller.session.snapshot?.id == snapshotID)
+      #expect(controller.session.timeline.anchorPosition == position)
+      #expect(controller.session.elapsedSeconds == elapsed)
+      #expect(controller.session.remainingSeconds == remaining)
+      #expect(PresentationCoordinator.shared.owner === controller)
+      #expect(presentationWindowIDs() == windowsBefore)
+      #expect(controller.floating === floating)
+      #expect(floating.window === window)
+      #expect(window.isVisible)
+      #expect(controller.output == nil)
+      #expect(controller.cameraDock == nil)
+      #expect(controller.selectedPresentationSurface == "floating")
+      #expect(controller.state.cameraDockWidth == 470)
+      #expect(controller.state.cameraDockLineCount == 2)
+      #expect(controller.state.cameraDockHorizontalNudge == -35)
+      #expect(UserDefaults.standard.data(forKey: preferenceKey) == savedPreferences)
+      #expect(controller.state.status == notice)
+      controller.refresh()
+      #expect(controller.state.status == notice)
+      #expect(controller.session.state == .running)
+      #expect(PresentationCoordinator.shared.owner === controller)
+      #expect(controller.floating === floating)
+    }
+
+    try await checkFailure(
+      display: nil,
+      notice: "No display is available for Camera Dock. Connect or select a display.")
+    try await checkFailure(
+      display: display,
+      notice: "Camera Dock does not fit this display. Choose a larger display or reduce text size.")
   }
 
   @Test func cameraDockCommandWithoutDocumentDoesNotOpenDocumentPicker() throws {
