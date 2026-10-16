@@ -1,7 +1,15 @@
 import AppKit
 import CueFlowCore
 import QuartzCore
+import Speech
 import SwiftUI
+
+struct VoiceFollowPlatformCapability: Equatable {
+  let majorVersion: Int
+  let speechTranscriberAvailable: Bool
+
+  var allowsVoiceFollow: Bool { majorVersion >= 26 && speechTranscriberAvailable }
+}
 
 @MainActor final class OperatorState: ObservableObject {
   @Published var status = "Ready"
@@ -27,6 +35,13 @@ import SwiftUI
   @Published var active = false
   @Published var running = false
   @Published var pending = false
+  @Published var voiceAvailable = false
+  @Published var voiceState: VoiceFollowUIState = .hidden
+  @Published var voiceLocales: [VoiceLocaleOption] = []
+  @Published var voiceLocale = ""
+  @Published var voiceActive = false
+  @Published var voiceSuspended = false
+  @Published var voiceMessage = ""
 }
 @MainActor final class OperatorWindow: NSWindow {
   weak var controller: OperatorWindowController?
@@ -220,6 +235,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   let script: ScriptDocument
   let state = OperatorState()
   let session = PlaybackSession()
+  var voiceCoordinator: VoiceFollowCoordinator?
   let editor = DropEditor(usingTextLayoutManager: true)
   let preview = ScaledPreviewContainer(frame: .zero)
   var output: OutputWindowController?
@@ -268,9 +284,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var lastPointer = NSEvent.mouseLocation
 
   private var replacingEditor = false
+  private struct PendingVoiceRequest {
+    let intent: VoiceStartIntent
+    let resume: Bool
+  }
+  private var pendingVoiceRequest: PendingVoiceRequest?
   private var sample: ScriptSnapshot?
-  init(document: ScriptDocument) {
+  private let voiceCapability: VoiceFollowPlatformCapability
+
+  init(document: ScriptDocument, voiceCapabilityOverride: VoiceFollowPlatformCapability? = nil) {
     script = document
+    voiceCapability = voiceCapabilityOverride ?? Self.currentVoiceCapability()
     let window = OperatorWindow(
       contentRect: NSRect(x: 100, y: 100, width: 1280, height: 800),
       styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -369,7 +393,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     NSLayoutConstraint.activate([
       bar.topAnchor.constraint(equalTo: stageView.safeAreaLayoutGuide.topAnchor),
       bar.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
-      bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
+      // Keep the readout clear of the inspector split column's native divider,
+      // which can extend several points into the stage on newer macOS releases.
+      bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor, constant: -8),
       bar.heightAnchor.constraint(equalToConstant: 56),
       footer.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
       footer.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
@@ -436,6 +462,19 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       viewport: preview.reflection.viewport, session: session)
     preview.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
     session.onChange = { [weak self] in self?.refresh() }
+    if #available(macOS 26.0, *), voiceCapability.allowsVoiceFollow {
+      let coordinator = VoiceFollowCoordinator(
+        session: session, source: SpeechVoiceSource(),
+        usageDescription: {
+          Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") as? String
+        })
+      voiceCoordinator = coordinator
+      state.voiceAvailable = true
+      coordinator.onChange = { [weak self] in self?.syncVoiceState() }
+      coordinator.onStopFollowing = { [weak self] in self?.stopVoiceFollow() }
+      coordinator.onStopTake = { [weak self] in self?.stop() }
+      Task { await coordinator.refreshAvailability() }
+    }
     NotificationCenter.default.addObserver(
       self, selector: #selector(documentChanged), name: ScriptDocument.replaced, object: script)
     NotificationCenter.default.addObserver(
@@ -463,12 +502,33 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     Task { await script.refreshCloudStatus() }
   }
   required init?(coder: NSCoder) { fatalError("Use init(document:)") }
+
+  private static func currentVoiceCapability() -> VoiceFollowPlatformCapability {
+    let majorVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+    if #available(macOS 26.0, *) {
+      return VoiceFollowPlatformCapability(
+        majorVersion: majorVersion, speechTranscriberAvailable: SpeechTranscriber.isAvailable)
+    }
+    return VoiceFollowPlatformCapability(
+      majorVersion: majorVersion, speechTranscriberAvailable: false)
+  }
+
   func present(_ error: Error) { state.status = error.localizedDescription }
   func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { script.undoManager }
   func perform(_ work: () throws -> Void) {
     do { try work() } catch let error as NSError { present(error) }
   }
   func toggle() {
+    if session.voiceSessionActive {
+      if voiceCoordinator?.isCommandPaused == true {
+        startVoiceFollow(resume: true)
+      } else if session.voiceSuspended {
+        startVoiceFollow(resume: true)
+      } else {
+        perform { try session.toggle(script) }
+      }
+      return
+    }
     guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       state.status = "Type, paste or drop a TXT or RTF script to begin."
       return
@@ -476,6 +536,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     perform {
       try claimAndPrepare()
       if session.measuring {
+        session.invalidateVoiceStartIntent("Play or Pause")
+        pendingVoiceRequest = nil
         if pendingResume {
           pendingResume = false
           pendingPlay = false
@@ -493,6 +555,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func stop() {
+    pendingVoiceRequest = nil
+    voiceCoordinator?.stop()
     hideOutput()
     panel?.close()
     panel = nil
@@ -613,6 +677,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         render()
       }
       if session.measuring {
+        session.invalidateVoiceStartIntent("Timed Scrolling")
+        pendingVoiceRequest = nil
         pendingTimedDuration = seconds
         session.message = "Measuring script… Timed Scrolling will be set when ready"
         refresh()
@@ -632,6 +698,120 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     } catch {
       if session.state == .idle { PresentationCoordinator.shared.release(self) }
       throw error
+    }
+  }
+  func startVoiceFollow(resume: Bool = false) {
+    guard let coordinator = voiceCoordinator else { return }
+    if resume, coordinator.isCommandPaused {
+      coordinator.resumeSpokenCommandPause()
+      return
+    }
+    guard !script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      state.status = "Type, paste or drop a TXT or RTF script to begin."
+      return
+    }
+    do {
+      try claimAndPrepare()
+      if !session.voiceSessionActive,
+        session.state == .running || session.state == .countingDown
+      {
+        try session.pause()
+      }
+    } catch {
+      present(error)
+      return
+    }
+    // Follow Voice supersedes actions queued during measurement; otherwise they are replayed
+    // first when measurement completes and can invalidate the new voice-start intent.
+    pendingPlay = false
+    pendingResume = false
+    pendingTimedDuration = nil
+    guard let intent = session.beginVoiceStartIntent() else { return }
+    let request = PendingVoiceRequest(intent: intent, resume: resume)
+    if session.measuring {
+      pendingVoiceRequest = request
+      state.status = "Measuring script… Follow Voice will start when ready"
+      return
+    }
+    beginVoiceFollow(coordinator, request: request)
+  }
+  private func beginVoiceFollow(
+    _ coordinator: VoiceFollowCoordinator, request: PendingVoiceRequest
+  ) {
+    guard session.isCurrentVoiceStartIntent(request.intent),
+      let snapshot = session.snapshot, let lineTable = authoritative.voiceLineTable
+    else {
+      state.status = "Text layout is not ready for Follow Voice"
+      return
+    }
+    let index = ScriptIndex(text: snapshot.attributed.string)
+    let initialOffset = authoritative.captureAnchor()?.utf16Offset ?? 0
+    let resolveStart: @MainActor () -> Int? = { [weak self] in
+      guard let self, self.session.isCurrentVoiceStartIntent(request.intent),
+        self.session.snapshot?.id == snapshot.id
+      else { return nil }
+      let offset = self.authoritative.captureAnchor()?.utf16Offset ?? initialOffset
+      return index.tokens.lastIndex { $0.range.lowerBound <= offset } ?? -1
+    }
+    guard resolveStart() != nil else { return }
+    Task {
+      if request.resume {
+        await coordinator.resume(
+          snapshot: snapshot, lineTable: lineTable, intent: request.intent,
+          resolveStart: resolveStart)
+      } else {
+        await coordinator.start(
+          snapshot: snapshot, lineTable: lineTable, intent: request.intent,
+          resolveStart: resolveStart)
+      }
+    }
+  }
+  func installVoiceModel() {
+    guard let coordinator = voiceCoordinator else { return }
+    Task { await coordinator.installMissingModel() }
+  }
+  func cancelVoiceModelInstallation() { voiceCoordinator?.cancelInstallation() }
+  func refreshVoiceAvailability() {
+    guard let coordinator = voiceCoordinator else { return }
+    Task { await coordinator.refreshAvailability() }
+  }
+  func stopVoiceFollow() {
+    pendingVoiceRequest = nil
+    voiceCoordinator?.stop()
+  }
+  func openMicrophoneSettings() { voiceCoordinator?.openMicrophoneSettings() }
+  func selectVoiceLocale(_ identifier: String) { voiceCoordinator?.selectLocale(identifier) }
+  private func syncVoiceState() {
+    guard let coordinator = voiceCoordinator else { return }
+    state.voiceState = coordinator.state
+    state.voiceLocales = coordinator.locales
+    state.voiceLocale = coordinator.selectedLocaleIdentifier
+    state.voiceActive = coordinator.isActive
+    state.voiceSuspended = coordinator.isSuspended
+    state.voiceMessage = voiceMessage(for: coordinator.state)
+  }
+  private func voiceMessage(for state: VoiceFollowUIState) -> String {
+    switch state {
+    case .hidden: ""
+    case .checking: "Checking supported languages and the on-device speech model…"
+    case .unavailable: "Speech transcription is unavailable on this Mac."
+    case .unsupportedLocale: "The selected language is not supported on this Mac."
+    case .needsModel: "The selected Apple speech model needs to be installed with your consent."
+    case .downloading(let progress): "Installing speech model · \(Int(progress * 100))%"
+    case .waitingForModel:
+      "macOS is still downloading the speech model or waiting for network conditions. Check again shortly."
+    case .ready:
+      "English is the validated language. Other supported languages depend on macOS. Audio stays on this Mac and is not recorded."
+    case .requestingMicrophone: "Waiting for microphone permission…"
+    case .microphoneDenied:
+      "Microphone access is off. Allow CueGlass in Privacy & Security → Microphone, then try again."
+    case .starting: "Starting on-device speech analysis…"
+    case .listening: "Listening · audio is not recorded"
+    case .holding(let reason): reason
+    case .commandPaused:
+      "Paused · say ‘CueGlass, resume’ or ‘Prompter, resume’ · microphone active for commands"
+    case .suspended(let reason): "Following paused · \(reason) · microphone closed"
+    case .failed(let message): message
     }
   }
   var authoritative: PrompterViewport {
@@ -725,6 +905,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
             self.pendingPlay = false
             self.toggle()
           }
+          if let request = self.pendingVoiceRequest {
+            self.pendingVoiceRequest = nil
+            if self.session.isCurrentVoiceStartIntent(request.intent),
+              let coordinator = self.voiceCoordinator
+            {
+              self.beginVoiceFollow(coordinator, request: request)
+            }
+          }
           self.refresh()
         }
       }
@@ -739,6 +927,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func refresh() {
+    syncVoiceState()
     state.active = session.state != .idle
     state.running = session.state == .running || session.state == .countingDown
     state.pending = session.pendingRevision
@@ -873,7 +1062,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     perform {
       try claimAndPrepare()
-      let wasRunning = session.state == .running || pendingResume
+      let wasRunning = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
@@ -985,7 +1174,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       perform { try session.pauseSafely("Local preview hidden — paused") }
     }
   }
-  @objc func sleeping() { perform { try session.pauseSafely("Paused for sleep") } }
+  @objc func sleeping() {
+    perform { try session.pauseSafely("Paused for sleep") }
+  }
   @objc func accountChanged() {
     script.notice =
       "iCloud account changed or unavailable. Unsaved edits are kept; use Save a Copy for local recovery."
@@ -1119,7 +1310,7 @@ extension OperatorWindowController {
   func showFloating() {
     perform {
       try claimAndPrepare()
-      let running = session.state == .running || pendingResume
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
@@ -1170,6 +1361,10 @@ extension OperatorWindowController {
     }
   }
   func resumeAfterMeasurement() {
+    guard !session.voiceSessionActive else {
+      pendingResume = false
+      return
+    }
     if session.measuring {
       pendingResume = true
     } else {
@@ -1184,7 +1379,7 @@ extension OperatorWindowController {
   func floatingResized() {
     guard let floating, let size = floating.window?.contentView?.bounds.size else { return }
     perform {
-      let running = session.state == .running || pendingResume
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false

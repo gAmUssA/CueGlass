@@ -573,6 +573,47 @@ import Testing
     #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
     #expect(c.session.snapshot?.id == snapshot)
   }
+
+  @Test func voiceSurfaceChangesStayPausedUntilExplicitResume() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    try c.session.beginVoice(epoch: 1)
+
+    c.showFloating()
+    c.floating?.reflection.viewport.driver?.stop()
+    c.floating?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.voiceSessionActive)
+    #expect(c.session.voiceSuspended)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    let floatingWindow = try #require(c.floating?.window)
+    floatingWindow.setContentSize(CGSize(width: 680, height: 380))
+    c.floatingResized()
+    await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.voiceSessionActive)
+    #expect(c.session.voiceSuspended)
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+    #expect(!c.pendingResume)
+
+    c.resumeAfterMeasurement()
+    #expect(c.session.state == .paused)
+    #expect(!c.session.timeline.running)
+  }
+
   @Test func fullscreenMatteTracksPreviewWithoutChangingFloatingAlpha() throws {
     let controller = OperatorWindowController(document: ScriptDocument())
     defer { controller.close() }
@@ -935,6 +976,64 @@ import Testing
   }
 }
 
+extension OperatorFeatureTests {
+  private func voicePlaybackSession() throws -> PlaybackSession {
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: "North wind carries the lantern home.")
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    return session
+  }
+
+  @Test func voiceDisplayStallPausesAtTheLastPresentedFrame() throws {
+    var now = 0.0
+    let session = try voicePlaybackSession()
+    session.clock = { now }
+    try session.beginVoice(epoch: 1)
+    try session.voiceGlide(to: 500, epoch: 1)
+    let expectedPresentedPosition = session.timeline.velocity * 0.2
+    try session.noteFrame(target: 0.2, end: 1000)
+
+    now = 2
+    try session.noteFrame(target: 2, end: 1000)
+
+    #expect(session.voiceSessionActive)
+    #expect(session.voiceSuspended)
+    #expect(session.state == .paused)
+    #expect(abs(session.timeline.anchorPosition - expectedPresentedPosition) < 0.001)
+    #expect(abs(session.elapsedSeconds - 0.2) < 0.001)
+  }
+
+  @Test func rejectedTrackpadMomentumDoesNotSuspendVoice() throws {
+    let session = try voicePlaybackSession()
+    try session.beginVoice(epoch: 1)
+
+    try session.scrub(delta: 100, momentum: true)
+
+    #expect(session.voiceSessionActive)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.anchorPosition == 0)
+  }
+
+  @Test func resumedVoiceIgnoresMomentumFromThePreviousScrub() throws {
+    let session = try voicePlaybackSession()
+    try session.beginVoice(epoch: 1)
+    try session.scrub(delta: 20, momentum: false)
+    #expect(session.voiceSuspended)
+    try session.resumeVoice(epoch: session.voiceEpoch)
+    let resumedPosition = session.timeline.anchorPosition
+
+    try session.scrub(delta: 20, momentum: true)
+
+    #expect(session.voiceSessionActive)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.anchorPosition == resumedPosition)
+  }
+}
+
 // Fix9 ports the Q3 intent matrix and Q4 settled-geometry oracle. Keep the
 // inherited suite above byte unchanged; these tests share its serialization.
 extension OperatorFeatureTests {
@@ -947,8 +1046,10 @@ extension OperatorFeatureTests {
     let reconnectedDisplay = DisplayDescriptor(
       screen: screen, preference: .init(uuid: "stable-display", name: "Stage"), id: 202)
 
-    c.state.selectedDisplay = oldDisplay.selectionKey
+    // Seed the controller's display-key-to-preference map before selecting this
+    // synthetic display so a persisted disconnected preference cannot shadow it.
     c.refreshScreens([oldDisplay])
+    c.state.selectedDisplay = oldDisplay.selectionKey
     c.refreshScreens([])
     c.refreshScreens([reconnectedDisplay])
 
@@ -1309,10 +1410,12 @@ extension OperatorFeatureTests {
     let firstRow = CGRect(
       x: hostRect.minX, y: hostRect.maxY - 24, width: hostRect.width, height: 24)
     let split = controller.splitController.splitView
+    let dividerHitSlop = max(4, split.dividerThickness)
     let theme = try #require(content.superview)
     // An occluder paints after the target's owner in view order, belongs to
     // neither the owner's subtree, its ancestors nor the owner's own split
-    // column, and overlaps the target. Targets exclude the 4 pt divider hit slop.
+    // column, and overlaps the target. Exclude the actual system divider;
+    // its width can differ across supported macOS versions.
     func paintsAfter(_ a: NSView, _ b: NSView) -> Bool {
       func chain(_ view: NSView) -> [NSView] {
         var result: [NSView] = []
@@ -1346,7 +1449,7 @@ extension OperatorFeatureTests {
           continue
         }
         if let column, view.isDescendant(of: column) { continue }
-        let overlap = rect.intersection(target.insetBy(dx: 4, dy: 0))
+        let overlap = rect.intersection(target.insetBy(dx: dividerHitSlop, dy: 0))
         if !overlap.isNull, overlap.width > 0, overlap.height > 0, paintsAfter(view, owner) {
           occluders.append("\(type(of: view)) \(rect) over \(target)")
         }

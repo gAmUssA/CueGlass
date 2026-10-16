@@ -19,6 +19,8 @@
 	<string>14.0</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CueGlass uses the microphone only while Follow Voice is on. Speech is analyzed on this Mac, and audio and transcript text are not recorded or saved.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
