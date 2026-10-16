@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-16T02:41:48Z
-updated_at: 2026-10-16T03:35:49Z
+updated_at: 2026-10-16T03:41:48Z
 parent: cueglass-aeqt
 ---
 
@@ -44,3 +44,9 @@ Prepare, merge, build, and publish CueGlass 0.2.0 through the public GitHub Acti
 - `bash scripts/test-app.sh`: 94 tests passed, including command-pause, queued-start, finalization/pace, and voice-lifecycle regressions.
 - Strict Swift formatting, `beans check --json`, and `git diff --check` passed.
 - Next: commit/push these fixes, refresh Copilot review and GitHub CI on the exact head, then merge and publish v0.2.0.
+
+## GitHub CI correction
+
+- The first macOS run exposed a timing race in `volatileDistantSpeechWaitsForFinalizationBeforeSeeking`: a fixed 200-yield loop could finish before the async capture worker applied the finalized result on a loaded runner.
+- Replaced the tight loop with a bounded 2-second wait that yields through 5 ms sleeps and the main queue while checking the playback anchor.
+- `bash scripts/test-app.sh`: all 94 tests passed locally after the change. GitHub must rerun CI on the pushed correction.

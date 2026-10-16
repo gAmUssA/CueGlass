@@ -1206,8 +1206,8 @@ private struct FakeSpeechAssetError: LocalizedError {
       TranscriptEvent(
         isFinal: false, rangeStart: 3, rangeEnd: 3, availableAt: 3, words: [],
         finalizedThrough: 2))
-    for _ in 0..<200 where session.timeline.anchorPosition == 0 {
-      await Task.yield()
+    for _ in 0..<400 where session.timeline.anchorPosition == 0 {
+      try await Task.sleep(for: .milliseconds(5))
       await mainTurn()
     }
 
