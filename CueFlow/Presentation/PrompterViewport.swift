@@ -139,6 +139,7 @@ import QuartzCore
     }
     let generation = measurementGeneration
     let measurementStart = CACurrentMediaTime()
+    let sourceLength = text.string.utf16.count
     measurementChunkCount = 0
     measurementWorstSeconds = 0
     let offsets = Set(ParagraphIndex.starts(in: text.string))
@@ -159,7 +160,6 @@ import QuartzCore
           from: content.documentRange.location, to: fragment.rangeInElement.location)
         if offsets.contains(start) { positions.append(fragment.layoutFragmentFrame.minY) }
         lines += fragment.textLineFragments.count
-        let sourceLength = self.text.string.utf16.count
         for line in fragment.textLineFragments {
           let lower = start + line.characterRange.location
           let upper = min(sourceLength, lower + line.characterRange.length)
