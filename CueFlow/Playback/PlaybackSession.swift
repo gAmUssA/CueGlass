@@ -167,7 +167,8 @@ struct VoiceStartIntent: Equatable {
     onChange?()
   }
   func pauseSafely(_ reason: String) throws {
-    suspendVoiceForManualCommand(reason)
+    let safeTime = max(timeline.anchorTime, lastPresentedTarget ?? effectiveTime)
+    suspendVoiceForManualCommand(reason, pausingAt: safeTime)
     deferredStart = nil
     guard state != .idle else { return }
     let time = max(timeline.anchorTime, lastPresentedTarget ?? effectiveTime)
@@ -277,8 +278,8 @@ struct VoiceStartIntent: Equatable {
         lineAdvance: lineAdvance, end: timeline.upperBound ?? paragraphPositions.last ?? 0))
   }
   func scrub(delta: Double, momentum: Bool) throws {
-    suspendVoiceForManualCommand("Scrub")
     guard scrubGate.accepts(momentum: momentum) else { return }
+    suspendVoiceForManualCommand("Scrub")
     try pause()
     try seek(timeline.anchorPosition + delta)
   }
@@ -461,6 +462,7 @@ struct VoiceStartIntent: Equatable {
     try timeline.play(at: time)
     elapsed.play(at: time)
     lastPresentedTarget = time
+    scrubGate.play()
     state = .running
     voiceSuspended = false
     voiceCommandPaused = false
@@ -489,19 +491,19 @@ struct VoiceStartIntent: Equatable {
     onVoiceEnded?()
     onChange?()
   }
-  private func suspendVoiceForManualCommand(_ reason: String) {
+  private func suspendVoiceForManualCommand(_ reason: String, pausingAt time: Double? = nil) {
     invalidateVoiceStartIntent(reason)
     guard voiceSessionActive, !voiceSuspended else { return }
     voiceEpoch &+= 1
-    suspendVoicePosition()
+    suspendVoicePosition(at: time)
     message = "Following paused — \(reason)"
     onVoicePrioritySuspended?(reason, voiceEpoch)
   }
   func suspendVoiceForManualControl(_ reason: String) {
     suspendVoiceForManualCommand(reason)
   }
-  private func suspendVoicePosition() {
-    let time = effectiveTime
+  private func suspendVoicePosition(at time: Double? = nil) {
+    let time = time ?? effectiveTime
     try? timeline.clearVoiceCeiling(at: time)
     try? timeline.pause(at: time)
     elapsed.pause(at: time)

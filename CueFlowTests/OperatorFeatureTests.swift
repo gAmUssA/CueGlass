@@ -976,6 +976,64 @@ import Testing
   }
 }
 
+extension OperatorFeatureTests {
+  private func voicePlaybackSession() throws -> PlaybackSession {
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: "North wind carries the lantern home.")
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    return session
+  }
+
+  @Test func voiceDisplayStallPausesAtTheLastPresentedFrame() throws {
+    var now = 0.0
+    let session = try voicePlaybackSession()
+    session.clock = { now }
+    try session.beginVoice(epoch: 1)
+    try session.voiceGlide(to: 500, epoch: 1)
+    let expectedPresentedPosition = session.timeline.velocity * 0.2
+    try session.noteFrame(target: 0.2, end: 1000)
+
+    now = 2
+    try session.noteFrame(target: 2, end: 1000)
+
+    #expect(session.voiceSessionActive)
+    #expect(session.voiceSuspended)
+    #expect(session.state == .paused)
+    #expect(abs(session.timeline.anchorPosition - expectedPresentedPosition) < 0.001)
+    #expect(abs(session.elapsedSeconds - 0.2) < 0.001)
+  }
+
+  @Test func rejectedTrackpadMomentumDoesNotSuspendVoice() throws {
+    let session = try voicePlaybackSession()
+    try session.beginVoice(epoch: 1)
+
+    try session.scrub(delta: 100, momentum: true)
+
+    #expect(session.voiceSessionActive)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.anchorPosition == 0)
+  }
+
+  @Test func resumedVoiceIgnoresMomentumFromThePreviousScrub() throws {
+    let session = try voicePlaybackSession()
+    try session.beginVoice(epoch: 1)
+    try session.scrub(delta: 20, momentum: false)
+    #expect(session.voiceSuspended)
+    try session.resumeVoice(epoch: session.voiceEpoch)
+    let resumedPosition = session.timeline.anchorPosition
+
+    try session.scrub(delta: 20, momentum: true)
+
+    #expect(session.voiceSessionActive)
+    #expect(!session.voiceSuspended)
+    #expect(session.state == .running)
+    #expect(session.timeline.anchorPosition == resumedPosition)
+  }
+}
+
 // Fix9 ports the Q3 intent matrix and Q4 settled-geometry oracle. Keep the
 // inherited suite above byte unchanged; these tests share its serialization.
 extension OperatorFeatureTests {

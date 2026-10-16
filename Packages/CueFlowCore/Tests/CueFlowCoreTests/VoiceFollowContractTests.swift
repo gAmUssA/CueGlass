@@ -136,3 +136,23 @@ import Testing
       finalizedThrough: 0.9))
   #expect(accumulator.finalized == words)
 }
+
+@Test func laterFinalRangePreservesAndFinalizesEarlierVolatilePrefix() {
+  var accumulator = TranscriptAccumulator()
+  let prefix = [
+    RecognizedWord(text: "north", start: 0, end: 0.3),
+    RecognizedWord(text: "wind", start: 0.31, end: 0.6),
+  ]
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: false, rangeStart: 0, rangeEnd: 0.6, availableAt: 0.8, words: prefix))
+
+  let laterWord = RecognizedWord(text: "carries", start: 0.61, end: 0.9)
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: true, rangeStart: 0.61, rangeEnd: 0.9, availableAt: 1.0,
+      words: [laterWord], finalizedThrough: 0.9))
+
+  #expect(accumulator.finalized == prefix + [laterWord])
+  #expect(accumulator.volatile.isEmpty)
+}

@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-16T02:41:48Z
-updated_at: 2026-10-16T03:41:48Z
+updated_at: 2026-10-16T03:50:17Z
 parent: cueglass-aeqt
 ---
 
@@ -50,3 +50,16 @@ Prepare, merge, build, and publish CueGlass 0.2.0 through the public GitHub Acti
 - The first macOS run exposed a timing race in `volatileDistantSpeechWaitsForFinalizationBeforeSeeking`: a fixed 200-yield loop could finish before the async capture worker applied the finalized result on a loaded runner.
 - Replaced the tight loop with a bounded 2-second wait that yields through 5 ms sleeps and the main queue while checking the playback anchor.
 - `bash scripts/test-app.sh`: all 94 tests passed locally after the change. GitHub must rerun CI on the pushed correction.
+
+## Additional Copilot review follow-up
+
+- Addressed four previously missed findings from the full review body: safe display-stall pause time now stays at the last presented frame; rejected momentum cannot suspend Follow Voice; resuming resets the scrub gate; and final transcript ranges replace only overlapping volatile words while newly finalized speech remains time-ordered.
+- Added deterministic app regressions for voice stall position/elapsed time, rejected momentum, and resume after scrub; added a core regression for incremental final-range prefix preservation.
+- Local validation passed; fresh GitHub CI and review will run on the next pushed head.
+
+## Local verification after additional review fixes
+
+- `swift test --package-path Packages/CueFlowCore`: 73 tests passed.
+- `bash scripts/test-app.sh`: 97 tests passed, including display-stall safe pause and stale-momentum regressions.
+- Strict Swift formatting, `beans check --json`, and `git diff --check` passed.
+- Both GitHub workflows passed on `fb04fe2` after the CI-wait correction; these additional source fixes require fresh CI on the next pushed head.

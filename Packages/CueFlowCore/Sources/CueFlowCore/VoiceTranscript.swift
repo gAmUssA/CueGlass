@@ -69,9 +69,15 @@ public struct TranscriptAccumulator: Sendable {
 
   public mutating func apply(_ event: TranscriptEvent) {
     if event.isFinal {
-      countRevisions(
-        replacing: volatile.filter { $0.start < event.rangeEnd - Self.epsilon }, with: event.words)
-      volatile.removeAll { $0.start < event.rangeEnd - Self.epsilon }
+      let replacedRange = volatile.filter {
+        $0.start < event.rangeEnd - Self.epsilon
+          && $0.end > event.rangeStart + Self.epsilon
+      }
+      countRevisions(replacing: replacedRange, with: event.words)
+      volatile.removeAll {
+        $0.start < event.rangeEnd - Self.epsilon
+          && $0.end > event.rangeStart + Self.epsilon
+      }
       appendFinalized(event.words)
     } else {
       countRevisions(
@@ -122,7 +128,9 @@ public struct TranscriptAccumulator: Sendable {
     where !previouslyFinalized.contains(where: {
       $0.start < word.end - Self.epsilon && $0.end > word.start + Self.epsilon
     }) {
-      finalized.append(word)
+      let insertionIndex =
+        finalized.firstIndex(where: { $0.start > word.start }) ?? finalized.endIndex
+      finalized.insert(word, at: insertionIndex)
     }
   }
 }
