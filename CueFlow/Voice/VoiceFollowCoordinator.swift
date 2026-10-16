@@ -207,6 +207,7 @@ private actor VoiceAlignmentWorker {
   private var commandPauseAudioTime = 0.0
   private var captureStartedAtUptime: Double?
   private var captureStartedEpoch: UInt64?
+  private var alignmentStartedAtUptime: Double?
   private var paceEstimator: FollowPaceEstimator?
   var onStopFollowing: (() -> Void)?
   var onStopTake: (() -> Void)?
@@ -571,6 +572,7 @@ private actor VoiceAlignmentWorker {
     sourceStartTaskEpoch = nil
     captureStartedAtUptime = nil
     captureStartedEpoch = nil
+    alignmentStartedAtUptime = nil
     if session.voiceSessionActive && session.voiceSuspended {
       state = .suspended(reason)
     } else if !session.voiceSessionActive {
@@ -634,12 +636,12 @@ private actor VoiceAlignmentWorker {
           epoch: streamEpoch)
       }
     }
-    let startTime = ProcessInfo.processInfo.systemUptime
+    alignmentStartedAtUptime = captureClock()
     silenceTask = Task { [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(200))
         guard let self, !Task.isCancelled, epoch == streamEpoch else { return }
-        let uptime = ProcessInfo.processInfo.systemUptime
+        let uptime = captureClock()
         if let command = commandMatcher.advance(to: uptime) {
           let audioTime = commandMatcher.lastResolvedAudioTime ?? 0
           let event = TranscriptEvent(
@@ -648,13 +650,17 @@ private actor VoiceAlignmentWorker {
           await handle(command, event: event, worker: worker, epoch: streamEpoch)
           guard !Task.isCancelled, epoch == streamEpoch else { return }
         }
-        let now = uptime - startTime
-        guard !commandPaused else { continue }
-        if let result = await worker.tick(now: now, epoch: streamEpoch) {
-          apply(result)
-        }
+        await advanceSilence(to: uptime)
       }
     }
+  }
+
+  func advanceSilence(to uptime: Double) async {
+    guard uptime.isFinite, !commandPaused, session.voiceSessionActive, !session.voiceSuspended,
+      let worker, let alignmentStartedAtUptime
+    else { return }
+    let elapsed = max(0, uptime - alignmentStartedAtUptime)
+    if let result = await worker.tick(now: elapsed, epoch: epoch) { apply(result) }
   }
 
   private func handle(

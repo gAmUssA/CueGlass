@@ -58,6 +58,42 @@ import Testing
       DispatchQueue.main.async { continuation.resume() }
     }
   }
+  private func awaitVoiceUpdate(
+    _ coordinator: VoiceFollowCoordinator, matching condition: @escaping () -> Bool,
+    label: String, timeoutTurns: Int = 2_000, perform action: @escaping () -> Void
+  ) async -> Bool {
+    if condition() { return true }
+    let matched = await withCheckedContinuation {
+      (continuation: CheckedContinuation<Bool, Never>) in
+      Task { @MainActor in
+        var completed = false
+        let previous = coordinator.onChange
+        let finish: @MainActor () -> Void = {
+          guard !completed else { return }
+          completed = true
+          coordinator.onChange = previous
+          continuation.resume(returning: condition())
+        }
+        coordinator.onChange = {
+          previous?()
+          guard !completed, condition() else { return }
+          finish()
+        }
+        action()
+        Task { @MainActor in
+          for _ in 0..<timeoutTurns {
+            if completed { return }
+            await mainTurn()
+          }
+          finish()
+        }
+      }
+    }
+    if !matched {
+      Issue.record("Timed out waiting for Follow Voice \(label); last state: \(coordinator.state)")
+    }
+    return matched
+  }
   private func prepared(_ paragraphs: Int = 200) async throws -> OperatorWindowController {
     let doc = ScriptDocument()
     doc.source = NSAttributedString(
@@ -612,7 +648,9 @@ import Testing
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.elapsedSeconds == 10)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
-    #expect(c.session.timeline.upperBound != nil)
+    let endTarget = try #require(c.session.timeline.upperBound)
+    let endDeadline = c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1)
+    #expect(endDeadline == 600)
     #expect(c.cameraDock != nil)
 
     try c.session.pause()
@@ -622,14 +660,16 @@ import Testing
     #expect(c.session.state == .running)
     #expect(c.session.elapsedSeconds == 10)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
-    #expect(c.session.timeline.upperBound != nil)
+    #expect(c.session.timeline.upperBound == endTarget)
+    #expect(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) == endDeadline)
 
     c.setCameraDockLineCount(4)
     await settle(c)
     #expect(c.session.state == .running)
     #expect(c.session.elapsedSeconds == 10)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
-    #expect(c.session.timeline.upperBound != nil)
+    #expect(c.session.timeline.upperBound == endTarget)
+    #expect(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) == endDeadline)
     c.stop()
   }
 
@@ -637,6 +677,9 @@ import Testing
     let c = try await prepared()
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
+    var connected = [display]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
     c.state.selectedDisplay = display.selectionKey
     c.seek(c.session.paragraphPositions[60])
     let snapshot = try #require(c.session.snapshot?.id)
@@ -660,13 +703,16 @@ import Testing
     try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
     let position = c.session.timeline.anchorPosition
 
-    c.handleAvailableDisplayIDs([])
+    connected = []
+    c.screensChanged()
     #expect(c.cameraDock == nil)
     #expect(c.floating == nil)
     #expect(c.output == nil)
     #expect(c.session.state == .paused)
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.timeline.anchorPosition == position)
+    #expect(c.state.status == "Camera Dock display disconnected — position retained")
+    c.refresh()
     #expect(c.state.status == "Camera Dock display disconnected — position retained")
   }
 
@@ -1005,6 +1051,9 @@ import Testing
     #expect(c.session.state == .paused)
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.state.status.contains("Camera Dock unavailable — position retained"))
+    let recoveryStatus = c.state.status
+    c.refresh()
+    #expect(c.state.status == recoveryStatus)
     #expect(malformedSafeFrame.minX.isFinite && malformedSafeFrame.minY.isFinite)
   }
 
@@ -1046,22 +1095,60 @@ import Testing
 
   @Test func cameraDockPromptAndControlsExposeAccessibilityAndKeyboardFocus() async throws {
     let c = try await prepared()
-    defer { c.close() }
+    defer {
+      c.stop()
+      c.close()
+    }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
     let root = try #require(dock.root)
     let panel = try #require(dock.window)
+    let controls = try #require(root.cameraDockControls)
     #expect(root.isAccessibilityElement())
     #expect(root.accessibilityLabel() == "CueGlass prompt")
     #expect(panel.canBecomeKey)
-    #expect(CameraDockGrip.closeAccessibilityLabel == "Close Camera Dock")
-    #expect(CameraDockGrip.playbackAccessibilityLabel == "Play or pause")
-    #expect(CameraDockGrip.adjustAccessibilityLabel == "Adjust Camera Dock")
+    let accessibilityChildren = try #require(root.accessibilityChildren() as? [NSView])
+    #expect(
+      accessibilityChildren.compactMap { $0.accessibilityLabel() }
+        == ["Close Camera Dock", "Play or pause", "Adjust Camera Dock"])
+    #expect(controls.closeButton.accessibilityRole() == .button)
+    #expect(controls.playbackButton.accessibilityRole() == .button)
+    #expect(controls.adjustButton.accessibilityRole() == .popUpButton)
+    #expect(controls.closeButton.action != nil)
+    #expect(controls.playbackButton.action != nil)
+    #expect(controls.adjustButton.menu?.items.contains { $0.title == "Reset Placement" } == true)
     panel.makeKeyAndOrderFront(nil)
     panel.selectNextKeyView(nil)
-    #expect(panel.firstResponder !== panel)
+    #expect(
+      [controls.closeButton, controls.playbackButton, controls.adjustButton].contains {
+        $0 === panel.firstResponder
+      })
+
+    let originalWidth = c.state.cameraDockWidth
+    c.setCameraDockWidth(originalWidth - 40)
+    let widthBeforeAdjust = c.state.cameraDockWidth
+    let wider = try #require(controls.adjustButton.menu?.items.first { $0.title == "Wider" })
+    #expect(NSApp.sendAction(wider.action!, to: wider.target, from: wider))
+    #expect(c.state.cameraDockWidth == widthBeforeAdjust + 20)
+    c.setCameraDockWidth(originalWidth)
+    await settle(c)
+    c.state.countdown = 0
+    c.session.countdownSeconds = 0
+    #expect(
+      NSApp.sendAction(
+        controls.playbackButton.action!, to: controls.playbackButton.target,
+        from: controls.playbackButton))
+    await settle(c)
+    #expect(
+      c.session.state == .running,
+      "Camera Dock Play action left the session at \(c.session.state): \(c.state.status)")
+    #expect(
+      NSApp.sendAction(
+        controls.playbackButton.action!, to: controls.playbackButton.target,
+        from: controls.playbackButton))
+    #expect(c.session.state == .paused)
 
     let originalMap = CommandRouter.map
     defer { CommandRouter.map = originalMap }
@@ -1091,6 +1178,203 @@ import Testing
     #expect(operatorWindow.makeFirstResponder(c.editor))
     c.editor.insertText(" ", replacementRange: NSRange(location: 0, length: 0))
     #expect(c.editor.string != before)
+  }
+
+  @Test func cameraDockMenuAndShortcutOpenFromPreview() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let operatorWindow = try #require(c.window)
+    operatorWindow.makeKeyAndOrderFront(nil)
+    #expect(operatorWindow.makeFirstResponder(operatorWindow.contentView))
+
+    let originalMap = CommandRouter.map
+    defer { CommandRouter.map = originalMap }
+    CommandRouter.map = CommandMap()
+    let shortcut = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [.command, .option], timestamp: 0,
+        windowNumber: operatorWindow.windowNumber, context: nil, characters: "d",
+        charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
+    #expect(CommandRouter.route(shortcut, window: operatorWindow, controller: c))
+    let shortcutDock = try #require(c.cameraDock)
+    shortcutDock.reflection.viewport.driver?.stop()
+    shortcutDock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.selectedPresentationSurface == "cameraDock")
+
+    c.stopPresenting()
+    let menu = c.presentationMenu()
+    let menuItem = try #require(
+      menu.items.first { $0.action == #selector(OperatorWindowController.cameraDockAction) })
+    #expect(menuItem.isEnabled)
+    #expect(NSApp.sendAction(menuItem.action!, to: menuItem.target, from: menuItem))
+    let menuDock = try #require(c.cameraDock)
+    menuDock.reflection.viewport.driver?.stop()
+    menuDock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.selectedPresentationSurface == "cameraDock")
+    #expect(c.output == nil)
+  }
+
+  @Test func cameraDockMappedKeysAndNumericFieldEditingRespectFocus() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.session.clock = { 0 }
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let panel = try #require(dock.window)
+    let root = try #require(dock.root)
+    #expect(panel.makeFirstResponder(root))
+
+    let originalMap = CommandRouter.map
+    defer { CommandRouter.map = originalMap }
+    CommandRouter.map = CommandMap()
+    func key(_ code: UInt16, _ characters: String, _ flags: NSEvent.ModifierFlags = [])
+      throws -> NSEvent
+    {
+      try #require(
+        NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+          windowNumber: panel.windowNumber, context: nil, characters: characters,
+          charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+    }
+    func route(_ code: UInt16, _ characters: String, _ flags: NSEvent.ModifierFlags = [])
+      throws
+    {
+      #expect(CommandRouter.route(try key(code, characters, flags), window: panel, controller: c))
+    }
+
+    let initialSpeed = c.state.speed
+    try route(126, "up")
+    #expect(c.state.speed == initialSpeed + c.state.fineStep)
+    try route(126, "up", [.shift])
+    #expect(c.state.speed == initialSpeed + c.state.fineStep + c.state.jumpStep)
+    try route(125, "down", [.shift])
+    try route(125, "down")
+    #expect(c.state.speed == initialSpeed)
+
+    let initialPosition = c.session.timeline.anchorPosition
+    try route(121, "pagedown")
+    #expect(c.session.timeline.anchorPosition > initialPosition)
+    try route(116, "pageup")
+    #expect(c.session.timeline.anchorPosition <= initialPosition)
+    try route(124, "right")
+    try route(123, "left")
+    try route(115, "home")
+    #expect(c.session.timeline.anchorPosition == 0)
+
+    try route(15, "r")
+    #expect(c.session.timeline.direction == .reverse)
+    try route(15, "r")
+    #expect(c.session.timeline.direction == .forward)
+    c.state.countdown = 0
+    c.session.countdownSeconds = 0
+    try route(49, " ")
+    #expect(c.session.state == .running)
+    try route(11, "b")
+    #expect(c.session.state == .paused)
+    try route(47, ".")
+    #expect(c.session.state == .running)
+    try route(53, String(UnicodeScalar(NSCarriageReturnCharacter)!), [.command])
+    #expect(c.cameraDock == nil)
+    #expect(c.selectedPresentationSurface == "preview")
+
+    let operatorWindow = try #require(c.window)
+    operatorWindow.makeKeyAndOrderFront(nil)
+    operatorWindow.layoutIfNeeded()
+    func descendants(of view: NSView) -> [NSView] {
+      [view] + view.subviews.flatMap(descendants)
+    }
+    let contentView = try #require(operatorWindow.contentView)
+    let speedField = try #require(
+      descendants(of: contentView).compactMap { $0 as? NSTextField }
+        .first { $0.placeholderString == "LPM" })
+    #expect(operatorWindow.makeFirstResponder(speedField))
+    let speedBeforeEdit = c.state.speed
+    let up = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: operatorWindow.windowNumber, context: nil, characters: "↑",
+        charactersIgnoringModifiers: "↑", isARepeat: false, keyCode: 126))
+    #expect(!CommandRouter.route(up, window: operatorWindow, controller: c))
+    #expect(c.state.speed == speedBeforeEdit)
+    let fieldEditor = try #require(operatorWindow.firstResponder as? NSTextView)
+    let oldFieldText = fieldEditor.string
+    fieldEditor.insertText("9", replacementRange: NSRange(location: 0, length: 0))
+    #expect(fieldEditor.string != oldFieldText)
+  }
+
+  @Test func cameraDockFailureNoticesSurviveRefresh() async throws {
+    PresentationCoordinator.shared.owner?.stop()
+    let preferenceKey = "cameraDockPreferences"
+    let priorPreferences = UserDefaults.standard.data(forKey: preferenceKey)
+    defer {
+      if let priorPreferences {
+        UserDefaults.standard.set(priorPreferences, forKey: preferenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: preferenceKey)
+      }
+    }
+    UserDefaults.standard.set(Data("invalid preferences".utf8), forKey: preferenceKey)
+    let malformedDocument = ScriptDocument()
+    let preferencesController = OperatorWindowController(document: malformedDocument)
+    defer { preferencesController.close() }
+    #expect(preferencesController.state.status.contains("Camera Dock settings could not be read"))
+    let preferencesStatus = preferencesController.state.status
+    preferencesController.refresh()
+    #expect(preferencesController.state.status == preferencesStatus)
+
+    let noDisplayController = try await prepared()
+    defer {
+      noDisplayController.stop()
+      noDisplayController.close()
+    }
+    noDisplayController.displayProvider = { [] }
+    noDisplayController.showCameraDock()
+    #expect(
+      noDisplayController.state.status
+        == "No display is available for Camera Dock. Connect or select a display.")
+    noDisplayController.refresh()
+    #expect(
+      noDisplayController.state.status
+        == "No display is available for Camera Dock. Connect or select a display.")
+    noDisplayController.stop()
+
+    let fitController = try await prepared()
+    defer {
+      fitController.stop()
+      fitController.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let base = dockParameters(for: screen)
+    let tooShort = CameraDockScreenParameters(
+      screenFrame: base.screenFrame,
+      visibleFrame: CameraDockRect(
+        x: base.visibleFrame.x, y: base.visibleFrame.y, width: base.visibleFrame.width,
+        height: 100), safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    let display = syntheticDisplay(
+      screen: screen, id: 701, uuid: "too-short-display", parameters: tooShort)
+    fitController.displayProvider = { [display] }
+    fitController.refreshScreens([display])
+    fitController.state.selectedDisplay = display.selectionKey
+    fitController.showCameraDock()
+    #expect(
+      fitController.state.status
+        == "Camera Dock does not fit this display. Choose a larger display or reduce text size.")
+    fitController.refresh()
+    #expect(
+      fitController.state.status
+        == "Camera Dock does not fit this display. Choose a larger display or reduce text size.")
   }
 
   @Test func cameraDockCommandWithoutDocumentDoesNotOpenDocumentPicker() throws {
@@ -1129,6 +1413,7 @@ import Testing
     #expect(c.cameraDock != nil)
     #expect(CameraDockGrip(state: c.state, controller: c).statusText == "Ready")
     #expect(!CameraDockGrip(state: c.state, controller: c).canPlay)
+    #expect(dock.root?.cameraDockControls?.playbackButton.isEnabled == false)
   }
 
   @Test func cameraDockDoesNotRequestMicrophoneAndTimedPlaybackWorksWhenDenied()
@@ -1178,20 +1463,39 @@ import Testing
     #expect(source.startCount == 0)
   }
 
-  @Test func cameraDockFollowVoiceUsesDockLineMapAndManualSeekStopsCapture()
-    async throws
-  {
+  @Test func cameraDockFollowVoiceUsesDockLineMapAndManualSeekStopsCapture() async throws {
     let document = ScriptDocument()
     document.source = NSAttributedString(
       string: "North wind carries the lantern home.\nEast wind carries the harbor light.")
     let c = OperatorWindowController(document: document)
-    defer { c.close() }
+    defer {
+      c.stop()
+      c.close()
+    }
     let display = try #require(DisplayDescriptor.all().first)
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
     c.state.selectedDisplay = display.selectionKey
-    c.session.clock = { 0 }
+    var playbackTime = 0.0
+    c.session.clock = { playbackTime }
     try c.session.prepare(document)
     c.render()
     await settle(c)
+
+    let session = c.session
+    let snapshot = try #require(session.snapshot)
+    let displayWidth = CameraDockGeometry.defaultWidth(
+      screenWidth: Double(display.screen.frame.width))
+    c.showFloating()
+    let floating = try #require(c.floating)
+    floating.reflection.viewport.driver?.stop()
+    floating.reflection.viewport.driver = nil
+    await settle(c)
+    let floatingWindow = try #require(floating.window)
+    floatingWindow.setContentSize(CGSize(width: displayWidth, height: 320))
+    c.floatingResized()
+    await settle(c)
+    let floatingTable = try #require(c.authoritative.voiceLineTable)
 
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
@@ -1199,39 +1503,85 @@ import Testing
     dock.reflection.viewport.driver = nil
     await settle(c)
     let table = try #require(c.authoritative.voiceLineTable)
-    let snapshot = try #require(c.session.snapshot)
+    #expect(c.session === session)
+    #expect(c.session.snapshot?.id == snapshot.id)
+    #expect(floatingTable.lines.map(\.utf16Range) == table.lines.map(\.utf16Range))
     let index = ScriptIndex(text: snapshot.attributed.string)
-    let firstY = try #require(table.y(for: index.tokens[0]))
-    let laterY = try #require(table.y(for: index.tokens.last!))
-    #expect(laterY > firstY)
+    let expectedToken = try #require(index.tokens.first { $0.text == "home" })
+    let floatingY = try #require(floatingTable.y(for: expectedToken))
+    let expectedY = try #require(table.y(for: expectedToken))
+    #expect(abs(floatingY - expectedY) < 0.5)
 
     let source = CameraDockVoiceCaptureProbe()
+    let time = 0.0
     let coordinator = VoiceFollowCoordinator(
       session: c.session, source: source, microphone: CameraDockMicrophoneProbe(.granted),
-      usageDescription: { "Microphone access is used only for Follow Voice." })
+      usageDescription: { "Microphone access is used only for Follow Voice." },
+      captureClock: { time })
     c.voiceCoordinator = coordinator
     await coordinator.refreshAvailability()
-    c.startVoiceFollow()
-    for _ in 0..<1000 where coordinator.state != .listening { await mainTurn() }
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator, matching: { coordinator.state == .listening }, label: "listening",
+        perform: { c.startVoiceFollow() }))
     #expect(coordinator.state == .listening)
     #expect(source.startCount == 1)
 
-    let words = ["North", "wind", "carries", "the", "lantern", "home", "East", "wind"]
+    let words = ["North", "wind", "carries", "the", "lantern", "home"]
       .enumerated().map { offset, text in
         let start = Double(offset) * 0.25
         return RecognizedWord(text: text, start: start, end: start + 0.2, confidence: 0.9)
       }
     let eventEnd = try #require(words.last?.end)
-    source.send(
-      TranscriptEvent(
-        isFinal: true, rangeStart: 0, rangeEnd: eventEnd, availableAt: eventEnd,
-        words: words, finalizedThrough: eventEnd))
-    for _ in 0..<200 where c.session.timeline.voiceCeiling == nil {
-      try await Task.sleep(for: .milliseconds(5))
-      await mainTurn()
-    }
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator,
+        matching: {
+          guard let ceiling = c.session.timeline.voiceCeiling else { return false }
+          return abs(ceiling - expectedY) < 0.5
+        },
+        label: "finalized speech alignment",
+        perform: {
+          source.send(
+            TranscriptEvent(
+              isFinal: true, rangeStart: 0, rangeEnd: eventEnd, availableAt: eventEnd,
+              words: words, finalizedThrough: eventEnd))
+        }))
     let ceiling = try #require(c.session.timeline.voiceCeiling)
-    #expect(table.lines.contains { abs($0.minY - ceiling) < 0.5 })
+    #expect(abs(ceiling - expectedY) < 0.5)
+    #expect(c.session.snapshot?.id == snapshot.id)
+
+    playbackTime = 100
+    let positionBeforeUncertainSpeech = try c.session.timeline.position(at: playbackTime)
+    #expect(abs(positionBeforeUncertainSpeech - ceiling) < 0.5)
+    let uncertainStart = eventEnd + 0.25
+    let uncertainWords = (0..<8).map { offset in
+      let start = uncertainStart + Double(offset) * 0.25
+      return RecognizedWord(
+        text: "unrecognized", start: start, end: start + 0.2, confidence: 0.1)
+    }
+    let uncertainEnd = try #require(uncertainWords.last?.end)
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator,
+        matching: { coordinator.state == .holding("Unsure — holding") },
+        label: "low-confidence hold",
+        perform: {
+          source.send(
+            TranscriptEvent(
+              isFinal: true, rangeStart: uncertainStart, rangeEnd: uncertainEnd,
+              availableAt: uncertainEnd, words: uncertainWords,
+              finalizedThrough: uncertainEnd))
+        }))
+    #expect(c.session.timeline.voiceCeiling == ceiling)
+
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator,
+        matching: { coordinator.state == .holding("Waiting for speech") },
+        label: "silence hold after explicit monotonic-time advance",
+        perform: { Task { await coordinator.advanceSilence(to: uncertainEnd + 1.3) } }))
+    #expect(c.session.timeline.voiceCeiling == ceiling)
 
     c.seek(100)
     #expect(c.session.voiceSuspended)

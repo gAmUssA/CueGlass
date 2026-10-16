@@ -127,6 +127,11 @@ enum PrompterPlacement: Equatable {
     if isCameraDock {
       root.setAccessibilityElement(true)
       root.setAccessibilityLabel("CueGlass prompt")
+      if let controls = root.cameraDockControls {
+        root.setAccessibilityChildren(controls.accessibilityControls)
+        window.initialFirstResponder = controls.closeButton
+        window.recalculateKeyViewLoop()
+      }
     }
   }
 
@@ -222,6 +227,7 @@ enum PrompterPlacement: Equatable {
 @MainActor final class FloatingRoot: NSView {
   let reflection: ReflectionContainerView
   let grip: NSVisualEffectView
+  let cameraDockControls: CameraDockControlsView?
   let placement: PrompterPlacement
   weak var controller: OperatorWindowController?
   var logicalSize = CGSize(width: 800, height: 400) { didSet { needsLayout = true } }
@@ -244,10 +250,16 @@ enum PrompterPlacement: Equatable {
       grip.layer?.backgroundColor =
         NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1).cgColor
     }
-    let content = NSHostingView(
-      rootView: placement == .cameraDock
-        ? AnyView(CameraDockGrip(state: controller.state, controller: controller))
-        : AnyView(FloatingGrip(state: controller.state, controller: controller)))
+    let content: NSView
+    if placement == .cameraDock {
+      let controls = CameraDockControlsView(controller: controller)
+      cameraDockControls = controls
+      content = controls
+    } else {
+      cameraDockControls = nil
+      content = NSHostingView(
+        rootView: AnyView(FloatingGrip(state: controller.state, controller: controller)))
+    }
     content.translatesAutoresizingMaskIntoConstraints = false
     grip.addSubview(content)
     NSLayoutConstraint.activate([
@@ -297,6 +309,9 @@ enum PrompterPlacement: Equatable {
   override func mouseExited(with event: NSEvent) {
     grip.alphaValue = controller?.session.state == .running ? 0 : 1
   }
+  func updateCameraDockControls() {
+    cameraDockControls?.refresh()
+  }
 }
 struct FloatingGrip: View {
   @ObservedObject var state: OperatorState
@@ -332,80 +347,17 @@ struct FloatingGrip: View {
   }
 }
 
-struct CameraDockGrip: View {
-  @ObservedObject var state: OperatorState
-  unowned let controller: OperatorWindowController
+@MainActor struct CameraDockGrip {
   static let closeAccessibilityLabel = "Close Camera Dock"
   static let playbackAccessibilityLabel = "Play or pause"
   static let adjustAccessibilityLabel = "Adjust Camera Dock"
 
+  let state: OperatorState
+  unowned let controller: OperatorWindowController
+
   var canPlay: Bool {
     !controller.script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
-
-  var body: some View {
-    HStack(spacing: 8) {
-      Button {
-        controller.hideOutput()
-      } label: {
-        Image(systemName: "xmark")
-      }
-      .help("Return to the previous presentation surface · Escape")
-      .accessibilityLabel(Self.closeAccessibilityLabel)
-
-      Button {
-        controller.toggle()
-      } label: {
-        Label(
-          state.running ? "Pause" : "Play", systemImage: state.running ? "pause.fill" : "play.fill"
-        )
-        .labelStyle(.iconOnly)
-      }
-      .disabled(!canPlay)
-      .help("Play or pause · Space")
-      .accessibilityLabel(Self.playbackAccessibilityLabel)
-
-      Text(statusText)
-        .font(.system(size: 10, weight: .medium))
-        .lineLimit(1)
-        .foregroundStyle(.secondary)
-        .accessibilityHidden(true)
-
-      Spacer(minLength: 4)
-
-      Menu {
-        Stepper(
-          "Width · \(Int(state.cameraDockWidth.rounded())) pt",
-          value: Binding(
-            get: { Int(state.cameraDockWidth.rounded()) },
-            set: { controller.setCameraDockWidth(Double($0)) }),
-          in: 360...760, step: 20)
-        Stepper(
-          "Visible lines · \(state.cameraDockLineCount)",
-          value: Binding(
-            get: { state.cameraDockLineCount },
-            set: { controller.setCameraDockLineCount($0) }),
-          in: 2...5)
-        Stepper(
-          "Horizontal nudge · \(Int(state.cameraDockHorizontalNudge.rounded())) pt",
-          value: Binding(
-            get: { Int(state.cameraDockHorizontalNudge.rounded()) },
-            set: { controller.setCameraDockHorizontalNudge(Double($0)) }),
-          in: -120...120, step: 8)
-        Button("Reset Placement") { controller.resetCameraDockPreferences() }
-      } label: {
-        Image(systemName: "slider.horizontal.3")
-      }
-      .help("Adjust Camera Dock width, visible lines, and horizontal position")
-      .accessibilityLabel(Self.adjustAccessibilityLabel)
-    }
-    .buttonStyle(.borderless)
-    .controlSize(.small)
-    .frame(height: 40)
-    .padding(.horizontal, 6)
-    .foregroundStyle(.primary)
-  }
-
   var statusText: String {
     if controller.cameraDockCameraMayBeElsewhere {
       let status = state.running ? "Playing" : "Paused"
@@ -421,4 +373,151 @@ struct CameraDockGrip: View {
     }
     return controller.session.state == .idle ? "Ready" : "Paused · Space to resume"
   }
+}
+
+@MainActor final class CameraDockControlsView: NSView {
+  weak var controller: OperatorWindowController?
+  let closeButton = NSButton(frame: .zero)
+  let playbackButton = NSButton(frame: .zero)
+  let adjustButton = NSPopUpButton(frame: .zero, pullsDown: true)
+  private let statusLabel = NSTextField(labelWithString: "Ready")
+
+  var accessibilityControls: [NSView] { [closeButton, playbackButton, adjustButton] }
+
+  init(controller: OperatorWindowController) {
+    self.controller = controller
+    super.init(frame: .zero)
+    translatesAutoresizingMaskIntoConstraints = false
+
+    configure(
+      closeButton, symbol: "xmark", label: CameraDockGrip.closeAccessibilityLabel,
+      help: "Return to the previous presentation surface · Escape", action: #selector(closeDock))
+    configure(
+      playbackButton, symbol: "play.fill", label: CameraDockGrip.playbackAccessibilityLabel,
+      help: "Play or pause · Space", action: #selector(togglePlayback))
+    configureAdjustMenu()
+
+    statusLabel.font = .systemFont(ofSize: 10, weight: .medium)
+    statusLabel.textColor = .secondaryLabelColor
+    statusLabel.lineBreakMode = .byTruncatingTail
+    statusLabel.setAccessibilityElement(false)
+
+    closeButton.nextKeyView = playbackButton
+    playbackButton.nextKeyView = adjustButton
+    adjustButton.nextKeyView = closeButton
+    for view in [closeButton, playbackButton, statusLabel, adjustButton] { addSubview(view) }
+    setAccessibilityElement(false)
+    refresh()
+  }
+
+  required init?(coder: NSCoder) { fatalError("Use init(controller:)") }
+
+  override func layout() {
+    super.layout()
+    let inset: CGFloat = min(6, max(0, bounds.width / 2))
+    let gap: CGFloat = 6
+    let buttonHeight: CGFloat = min(28, bounds.height)
+    let buttonY = max(0, (bounds.height - buttonHeight) / 2)
+    let available = max(0, bounds.width - inset * 2)
+    let closeWidth = min(28, available)
+    let playbackWidth = min(28, max(0, available - closeWidth - gap))
+    let adjustWidth = min(32, max(0, available - closeWidth - playbackWidth - gap * 2))
+    let closeX = inset
+    let playbackX = closeX + closeWidth + gap
+    let adjustX = bounds.width - inset - adjustWidth
+    let statusX = playbackX + playbackWidth + gap
+    let statusWidth = max(0, adjustX - gap - statusX)
+
+    closeButton.frame = CGRect(x: closeX, y: buttonY, width: closeWidth, height: buttonHeight)
+    playbackButton.frame = CGRect(
+      x: playbackX, y: buttonY, width: playbackWidth, height: buttonHeight)
+    statusLabel.frame = CGRect(
+      x: statusX, y: buttonY, width: statusWidth, height: buttonHeight)
+    adjustButton.frame = CGRect(x: adjustX, y: buttonY, width: adjustWidth, height: buttonHeight)
+  }
+
+  private func configure(
+    _ button: NSButton, symbol: String, label: String, help: String, action: Selector
+  ) {
+    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+    button.title = ""
+    button.bezelStyle = .texturedRounded
+    button.controlSize = .small
+    button.refusesFirstResponder = false
+    button.setAccessibilityElement(true)
+    button.setAccessibilityRole(.button)
+    button.setAccessibilityLabel(label)
+    button.setAccessibilityHelp(help)
+    button.toolTip = help
+    button.target = self
+    button.action = action
+  }
+
+  private func configureAdjustMenu() {
+    adjustButton.controlSize = .small
+    adjustButton.refusesFirstResponder = false
+    adjustButton.setAccessibilityElement(true)
+    adjustButton.setAccessibilityRole(.popUpButton)
+    adjustButton.setAccessibilityLabel(CameraDockGrip.adjustAccessibilityLabel)
+    adjustButton.setAccessibilityHelp("Adjust Camera Dock width, visible lines, and position")
+    adjustButton.toolTip = "Adjust Camera Dock width, visible lines, and horizontal position"
+    adjustButton.addItem(withTitle: "Adjust")
+    adjustButton.item(at: 0)?.image = NSImage(
+      systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)
+    adjustButton.imagePosition = .imageOnly
+    guard let menu = adjustButton.menu else { return }
+    menu.addItem(NSMenuItem.separator())
+    addMenuItem("Wider", to: menu, action: #selector(increaseWidth))
+    addMenuItem("Narrower", to: menu, action: #selector(decreaseWidth))
+    addMenuItem("Show More Lines", to: menu, action: #selector(increaseLineCount))
+    addMenuItem("Show Fewer Lines", to: menu, action: #selector(decreaseLineCount))
+    addMenuItem("Move Right", to: menu, action: #selector(nudgeRight))
+    addMenuItem("Move Left", to: menu, action: #selector(nudgeLeft))
+    menu.addItem(NSMenuItem.separator())
+    addMenuItem("Reset Placement", to: menu, action: #selector(resetPlacement))
+  }
+
+  private func addMenuItem(_ title: String, to menu: NSMenu, action: Selector) {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    item.target = self
+    menu.addItem(item)
+  }
+
+  func refresh() {
+    guard let controller else { return }
+    let grip = CameraDockGrip(state: controller.state, controller: controller)
+    statusLabel.stringValue = grip.statusText
+    playbackButton.isEnabled = grip.canPlay
+    playbackButton.image = NSImage(
+      systemSymbolName: controller.state.running ? "pause.fill" : "play.fill",
+      accessibilityDescription: CameraDockGrip.playbackAccessibilityLabel)
+  }
+
+  @objc private func closeDock() { controller?.hideOutput() }
+  @objc private func togglePlayback() { controller?.toggle() }
+  @objc private func increaseWidth() {
+    guard let controller else { return }
+    controller.setCameraDockWidth(controller.state.cameraDockWidth + 20)
+  }
+  @objc private func decreaseWidth() {
+    guard let controller else { return }
+    controller.setCameraDockWidth(controller.state.cameraDockWidth - 20)
+  }
+  @objc private func increaseLineCount() {
+    guard let controller else { return }
+    controller.setCameraDockLineCount(controller.state.cameraDockLineCount + 1)
+  }
+  @objc private func decreaseLineCount() {
+    guard let controller else { return }
+    controller.setCameraDockLineCount(controller.state.cameraDockLineCount - 1)
+  }
+  @objc private func nudgeRight() {
+    guard let controller else { return }
+    controller.setCameraDockHorizontalNudge(controller.state.cameraDockHorizontalNudge + 8)
+  }
+  @objc private func nudgeLeft() {
+    guard let controller else { return }
+    controller.setCameraDockHorizontalNudge(controller.state.cameraDockHorizontalNudge - 8)
+  }
+  @objc private func resetPlacement() { controller?.resetCameraDockPreferences() }
 }

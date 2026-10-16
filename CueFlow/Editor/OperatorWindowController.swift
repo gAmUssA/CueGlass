@@ -334,7 +334,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         cameraDockPreferenceCatalog = try JSONDecoder().decode(
           CameraDockPreferenceCatalog.self, from: data)
       } catch {
-        state.status = "Camera Dock settings could not be read (\(error)). Defaults will be used."
+        session.message =
+          "Camera Dock settings could not be read (\(error)). Defaults will be used."
       }
     }
     state.speed = script.model.preferredSpeedLinesPerMinute
@@ -971,6 +972,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     state.active = session.state != .idle
     state.running = session.state == .running || session.state == .countingDown
     state.pending = session.pendingRevision
+    floating?.root?.updateCameraDockControls()
     editor.isEditable = !state.active
     editor.showsTake = state.active
     editor.needsDisplay = true
@@ -1034,6 +1036,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   private func refreshStatus() {
     state.status = session.message + (script.notice.isEmpty ? "" : " · " + script.notice)
     if let notice = PresentationFont.notice(state.style) { state.status += " · " + notice }
+  }
+  private func setPersistentStatus(_ message: String) {
+    session.message = message
+    refreshStatus()
   }
   func reflect() {
     if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
@@ -1186,6 +1192,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     handleScreenParametersChanged(displayProvider())
   }
   func handleScreenParametersChanged(_ displays: [DisplayDescriptor]) {
+    let cameraDockWasDisconnected =
+      cameraDock.map { dock in
+        guard let id = dock.displayID else { return false }
+        return !displays.contains { $0.id == id }
+      } ?? false
     if let cameraDock, let displayUUID = cameraDock.displayUUID,
       let remapped = displays.first(where: {
         ($0.preference.uuid ?? $0.preference.name) == displayUUID
@@ -1195,6 +1206,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     handleAvailableDisplayIDs(displays.map(\.id))
     refreshScreens(displays)
+    if cameraDockWasDisconnected { refreshStatus() }
     if let cameraDock,
       let display = displays.first(where: { $0.id == cameraDock.displayID }),
       !cameraDock.updateCameraDockPlacement(
@@ -1476,7 +1488,7 @@ extension OperatorWindowController {
       try claimAndPrepare()
       let displays = displayProvider()
       guard let display = cameraDockTarget(in: displays) else {
-        state.status = "No display is available for Camera Dock. Connect or select a display."
+        setPersistentStatus("No display is available for Camera Dock. Connect or select a display.")
         return
       }
       let preferences = cameraDockPreferences(for: display)
@@ -1487,8 +1499,9 @@ extension OperatorWindowController {
         let next = FloatingPrompterWindowController(
           cameraDockOn: display, controller: self, preferences: preferences)
       else {
-        state.status =
+        setPersistentStatus(
           "Camera Dock does not fit this display. Choose a larger display or reduce text size."
+        )
         return
       }
 
@@ -1778,13 +1791,14 @@ extension OperatorWindowController {
     guard let cameraDock else { return }
     pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
     cameraDockReturnSurface = nil
-    perform { try session.pauseSafely("Camera Dock unavailable — position retained") }
+    let message =
+      "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    perform { try session.pauseSafely(message) }
     cameraDock.onClose = nil
     cameraDock.close()
     floating = nil
     refresh()
-    state.status =
-      "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    setPersistentStatus(message)
   }
   func updateReadout() {
     func stamp(_ seconds: Double) -> String {

@@ -173,6 +173,24 @@ import Testing
       width: 600, height: 200, horizontalNudge: 0) == nil)
 }
 
+@Test func cameraDockGeometryRejectsReversedAuxiliaryAreas() {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
+  let left = CameraDockRect(x: 862, y: 950, width: 650, height: 32)
+  let right = CameraDockRect(x: 0, y: 950, width: 650, height: 32)
+
+  #expect(left.isFiniteAndPositive)
+  #expect(right.isFiniteAndPositive)
+  #expect(left.isContained(in: screen, tolerance: 0.5))
+  #expect(right.isContained(in: screen, tolerance: 0.5))
+  #expect(!left.intersects(right))
+  #expect(
+    CameraDockGeometry.placement(
+      screenFrame: screen, visibleFrame: visible, safeTop: 32,
+      auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right, isBuiltIn: true,
+      width: 600, height: 200, horizontalNudge: 0) == nil)
+}
+
 @Test func cameraDockGeometryRejectsTooShortAndMalformedDisplayParameters() {
   let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
   let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)

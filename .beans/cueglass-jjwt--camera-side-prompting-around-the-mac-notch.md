@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T03:23:54Z
-updated_at: 2026-10-16T07:04:00Z
+updated_at: 2026-10-16T11:26:32Z
 ---
 
 User idea: offer an optional Dynamic Island-inspired presentation mode around or immediately below the Mac camera/notch so the presenter can read while maintaining eye contact with the audience. The owner has authorized an autonomous next-release prototype based on the accepted research.
@@ -54,3 +54,20 @@ Before release, verify safe-area placement, full-screen behavior, keyboard routi
 - [x] Confirm the second-open regression with a counterfactual run: the old close-on-second-open branch fails `cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe`; the restored idempotent guard passes.
 - [x] Run app build, core/native tests, strict Swift formatting, Beans consistency, and diff checks.
 - [ ] Complete M1–M12 direct notched-Mac hardware and macOS 14 runtime acceptance before release.
+
+
+## Independent review and test follow-up
+
+The exact pushed tip `46ac3f65f878a57f2d4835552b57f6cd62364b03` passed local Core/native tests, macOS 14-target compilation, universal build/package verification, formatting, Beans checks, and diff checks. Independent reports found blockers and missing acceptance evidence; keep this Bean open until corrected-tip verification and direct hardware/runtime gates are complete.
+
+- [x] Put Camera Dock Close, Play/Pause, and Adjust controls in the panel key-view loop; keep the assertion that Tab traversal reaches a control.
+- [x] Preserve the Camera Dock disconnect message through the production screen-change callback; retain the take and anchor, with no automatic fallback.
+- [x] Keep preferences-read, no-display, fit, and placement-recovery notices visible through the shared status-refresh path.
+- [x] Add the reversed but individually valid auxiliary-area geometry case.
+- [x] Complete the reported integration assertions: Preview menu/shortcut route, exact Timed Scrolling end-target preservation, Floating-equivalent Follow Voice line/session/silence-hold behavior, remaining mapped keys and numeric-field editing, accessibility tree/actions, and disabled no-document controls.
+- [x] Replace wall-clock polling in the Follow Voice Camera Dock integration test with deterministic completion signaling.
+- [x] Update implementation-status test counts after the new tests land.
+- [ ] Pass fresh independent review and testing on the corrected pushed tip.
+- [ ] Complete direct M1–M12 checks on a notched MacBook and macOS 14 runtime before release.
+
+Review evidence: `/Users/vikgamov/.local/state/cueglass/notch-r2/correction1/verification/current/reports/reviewer.md` and `tester.md`; the full developer task ledger is `/Users/vikgamov/.local/state/cueglass/notch-r2/TASK-LEDGER.md`.
