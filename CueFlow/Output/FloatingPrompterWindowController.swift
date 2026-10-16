@@ -168,7 +168,11 @@ enum PrompterPlacement: Equatable {
     guard applyCameraDockPresentation(on: display, preferences: preferences, style: style) else {
       return false
     }
-    if priorSize != viewportSize { operatorController?.cameraDockResized(to: viewportSize) }
+    if priorSize != viewportSize {
+      operatorController?.cameraDockResized(to: viewportSize)
+    } else {
+      operatorController?.render()
+    }
     return true
   }
 
@@ -290,7 +294,12 @@ enum PrompterPlacement: Equatable {
     addSubview(reflection)
     addSubview(grip)
     wantsLayer = true
-    applyCameraDockStyle(cameraDockStyle)
+    if placement == .cameraDock {
+      applyCameraDockStyle(cameraDockStyle)
+    } else {
+      layer?.cornerRadius = 14
+      layer?.masksToBounds = true
+    }
   }
   required init?(coder: NSCoder) { fatalError("Use init(reflection:controller:)") }
   private static func backgroundColor(_ style: CameraDockVisualStyle) -> NSColor {

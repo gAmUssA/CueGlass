@@ -801,6 +801,17 @@ import Testing
     #expect(detachedCorners.contains(.layerMaxXMaxYCorner))
   }
 
+  @Test func ordinaryFloatingRootRetainsRoundedClipping() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    c.showFloating()
+    let root = try #require(c.floating?.root)
+    #expect(root.layer?.cornerRadius == 14)
+    #expect(root.layer?.masksToBounds == true)
+  }
+
   @Test func cameraDockPreservesTimedPlaybackAcrossSurfaceChange() async throws {
     let c = try await prepared(200, paragraphText: "Cue")
     defer { c.close() }
@@ -1345,6 +1356,116 @@ import Testing
     )
     #expect(c.preview.placementMapView.isHidden)
     #expect(malformedSafeFrame.minX.isFinite && malformedSafeFrame.minY.isFinite)
+  }
+
+  @Test func cameraDockPlacementPreviewTracksSuccessfulPreferenceEdits() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 602, uuid: "preview-edit-display",
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+
+    let scriptSize = c.session.logicalSize
+    let scriptCaption = c.previewCaption.stringValue
+    let scriptAspect = try #require(c.previewAspectConstraint).multiplier
+    #expect(c.preview.placementMapView.isHidden)
+
+    c.setCameraDockWidth(520)
+    c.setCameraDockLineCount(4)
+    c.setCameraDockHorizontalNudge(24)
+    c.resetCameraDockPreferences()
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(c.previewCaption.stringValue == scriptCaption)
+    #expect(c.previewAspectConstraint?.multiplier == scriptAspect)
+    #expect(c.preview.logicalSize == scriptSize)
+
+    c.setCameraDockPlacementPreviewExpanded(true)
+    let initialMap = try #require(c.preview.placementMapView.map)
+    c.setCameraDockWidth(520)
+    let widthMap = try #require(c.preview.placementMapView.map)
+    #expect(widthMap.dock.width != initialMap.dock.width)
+    #expect(widthMap == c.cameraDockPlacementMap)
+
+    c.setCameraDockLineCount(4)
+    let lineMap = try #require(c.preview.placementMapView.map)
+    #expect(lineMap.dock.height != widthMap.dock.height)
+    #expect(lineMap.caption.hasSuffix("4 lines"))
+    #expect(lineMap == c.cameraDockPlacementMap)
+
+    c.setCameraDockHorizontalNudge(24)
+    let nudgeMap = try #require(c.preview.placementMapView.map)
+    #expect(nudgeMap.dock.x != lineMap.dock.x)
+    #expect(nudgeMap == c.cameraDockPlacementMap)
+
+    c.resetCameraDockPreferences()
+    let resetMap = try #require(c.preview.placementMapView.map)
+    #expect(c.state.cameraDockLineCount == CameraDockGeometry.defaultLineCount)
+    #expect(c.state.cameraDockHorizontalNudge == 0)
+    #expect(resetMap != nudgeMap)
+    #expect(resetMap == c.cameraDockPlacementMap)
+  }
+
+  @Test func openCameraDockNudgeRefreshesMapWithoutChangingPlaybackState() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 603, uuid: "open-nudge-display", parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let window = try #require(dock.window)
+    let pausedMap = try #require(c.preview.placementMapView.map)
+
+    #expect(c.session.state == .paused)
+    c.setCameraDockWidth(520)
+    await settle(c)
+    let resizedMap = try #require(c.preview.placementMapView.map)
+    #expect(resizedMap.dock.width != pausedMap.dock.width)
+    #expect(resizedMap == c.cameraDockPlacementMap)
+
+    let pausedFrameAfterResize = window.frame
+    c.setCameraDockHorizontalNudge(24)
+    let updatedPausedMap = try #require(c.preview.placementMapView.map)
+    #expect(c.session.state == .paused)
+    #expect(window.frame.minX != pausedFrameAfterResize.minX)
+    #expect(updatedPausedMap.dock.x != resizedMap.dock.x)
+    #expect(
+      abs(updatedPausedMap.dock.x - (window.frame.minX - screen.frame.minX) / screen.frame.width)
+        < 1e-9)
+    #expect(updatedPausedMap == c.cameraDockPlacementMap)
+
+    c.state.countdown = 0
+    c.session.countdownSeconds = 0
+    try c.session.toggle(c.script)
+    await settle(c)
+    #expect(c.session.state == .running)
+    let runningFrame = window.frame
+    let runningMap = try #require(c.preview.placementMapView.map)
+
+    c.setCameraDockHorizontalNudge(48)
+    let updatedRunningMap = try #require(c.preview.placementMapView.map)
+    #expect(c.session.state == .running)
+    #expect(window.frame.minX != runningFrame.minX)
+    #expect(updatedRunningMap.dock.x != runningMap.dock.x)
+    #expect(
+      abs(
+        updatedRunningMap.dock.x - (window.frame.minX - screen.frame.minX) / screen.frame.width)
+        < 1e-9)
+    #expect(updatedRunningMap == c.cameraDockPlacementMap)
   }
 
   @Test func cameraDockPreferenceControlsClampAndUpdatePlacement() async throws {

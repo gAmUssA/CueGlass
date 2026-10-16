@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-16T13:52:06Z
-updated_at: 2026-10-16T16:32:15Z
+updated_at: 2026-10-16T17:22:16Z
 blocked_by:
     - cueglass-c3a1
 ---
@@ -25,7 +25,7 @@ Complete the accepted Staged Camera Dock flow on feat/cueglass-camera-dock: plac
 - Committing from Preview, Floating, or Output now pauses at the retained anchor in a visible Ready Dock; Play starts the shared session and exiting restores the prior surface and play state.
 - Replaced the modal explainer with an inspector callout, kept a persistent screen-recording/full-display-share disclosure, and applied attached/detached panel styling.
 - Added deterministic Core geometry/map and native surface, disclosure, and style tests; updated ADR 0012, implementation status, and the manual plan.
-- Core 89 tests, native 126 tests, strict formatting, `beans check --json`, `git diff --check`, and a clean unsigned DebugLocal arm64 build for macOS 14 passed.
+- Core 89 tests, native 127 tests, strict formatting, `beans check --json`, `git diff --check`, and a clean unsigned DebugLocal arm64 build for macOS 14 passed.
 - Physical M1–M14 checks remain pending for owner observation.
 
 ## Final review follow-up
@@ -39,3 +39,10 @@ Complete the accepted Staged Camera Dock flow on feat/cueglass-camera-dock: plac
 - Fixed forced Camera Dock teardown on display loss, invalid placement, and panel close. The preview returns to its saved script size and anchor; collapsed disclosure restores the script caption/aspect, while expanded disclosure shows a current map or hides when no layout exists. Status survives refresh.
 - ADR 0012 records the detached 6 pt fallback gap. All M1–M14 physical/runtime owner checks remain pending.
 - This fix passes 89 Core tests, 127 native tests, strict Swift formatting, `git diff --check`, and a clean unsigned DebugLocal arm64 build targeting macOS 14.
+
+
+## Final review follow-up 2 — 2c65e10
+
+- [x] Resolve child bug @cueglass-chrp: refresh the truthful placement map after successful edits, restore ordinary floating-panel corner clipping, and update the native test count.
+- [ ] Run required verification on the corrected tip and build a fresh unsigned DebugLocal app for owner testing.
+- [x] Keep physical M1–M14 checks pending until direct owner observation.

@@ -1848,11 +1848,16 @@ extension OperatorWindowController {
       ?? cameraDockTarget(in: displays)
     guard let display else { return }
     persistCameraDockPreferences(normalized, for: display)
-    if let cameraDock,
-      !cameraDock.updateCameraDockPlacement(
-        on: display, preferences: normalized, style: session.style)
-    {
-      cameraDockPlacementUnavailable()
+    if let cameraDock {
+      guard
+        cameraDock.updateCameraDockPlacement(
+          on: display, preferences: normalized, style: session.style)
+      else {
+        cameraDockPlacementUnavailable()
+        render()
+        return
+      }
+    } else if state.cameraDockPlacementPreviewExpanded {
       render()
     }
   }
