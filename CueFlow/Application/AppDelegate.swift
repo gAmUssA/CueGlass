@@ -1,6 +1,9 @@
 import AppKit
 
-@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
+  NSMenuItemValidation
+{
   var documents: CueFlowDocumentController?
   func applicationWillFinishLaunching(_ notification: Notification) {
     documents = CueFlowDocumentController()
@@ -105,6 +108,7 @@ import AppKit
     add(
       view, "Camera Dock", #selector(cameraDockAction), "d",
       modifiers: [.command, .option])
+    view.items.last?.target = self
     add(
       view, "Show Inspector", #selector(toggleInspector), "i",
       modifiers: [.command, .control])
@@ -112,6 +116,10 @@ import AppKit
     add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
     NSApp.windowsMenu = window
     NSApp.mainMenu = main
+  }
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    guard menuItem.action == #selector(cameraDockAction) else { return true }
+    return current != nil
   }
   func menuNeedsUpdate(_ menu: NSMenu) {
     guard menu.identifier?.rawValue == "CueGlassRecents" else { return }

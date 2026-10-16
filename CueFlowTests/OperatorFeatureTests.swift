@@ -1203,6 +1203,14 @@ import Testing
   @Test func cameraDockMenuAndShortcutOpenFromPreview() async throws {
     let c = try await prepared()
     defer { c.close() }
+    let previousMainMenu = NSApp.mainMenu
+    let appDelegate = AppDelegate()
+    appDelegate.buildMenu()
+    defer { NSApp.mainMenu = previousMainMenu }
+    let viewMenu = try #require(
+      NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu)
+    let cameraDockMenuItem = try #require(
+      viewMenu.items.first { $0.title == "Camera Dock" })
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
     let operatorWindow = try #require(c.window)
@@ -1222,6 +1230,10 @@ import Testing
     shortcutDock.reflection.viewport.driver?.stop()
     shortcutDock.reflection.viewport.driver = nil
     await settle(c)
+    #expect(appDelegate.current === c)
+    viewMenu.update()
+    #expect(cameraDockMenuItem.isEnabled)
+    #expect(appDelegate.validateMenuItem(cameraDockMenuItem))
     #expect(c.selectedPresentationSurface == "cameraDock")
 
     c.stopPresenting()
@@ -1398,9 +1410,26 @@ import Testing
   }
 
   @Test func cameraDockCommandWithoutDocumentDoesNotOpenDocumentPicker() throws {
+    let previousMainMenu = NSApp.mainMenu
+    let appDelegate = AppDelegate()
+    appDelegate.buildMenu()
+    defer { NSApp.mainMenu = previousMainMenu }
+    let viewMenu = try #require(
+      NSApp.mainMenu?.items.first { $0.title == "View" }?.submenu)
+    let cameraDockMenuItem = try #require(
+      viewMenu.items.first { $0.title == "Camera Dock" })
+    #expect(appDelegate.current == nil)
+    viewMenu.update()
+    #expect(!cameraDockMenuItem.isEnabled)
+    #expect(!appDelegate.validateMenuItem(cameraDockMenuItem))
+    for siblingItem in viewMenu.items where siblingItem !== cameraDockMenuItem {
+      #expect(appDelegate.validateMenuItem(siblingItem))
+    }
+
     let panel = PresentationPanel(
       contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
       styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    defer { panel.close() }
     let documentsBefore = NSDocumentController.shared.documents.count
     let event = try #require(
       NSEvent.keyEvent(
@@ -1408,8 +1437,13 @@ import Testing
         windowNumber: panel.windowNumber, context: nil, characters: "d",
         charactersIgnoringModifiers: "d", isARepeat: false, keyCode: 2))
     #expect(!CommandRouter.route(event, window: panel, controller: nil))
+    appDelegate.cameraDockAction()
     #expect(NSDocumentController.shared.documents.count == documentsBefore)
-    panel.close()
+    #expect(PresentationCoordinator.shared.owner == nil)
+    #expect(
+      !NSApp.windows.contains {
+        $0.isVisible && ($0 is PresentationPanel || $0 is OutputWindow)
+      })
   }
 
   @Test func cameraDockCanOpenForAnEmptyScriptWithoutStartingPlayback() async throws {
