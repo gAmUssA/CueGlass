@@ -1553,14 +1553,16 @@ import Testing
         return RecognizedWord(text: text, start: start, end: start + 0.2, confidence: 0.9)
       }
     let eventEnd = try #require(words.last?.end)
+    let initialVoiceCeiling = try #require(c.session.timeline.voiceCeiling)
+    #expect(expectedY > initialVoiceCeiling + 0.5)
     #expect(
       await awaitVoiceUpdate(
         coordinator,
         matching: {
           guard let ceiling = c.session.timeline.voiceCeiling else { return false }
-          return abs(ceiling - expectedY) < 0.5
+          return ceiling > initialVoiceCeiling + 0.5 && abs(ceiling - expectedY) < 0.5
         },
-        label: "finalized speech alignment",
+        label: "finalized speech alignment advances the initial ceiling",
         perform: {
           source.send(
             TranscriptEvent(

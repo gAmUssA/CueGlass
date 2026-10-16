@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-14T03:23:54Z
-updated_at: 2026-10-16T12:04:09Z
+updated_at: 2026-10-16T12:07:12Z
 ---
 
 User idea: offer an optional Dynamic Island-inspired presentation mode around or immediately below the Mac camera/notch so the presenter can read while maintaining eye contact with the audience. The owner has authorized an autonomous next-release prototype based on the accepted research.
@@ -78,4 +78,4 @@ Review evidence: `/Users/vikgamov/.local/state/cueglass/notch-r2/correction1/ver
 - [x] Install the Camera Dock key-view loop after the panel and nonzero grip layout; retain it across AppKit recalculation.
 - [x] Capture the Timed Scrolling target and finish before the surface switch; verify target/duration and finish within 1e-6 seconds after switching, resuming measurement, and resizing.
 - [x] Update implementation-status test counts and native pass claims from the exact green run.
-- [ ] Run focused regressions and all repository gates, then push the corrected branch.
+- [x] Run focused regressions and all repository gates, then push the corrected branch.
