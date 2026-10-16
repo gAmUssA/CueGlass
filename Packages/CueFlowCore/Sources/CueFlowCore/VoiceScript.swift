@@ -71,13 +71,24 @@ public struct ScriptIndex: Sendable {
     }
     paragraphOfToken = paragraphs
     var sentenceRanges: [Range<Int>] = []
+    var tokenCursor = 0
     let tokens = self.tokens
     ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: .bySentences) {
       _, range, _, _ in
-      let chars = range.location..<(range.location + range.length)
-      let first = tokens.firstIndex { $0.range.lowerBound >= chars.lowerBound }
-      let last = tokens.lastIndex { $0.range.upperBound <= chars.upperBound }
-      if let first, let last, first <= last { sentenceRanges.append(first..<(last + 1)) }
+      let sentenceStart = range.location
+      let sentenceEnd = range.location + range.length
+      while tokenCursor < tokens.count,
+        tokens[tokenCursor].range.upperBound <= sentenceStart
+      {
+        tokenCursor += 1
+      }
+      let first = tokenCursor
+      while tokenCursor < tokens.count,
+        tokens[tokenCursor].range.upperBound <= sentenceEnd
+      {
+        tokenCursor += 1
+      }
+      if first < tokenCursor { sentenceRanges.append(first..<tokenCursor) }
     }
     sentences = sentenceRanges
   }

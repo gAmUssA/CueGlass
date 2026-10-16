@@ -5,6 +5,38 @@ import CueFlowCore
 import Foundation
 import Speech
 
+struct CaptureGenerationGate: Sendable {
+  private(set) var requestGeneration: UInt64 = 0
+  private(set) var activeGeneration: UInt64?
+
+  mutating func beginRequest() -> UInt64 {
+    requestGeneration &+= 1
+    activeGeneration = nil
+    return requestGeneration
+  }
+
+  mutating func activate(_ generation: UInt64) -> Bool {
+    guard isCurrentRequest(generation) else { return false }
+    activeGeneration = generation
+    return true
+  }
+
+  mutating func invalidate() {
+    requestGeneration &+= 1
+    activeGeneration = nil
+  }
+
+  mutating func deactivate() { activeGeneration = nil }
+
+  func isCurrentRequest(_ generation: UInt64) -> Bool {
+    requestGeneration == generation
+  }
+
+  func acceptsCallback(_ generation: UInt64) -> Bool {
+    requestGeneration == generation && activeGeneration == generation
+  }
+}
+
 @available(macOS 26.0, *)
 @MainActor final class SpeechVoiceSource: VoiceCaptureSource {
   private var engine: AVAudioEngine?
@@ -21,6 +53,7 @@ import Speech
   private var installationRequest: AssetInstallationRequest?
   private var captureStartedAt = 0.0
   private var resultStreamsRemaining = 0
+  private var captureGeneration = CaptureGenerationGate()
 
   func supportedLocales() async -> [VoiceLocaleOption] {
     guard SpeechTranscriber.isAvailable else { return [] }
@@ -106,14 +139,17 @@ import Speech
   func start(localeIdentifier: String) async throws -> AsyncThrowingStream<
     TranscriptEvent, any Error
   > {
+    let generation = captureGeneration.beginRequest()
+    stopCurrentCapture()
     guard await readiness(localeIdentifier: localeIdentifier) == .ready else {
       throw VoiceSourceError.modelNotReady
     }
+    try ensureCurrentRequest(generation)
     try Task.checkCancellation()
-    stop()
 
     let module = makeTranscriber(locale: Locale(identifier: localeIdentifier))
     let commandModule = await makeCommandTranscriber(localeIdentifier: localeIdentifier)
+    try ensureCurrentRequest(generation)
     var modules: [any SpeechModule] = [module]
     if let commandModule { modules.append(commandModule) }
     let analyzer = SpeechAnalyzer(
@@ -125,9 +161,11 @@ import Speech
         "CueGlass", "Cue Glass", "Prompter", "pause", "resume", "stop take", "stop following",
       ]
       try await analyzer.setContext(context)
+      try ensureCurrentRequest(generation)
     }
     guard let targetFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules)
     else { throw VoiceSourceError.noCompatibleAudioFormat }
+    try ensureCurrentRequest(generation)
     try Task.checkCancellation()
 
     let engine = AVAudioEngine()
@@ -144,8 +182,9 @@ import Speech
     let pipe = AudioInputPipe(
       converter: converter, targetFormat: targetFormat, continuation: inputPair.continuation
     ) { [weak self] error in
-      Task { @MainActor in self?.failAudio(error) }
+      Task { @MainActor in self?.failAudio(error, generation: generation) }
     }
+    guard captureGeneration.activate(generation) else { throw CancellationError() }
     self.engine = engine
     self.analyzer = analyzer
     self.transcriber = module
@@ -155,77 +194,91 @@ import Speech
     inputPipe = pipe
     resultStreamsRemaining = commandModule == nil ? 1 : 2
 
-    try await analyzer.prepareToAnalyze(in: targetFormat)
-    try Task.checkCancellation()
-    analyzerTask = Task { [weak self] in
-      do {
-        try await analyzer.start(inputSequence: inputPair.stream)
-        try await analyzer.finalizeAndFinishThroughEndOfInput()
-      } catch {
-        self?.failResultStream(error)
-      }
-    }
-    let captureStartedAt = ProcessInfo.processInfo.systemUptime
-    self.captureStartedAt = captureStartedAt
-    resultsTask = Task { [weak self] in
-      do {
-        for try await result in module.results {
-          guard !Task.isCancelled else { return }
-          let event = Self.event(
-            from: result, availableAt: ProcessInfo.processInfo.systemUptime - captureStartedAt)
-          // Empty results can advance finalization without repeating their volatile wording.
-          if !event.words.isEmpty || !(event.commandAlternatives ?? []).isEmpty || event.isFinal
-            || event.finalizedThrough?.isFinite == true
-          {
-            outputPair.continuation.yield(event)
-          }
-        }
-        guard !Task.isCancelled else { return }
-        self?.resultStreamFinished()
-      } catch {
-        self?.failResultStream(error)
-      }
-    }
-    if let commandModule {
-      commandResultsTask = Task { [weak self] in
+    do {
+      try await analyzer.prepareToAnalyze(in: targetFormat)
+      try ensureCurrentRequest(generation)
+      try Task.checkCancellation()
+      analyzerTask = Task { [weak self] in
         do {
-          for try await result in commandModule.results {
+          try await analyzer.start(inputSequence: inputPair.stream)
+          try await analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+          guard !Task.isCancelled, !(error is CancellationError) else { return }
+          self?.failResultStream(error, generation: generation)
+        }
+      }
+      let captureStartedAt = ProcessInfo.processInfo.systemUptime
+      self.captureStartedAt = captureStartedAt
+      resultsTask = Task { [weak self] in
+        do {
+          for try await result in module.results {
             guard !Task.isCancelled else { return }
-            let event = Self.commandEvent(
+            let event = Self.event(
               from: result, availableAt: ProcessInfo.processInfo.systemUptime - captureStartedAt)
-            if !(event.commandAlternatives ?? []).isEmpty || event.isFinal
+            // Empty results can advance finalization without repeating their volatile wording.
+            if !event.words.isEmpty || !(event.commandAlternatives ?? []).isEmpty || event.isFinal
               || event.finalizedThrough?.isFinite == true
             {
               outputPair.continuation.yield(event)
             }
           }
           guard !Task.isCancelled else { return }
-          self?.resultStreamFinished()
+          self?.resultStreamFinished(generation: generation)
         } catch {
-          self?.failResultStream(error)
+          guard !Task.isCancelled, !(error is CancellationError) else { return }
+          self?.failResultStream(error, generation: generation)
         }
       }
-    }
+      if let commandModule {
+        commandResultsTask = Task { [weak self] in
+          do {
+            for try await result in commandModule.results {
+              guard !Task.isCancelled else { return }
+              let event = Self.commandEvent(
+                from: result, availableAt: ProcessInfo.processInfo.systemUptime - captureStartedAt)
+              if !(event.commandAlternatives ?? []).isEmpty || event.isFinal
+                || event.finalizedThrough?.isFinite == true
+              {
+                outputPair.continuation.yield(event)
+              }
+            }
+            guard !Task.isCancelled else { return }
+            self?.resultStreamFinished(generation: generation)
+          } catch {
+            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            self?.failResultStream(error, generation: generation)
+          }
+        }
+      }
 
-    inputNode.installTap(
-      onBus: 0, bufferSize: 1024, format: inputFormat,
-      block: makeSpeechAudioTapHandler(for: pipe))
-    configurationObserver = NotificationCenter.default.addObserver(
-      forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-    ) { [weak self] _ in
-      Task { @MainActor in self?.failAudio(VoiceSourceError.audioConfigurationChanged) }
-    }
-    do {
+      inputNode.installTap(
+        onBus: 0, bufferSize: 1024, format: inputFormat,
+        block: makeSpeechAudioTapHandler(for: pipe))
+      configurationObserver = NotificationCenter.default.addObserver(
+        forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+      ) { [weak self] _ in
+        Task { @MainActor in
+          self?.failAudio(VoiceSourceError.audioConfigurationChanged, generation: generation)
+        }
+      }
+      try ensureCurrentRequest(generation)
       try Task.checkCancellation()
       try engine.start()
+      try ensureCurrentRequest(generation)
+      return outputPair.stream
     } catch {
-      stop()
+      if captureGeneration.acceptsCallback(generation) { stopCurrentCapture() }
       throw error
     }
-    return outputPair.stream
   }
 
   func stop() {
+    captureGeneration.invalidate()
+    stopCurrentCapture()
+  }
+
+  private func stopCurrentCapture() {
+    captureGeneration.deactivate()
     if let engine {
       if engine.isRunning { engine.stop() }
       engine.inputNode.removeTap(onBus: 0)
@@ -254,48 +307,31 @@ import Speech
     captureStartedAt = 0
   }
 
-  private func failAudio(_ error: Error) {
-    inputContinuation?.finish(throwing: error)
-    outputContinuation?.finish(throwing: error)
-    stopHardware()
+  private func ensureCurrentRequest(_ generation: UInt64) throws {
+    guard captureGeneration.isCurrentRequest(generation) else { throw CancellationError() }
   }
 
-  private func resultStreamFinished() {
+  private func failAudio(_ error: Error, generation: UInt64) {
+    guard captureGeneration.acceptsCallback(generation), !(error is CancellationError)
+    else { return }
+    inputContinuation?.finish(throwing: error)
+    outputContinuation?.finish(throwing: error)
+    stopCurrentCapture()
+  }
+
+  private func resultStreamFinished(generation: UInt64) {
+    guard captureGeneration.acceptsCallback(generation) else { return }
     resultStreamsRemaining = max(0, resultStreamsRemaining - 1)
     guard resultStreamsRemaining == 0 else { return }
     outputContinuation?.finish()
-    stopHardware()
+    stopCurrentCapture()
   }
 
-  private func failResultStream(_ error: any Error) {
+  private func failResultStream(_ error: any Error, generation: UInt64) {
+    guard captureGeneration.acceptsCallback(generation), !(error is CancellationError)
+    else { return }
     outputContinuation?.finish(throwing: error)
-    stopHardware()
-  }
-
-  private func stopHardware() {
-    if let engine {
-      if engine.isRunning { engine.stop() }
-      engine.inputNode.removeTap(onBus: 0)
-    }
-    if let configurationObserver {
-      NotificationCenter.default.removeObserver(configurationObserver)
-      self.configurationObserver = nil
-    }
-    inputContinuation?.finish()
-    inputContinuation = nil
-    inputPipe = nil
-    analyzerTask?.cancel()
-    resultsTask?.cancel()
-    commandResultsTask?.cancel()
-    analyzerTask = nil
-    resultsTask = nil
-    commandResultsTask = nil
-    if let analyzer { Task { await analyzer.cancelAndFinishNow() } }
-    engine = nil
-    analyzer = nil
-    transcriber = nil
-    commandTranscriber = nil
-    resultStreamsRemaining = 0
+    stopCurrentCapture()
   }
 
   private func makeCommandTranscriber(localeIdentifier: String) async -> DictationTranscriber? {

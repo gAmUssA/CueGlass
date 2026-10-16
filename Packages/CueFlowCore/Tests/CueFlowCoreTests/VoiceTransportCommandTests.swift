@@ -120,6 +120,24 @@ import Testing
         ])) == nil)
   }
 
+  @Test(arguments: [false, true])
+  func lowConfidenceInterveningWordCannotManufactureACommand(commandOnly: Bool) {
+    var matcher = VoiceTransportCommandMatcher()
+    let words = [
+      RecognizedWord(text: "CueGlass", start: 0, end: 0.2, confidence: 0.9),
+      RecognizedWord(text: "don't", start: 0.25, end: 0.4, confidence: 0.2),
+      RecognizedWord(text: "stop", start: 0.45, end: 0.6, confidence: 0.9),
+      RecognizedWord(text: "take", start: 0.65, end: 0.8, confidence: 0.9),
+    ]
+    let event = TranscriptEvent(
+      isFinal: true, rangeStart: 0, rangeEnd: 0.8, availableAt: 0.8,
+      words: commandOnly ? [] : words,
+      commandAlternatives: commandOnly ? [words] : [], isCommandOnly: commandOnly)
+
+    #expect(matcher.consume(event, at: 10) == nil)
+    #expect(matcher.advance(to: 12) == nil)
+  }
+
   @Test func acceptsACommandAcrossFinalResultBoundariesAndDeduplicatesIt() {
     var matcher = VoiceTransportCommandMatcher()
     let prefix = event(recognizedWords("CueGlass", startingAt: 3))

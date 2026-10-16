@@ -64,8 +64,11 @@ public struct FollowPolicy: Sendable {
     self.config = config
   }
 
-  public mutating func update(hypothesis: [RecognizedWord]) -> FollowDecision {
-    guard hypothesis != lastHypothesis else { return .none }
+  public mutating func update(
+    hypothesis: [RecognizedWord], allowDiscontinuities: Bool = true,
+    reevaluateUnchangedHypothesis: Bool = false
+  ) -> FollowDecision {
+    guard hypothesis != lastHypothesis || reevaluateUnchangedHypothesis else { return .none }
     lastHypothesis = hypothesis
     let words = hypothesis.filter { $0.start >= listeningSince - 0.0005 }
     guard let latest = words.last else { return .none }
@@ -105,12 +108,16 @@ public struct FollowPolicy: Sendable {
     } else if misses >= config.tentativeAfterMisses && confidence == .locked {
       confidence = .tentative
     }
-    if let move = reacquire(query: query) { return move }
+    if let move = reacquire(query: query, allowDiscontinuities: allowDiscontinuities) {
+      return move
+    }
     if query.suffix(max(misses, 1)).allSatisfy({ $0 == nil }) { return .hold(.lowConfidence) }
     return .hold(confidence == .lost ? .lost : .mismatch)
   }
 
-  private mutating func reacquire(query: [String?]) -> FollowDecision? {
+  private mutating func reacquire(
+    query: [String?], allowDiscontinuities: Bool
+  ) -> FollowDecision? {
     guard
       let found = Aligner.align(
         query: query, script: script, window: 0..<script.count, preferEnd: position + 1),
@@ -120,9 +127,10 @@ public struct FollowPolicy: Sendable {
     else { return nil }
     if found.scriptEnd < position && found.matches < config.backJumpMinMatches { return nil }
     let from = position
+    let local = found.scriptEnd > from && found.scriptEnd <= from + 1 + config.localForward
+    guard local || allowDiscontinuities else { return nil }
     position = found.scriptEnd
     confidence = .locked
-    let local = found.scriptEnd > from && found.scriptEnd <= from + 1 + config.localForward
     return local ? .advance(to: position) : .jump(from: from, to: position)
   }
 

@@ -89,3 +89,30 @@ import Testing
   accumulator.clear()
   #expect(accumulator.hypothesis.isEmpty)
 }
+
+@Test func transcriptFinalizationWatermarkPromotesUnchangedVolatileWords() {
+  var accumulator = TranscriptAccumulator()
+  let words = [
+    RecognizedWord(text: "north", start: 0, end: 0.3),
+    RecognizedWord(text: "wind", start: 0.31, end: 0.6),
+  ]
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: false, rangeStart: 0, rangeEnd: 0.6, availableAt: 0.8, words: words))
+  #expect(accumulator.finalized.isEmpty)
+  #expect(accumulator.volatile == words)
+
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: false, rangeStart: 0.6, rangeEnd: 0.6, availableAt: 1.0, words: [],
+      finalizedThrough: 0.6))
+
+  #expect(accumulator.finalized == words)
+  #expect(accumulator.volatile.isEmpty)
+
+  accumulator.apply(
+    TranscriptEvent(
+      isFinal: true, rangeStart: 0, rangeEnd: 0.6, availableAt: 1.1, words: words,
+      finalizedThrough: 0.6))
+  #expect(accumulator.finalized == words)
+}

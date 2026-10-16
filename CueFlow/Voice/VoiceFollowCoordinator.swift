@@ -77,12 +77,15 @@ private struct VoiceDecisionEvent: Sendable {
   let epoch: UInt64
   let decision: FollowDecision
   let speechTime: Double?
+  let progressIndex: Int
 }
 
 private actor VoiceAlignmentWorker {
   private var accumulator = TranscriptAccumulator()
   private var policy: FollowPolicy
   private let epoch: UInt64
+  private var finalizationWatermark = -Double.infinity
+  private var finalizedSpeechTime = -Double.infinity
 
   init(script: ScriptIndex, startAt tokenIndex: Int, epoch: UInt64) {
     var next = FollowPolicy(script: script)
@@ -94,30 +97,46 @@ private actor VoiceAlignmentWorker {
   func ingest(_ event: TranscriptEvent, epoch candidate: UInt64) -> VoiceDecisionEvent? {
     guard candidate == epoch else { return nil }
     accumulator.apply(event)
-    let decision = policy.update(hypothesis: accumulator.hypothesis)
-    guard decision != .none else { return nil }
-    let finalizedThrough = max(
+    let nextWatermark = max(
       event.finalizedThrough ?? -Double.infinity,
       event.isFinal ? event.rangeEnd : -Double.infinity)
-    let speechTime = event.words.lazy.filter { $0.end <= finalizedThrough }.map(\.end).max()
-    return VoiceDecisionEvent(epoch: epoch, decision: decision, speechTime: speechTime)
+    let watermarkAdvanced = nextWatermark > finalizationWatermark
+    finalizationWatermark = max(finalizationWatermark, nextWatermark)
+    let decision = policy.update(
+      hypothesis: accumulator.hypothesis,
+      allowDiscontinuities: accumulator.volatile.isEmpty,
+      reevaluateUnchangedHypothesis: watermarkAdvanced)
+    let speechTime = accumulator.finalized.lazy
+      .filter { $0.end > self.finalizedSpeechTime }
+      .map(\.end)
+      .max()
+    if let speechTime { finalizedSpeechTime = max(finalizedSpeechTime, speechTime) }
+    guard decision != .none || speechTime != nil else { return nil }
+    return VoiceDecisionEvent(
+      epoch: epoch, decision: decision, speechTime: speechTime, progressIndex: policy.position)
   }
 
   func tick(now: Double, epoch candidate: UInt64) -> VoiceDecisionEvent? {
     guard candidate == epoch else { return nil }
     let decision = policy.tick(now: now)
     return decision == .none
-      ? nil : VoiceDecisionEvent(epoch: epoch, decision: decision, speechTime: nil)
+      ? nil
+      : VoiceDecisionEvent(
+        epoch: epoch, decision: decision, speechTime: nil, progressIndex: policy.position)
   }
 
   func clear() {
     accumulator.clear()
     policy = FollowPolicy(script: policy.script)
+    finalizationWatermark = -Double.infinity
+    finalizedSpeechTime = -Double.infinity
   }
 
   func pauseForCommand() {
     accumulator.clear()
     policy.suspend()
+    finalizationWatermark = -Double.infinity
+    finalizedSpeechTime = -Double.infinity
   }
 
   func resumeAfterCommand(now: Double) {
@@ -125,6 +144,8 @@ private actor VoiceAlignmentWorker {
     accumulator.clear()
     policy = FollowPolicy(script: policy.script, config: policy.config)
     policy.resume(at: position, now: now)
+    finalizationWatermark = -Double.infinity
+    finalizedSpeechTime = -Double.infinity
   }
 }
 
@@ -133,6 +154,7 @@ private actor VoiceAlignmentWorker {
   private let source: VoiceCaptureSource
   private let microphone: MicrophonePermissionChecking
   private let usageDescription: () -> String?
+  private let captureClock: () -> Double
   private(set) var state: VoiceFollowUIState = .checking { didSet { onChange?() } }
   private(set) var selectedLocaleIdentifier: String
   private(set) var locales: [VoiceLocaleOption] = [] { didSet { onChange?() } }
@@ -143,6 +165,7 @@ private actor VoiceAlignmentWorker {
   private var scriptIndex: ScriptIndex?
   private var lineTable: VoiceLineTable?
   private var sourceStartTask: Task<AsyncThrowingStream<TranscriptEvent, any Error>, any Error>?
+  private var sourceStartTaskEpoch: UInt64?
   private var captureTask: Task<Void, Never>?
   private var silenceTask: Task<Void, Never>?
   private var installationTask: Task<Void, Never>?
@@ -152,6 +175,8 @@ private actor VoiceAlignmentWorker {
   private var commandMatcher = VoiceTransportCommandMatcher()
   private var commandPaused = false
   private var commandPauseAudioTime = 0.0
+  private var captureStartedAtUptime: Double?
+  private var captureStartedEpoch: UInt64?
   private var paceEstimator: FollowPaceEstimator?
   var onStopFollowing: (() -> Void)?
   var onStopTake: (() -> Void)?
@@ -159,12 +184,14 @@ private actor VoiceAlignmentWorker {
   init(
     session: PlaybackSession, source: VoiceCaptureSource,
     microphone: MicrophonePermissionChecking = SystemMicrophonePermission(),
-    usageDescription: @escaping () -> String?
+    usageDescription: @escaping () -> String?,
+    captureClock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime }
   ) {
     self.session = session
     self.source = source
     self.microphone = microphone
     self.usageDescription = usageDescription
+    self.captureClock = captureClock
     let stored = UserDefaults.standard.string(forKey: "voiceFollowLocale")
     selectedLocaleIdentifier = stored ?? Locale.current.identifier
     session.onVoiceStartIntentInvalidated = { [weak self] reason, _ in
@@ -187,7 +214,11 @@ private actor VoiceAlignmentWorker {
       identifier != selectedLocaleIdentifier
     else { return }
     if installationTask != nil { cancelInstallation() }
-    if session.voiceSessionActive { stop() }
+    if session.voiceSessionActive {
+      stop()
+    } else {
+      session.invalidateVoiceStartIntent("Follow Voice language changed")
+    }
     selectedLocaleIdentifier = identifier
     commandMatcher = VoiceTransportCommandMatcher(enabled: Self.supportsEnglishCommands(identifier))
     UserDefaults.standard.set(identifier, forKey: "voiceFollowLocale")
@@ -370,15 +401,20 @@ private actor VoiceAlignmentWorker {
     scriptIndex = index
     self.lineTable = lineTable
     do {
+      captureStartedEpoch = requestedEpoch
       let startTask = Task { try await source.start(localeIdentifier: locale) }
       sourceStartTask = startTask
+      sourceStartTaskEpoch = requestedEpoch
       let stream = try await startTask.value
-      sourceStartTask = nil
+      if sourceStartTaskEpoch == requestedEpoch {
+        sourceStartTask = nil
+        sourceStartTaskEpoch = nil
+      }
       guard currentStartIndex() != nil else {
-        source.stop()
         await nextWorker.clear()
         return
       }
+      captureStartedAtUptime = captureClock()
       // AudioEngine.start can synchronously block the main actor during device route setup,
       // especially for Bluetooth microphones. Keep the shared timeline paused until the
       // capture stream is ready so its first display callback cannot mistake route setup for
@@ -394,7 +430,7 @@ private actor VoiceAlignmentWorker {
         return
       }
       paceEstimator = FollowPaceEstimator(
-        baselineVelocity: session.timeline.velocity,
+        baselineVelocity: session.nominalVelocity,
         maximumVelocity: session.lineAdvance * session.configuredMax / 60)
       if let position = try? session.timeline.position(at: session.effectiveTime) {
         paceEstimator?.reset(anchorPosition: position, at: 0)
@@ -406,6 +442,10 @@ private actor VoiceAlignmentWorker {
     } catch {
       guard epoch == requestedEpoch, session.isCurrentVoiceStartIntent(intent) else { return }
       source.stop()
+      if captureStartedEpoch == requestedEpoch {
+        captureStartedAtUptime = nil
+        captureStartedEpoch = nil
+      }
       await nextWorker.clear()
       worker = nil
       scriptIndex = nil
@@ -496,7 +536,11 @@ private actor VoiceAlignmentWorker {
     pendingActivationState = nil
     _ = nextEpoch()
     sourceStartTask?.cancel()
+    if sourceStartTask != nil { source.stop() }
     sourceStartTask = nil
+    sourceStartTaskEpoch = nil
+    captureStartedAtUptime = nil
+    captureStartedEpoch = nil
     if session.voiceSessionActive && session.voiceSuspended {
       state = .suspended(reason)
     } else if !session.voiceSessionActive {
@@ -507,6 +551,9 @@ private actor VoiceAlignmentWorker {
   private func stopCaptureAndClear() {
     sourceStartTask?.cancel()
     sourceStartTask = nil
+    sourceStartTaskEpoch = nil
+    captureStartedAtUptime = nil
+    captureStartedEpoch = nil
     source.stop()
     stopTasksAndClearWorker()
     scriptIndex = nil
@@ -516,6 +563,9 @@ private actor VoiceAlignmentWorker {
   private func stopTasksAndClearWorker() {
     sourceStartTask?.cancel()
     sourceStartTask = nil
+    sourceStartTaskEpoch = nil
+    captureStartedAtUptime = nil
+    captureStartedEpoch = nil
     captureTask?.cancel()
     captureTask = nil
     silenceTask?.cancel()
@@ -622,7 +672,7 @@ private actor VoiceAlignmentWorker {
     guard commandPaused, session.voiceSessionActive, !session.voiceSuspended,
       let worker
     else { return }
-    let resumeTime = max(audioTime, commandPauseAudioTime)
+    let resumeTime = currentCaptureTime(atLeast: max(audioTime, commandPauseAudioTime))
     let resumeEpoch = epoch
     await worker.resumeAfterCommand(now: resumeTime)
     guard commandPaused, epoch == resumeEpoch, session.voiceEpoch == resumeEpoch else { return }
@@ -665,7 +715,12 @@ private actor VoiceAlignmentWorker {
         try session.voiceHold(message, epoch: epoch)
         state = .holding(message)
       case .none:
-        break
+        guard result.speechTime != nil,
+          scriptIndex.tokens.indices.contains(result.progressIndex),
+          let y = lineTable.y(for: scriptIndex.tokens[result.progressIndex])
+        else { break }
+        let velocity = result.speechTime.flatMap { paceEstimator?.observe(position: y, at: $0) }
+        try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
       }
     } catch {
       captureFailed("Follow Voice stopped: \(error.localizedDescription)", epoch: epoch)
@@ -689,6 +744,12 @@ private actor VoiceAlignmentWorker {
   private func nextEpoch() -> UInt64 {
     epoch = max(epoch, session.voiceEpoch) &+ 1
     return epoch
+  }
+
+  private func currentCaptureTime(atLeast minimum: Double) -> Double {
+    guard let captureStartedAtUptime else { return minimum }
+    let elapsed = captureClock() - captureStartedAtUptime
+    return max(minimum, elapsed.isFinite ? elapsed : minimum)
   }
 
   private static func uiState(for readiness: VoiceAssetReadiness) -> VoiceFollowUIState {

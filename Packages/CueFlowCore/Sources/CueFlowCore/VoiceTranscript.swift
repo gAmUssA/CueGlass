@@ -72,17 +72,27 @@ public struct TranscriptAccumulator: Sendable {
       countRevisions(
         replacing: volatile.filter { $0.start < event.rangeEnd - Self.epsilon }, with: event.words)
       volatile.removeAll { $0.start < event.rangeEnd - Self.epsilon }
-      finalized.append(contentsOf: event.words)
-      if finalized.count > Self.retainedWordLimit {
-        finalized.removeFirst(finalized.count - Self.retainedWordLimit)
-      }
-      return
+      appendFinalized(event.words)
+    } else {
+      countRevisions(
+        replacing: volatile.filter { $0.start >= event.rangeStart - Self.epsilon },
+        with: event.words)
+      volatile.removeAll { $0.start >= event.rangeStart - Self.epsilon }
+      volatile.append(
+        contentsOf: event.words.filter { $0.start >= (finalized.last?.end ?? 0) - Self.epsilon })
     }
-    countRevisions(
-      replacing: volatile.filter { $0.start >= event.rangeStart - Self.epsilon }, with: event.words)
-    volatile.removeAll { $0.start >= event.rangeStart - Self.epsilon }
-    volatile.append(
-      contentsOf: event.words.filter { $0.start >= (finalized.last?.end ?? 0) - Self.epsilon })
+
+    let watermark = max(
+      event.finalizedThrough ?? -Double.infinity,
+      event.isFinal ? event.rangeEnd : -Double.infinity)
+    if watermark.isFinite {
+      let newlyFinalized = volatile.filter { $0.end <= watermark + Self.epsilon }
+      appendFinalized(newlyFinalized)
+      volatile.removeAll { $0.end <= watermark + Self.epsilon }
+    }
+    if finalized.count > Self.retainedWordLimit {
+      finalized.removeFirst(finalized.count - Self.retainedWordLimit)
+    }
     if volatile.count > Self.retainedWordLimit {
       volatile.removeFirst(volatile.count - Self.retainedWordLimit)
     }
@@ -101,6 +111,15 @@ public struct TranscriptAccumulator: Sendable {
       if let overlapping, Tokenizer.normalize(overlapping.text) != Tokenizer.normalize(word.text) {
         revisions += 1
       }
+    }
+  }
+
+  private mutating func appendFinalized(_ words: [RecognizedWord]) {
+    for word in words
+    where !finalized.contains(where: {
+      $0.start < word.end - Self.epsilon && $0.end > word.start + Self.epsilon
+    }) {
+      finalized.append(word)
     }
   }
 }

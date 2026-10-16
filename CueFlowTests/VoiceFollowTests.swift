@@ -6,6 +6,24 @@ import Testing
 
 @testable import CueFlow
 
+@Test func staleCaptureCallbacksCannotMatchTheReplacementCapture() {
+  var gate = CaptureGenerationGate()
+  let first = gate.beginRequest()
+  let firstActivated = gate.activate(first)
+  #expect(firstActivated)
+  #expect(gate.acceptsCallback(first))
+
+  let replacement = gate.beginRequest()
+  #expect(!gate.acceptsCallback(first))
+  let replacementActivated = gate.activate(replacement)
+  #expect(replacementActivated)
+  #expect(!gate.acceptsCallback(first))
+  #expect(gate.acceptsCallback(replacement))
+
+  gate.invalidate()
+  #expect(!gate.acceptsCallback(replacement))
+}
+
 @available(macOS 26.0, *)
 private final class AudioTapInvocation: @unchecked Sendable {
   private let handler: SpeechAudioTapHandler
@@ -518,10 +536,11 @@ private struct FakeSpeechAssetError: LocalizedError {
     defer { controller.close() }
     controller.session.clock = { 0 }
     controller.voiceCoordinator?.stop()
+    var captureTime = 100.0
     let source = FakeVoiceCaptureSource()
     let coordinator = VoiceFollowCoordinator(
       session: controller.session, source: source, microphone: FakeMicrophonePermission(.granted),
-      usageDescription: { "Mic for voice." })
+      usageDescription: { "Mic for voice." }, captureClock: { captureTime })
     controller.voiceCoordinator = coordinator
     await coordinator.refreshAvailability()
 
@@ -534,6 +553,7 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(controller.session.voiceCommandPaused)
     #expect(source.stopCount == 0)
 
+    captureTime = 120
     controller.execute(.toggle)
     #expect(coordinator.isCommandPaused)
     #expect(source.stopCount == 0)
@@ -545,7 +565,43 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(controller.session.state == .running)
     #expect(source.startCount == 1)
     #expect(source.stopCount == 0)
+
+    let ceilingBeforeDelayedSpeech = controller.session.timeline.voiceCeiling
+    source.send(transcript("North wind", startingAt: 2))
+    await Task.yield()
+    await mainTurn()
+    #expect(controller.session.timeline.voiceCeiling == ceilingBeforeDelayedSpeech)
     coordinator.stop()
+  }
+
+  @Test func localeChangeInvalidatesAStartWaitingForMicrophonePermission() async throws {
+    let (session, snapshot, table) = try take()
+    let source = FakeVoiceCaptureSource()
+    source.localeOptions = [
+      VoiceLocaleOption(identifier: "en-US", displayName: "English (US)"),
+      VoiceLocaleOption(identifier: "fr-FR", displayName: "French (France)"),
+    ]
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    microphone.requestShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    #expect(coordinator.selectedLocaleIdentifier == "en-US")
+    let intent = try #require(session.beginVoiceStartIntent())
+    let startTask = Task {
+      await coordinator.start(
+        snapshot: snapshot, lineTable: table, intent: intent, resolveStart: { -1 })
+    }
+    await microphone.waitForRequest()
+
+    coordinator.selectLocale("fr-FR")
+    microphone.completeRequest(true)
+    await startTask.value
+
+    #expect(coordinator.selectedLocaleIdentifier == "fr-FR")
+    #expect(source.startCount == 0)
+    #expect(!session.voiceSessionActive)
   }
 
   @Test func commandOnlyRecognitionCarriesTheWakePhraseIntoTheNextUpdate() async throws {
@@ -717,6 +773,42 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(source.startCount == 0)
   }
 
+  @Test func startingFollowVoicePausesAnExistingTakeBeforePermissionWait() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(string: "North wind carries the lantern home.")
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    var now = 0.0
+    controller.session.clock = { now }
+    controller.state.countdown = 0
+    controller.voiceCoordinator?.stop()
+    let source = FakeVoiceCaptureSource()
+    let microphone = FakeMicrophonePermission(.notDetermined)
+    microphone.requestShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: microphone,
+      usageDescription: { "Mic for voice." })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.toggle()
+    await settle(controller)
+    #expect(controller.session.state == .running)
+    let startingPosition = try controller.session.position(at: now)
+
+    controller.startVoiceFollow()
+    await microphone.waitForRequest()
+    #expect(controller.session.state == .paused)
+    #expect(!controller.session.timeline.running)
+
+    now = 5
+    #expect(try controller.session.position(at: now) == startingPosition)
+    microphone.completeRequest(true)
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    #expect(controller.session.voiceSessionActive)
+    coordinator.stop()
+  }
+
   @Test func stopOrManualOverrideBeforeQueuedStartupTaskDoesNotOpenCapture() async throws {
     for stop in [true, false] {
       let doc = ScriptDocument()
@@ -825,6 +917,37 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(session.state == .running)
   }
 
+  @Test func timedScrollingAfterLongVoicePauseRebasesDisplayStallBaseline() throws {
+    let (session, _, _) = try take()
+    try session.updateLayout(end: 1000, paragraphs: [], wordCount: 6, lineCount: 1)
+    var now = 0.0
+    session.clock = { now }
+    try session.beginVoice(epoch: 4)
+    try session.pause()
+    now = 10
+
+    try session.enableTimed(seconds: 60)
+
+    #expect(session.state == .running)
+    #expect(session.lastPresentedTarget == now)
+    try session.noteFrame(target: now + 0.1, end: nil)
+    #expect(session.state == .running)
+    #expect(session.message == "Timed Scrolling enabled")
+  }
+
+  @Test func endingFollowVoiceRestoresTheConfiguredNominalPace() throws {
+    let (session, _, _) = try take()
+    let nominal = session.nominalVelocity
+    try session.beginVoice(epoch: 4)
+    try session.voiceGlide(to: 200, velocity: nominal * 1.4, epoch: 4)
+    #expect(session.timeline.velocity > nominal)
+
+    session.endVoice()
+
+    #expect(abs(session.timeline.velocity - nominal) < 0.001)
+    #expect(abs(session.effectiveLPM - session.preferredLPM) < 0.001)
+  }
+
   @Test func confirmedFasterPresenterCadenceRaisesSharedGlideSpeed() async throws {
     let text = "North wind\ncarries the\nlantern home."
     let document = ScriptDocument()
@@ -859,6 +982,141 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(session.timeline.velocity > baseline)
     #expect(session.timeline.velocity <= baseline * 1.4)
     #expect(session.voiceSessionActive)
+    coordinator.stop()
+  }
+
+  @Test func watermarkOnlyFinalizationFeedsConfirmedProgressToPaceEstimator() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let index = ScriptIndex(text: text)
+    let lineTable = VoiceLineTable(
+      lines: index.tokens.enumerated().map { offset, token in
+        VoiceLine(utf16Range: token.range, minY: Double(offset) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let baseline = session.nominalVelocity
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+
+    source.send(transcript("North wind", startingAt: 0, isFinal: false, finalizedThrough: 0))
+    source.send(transcript("carries the", startingAt: 0.6, isFinal: false, finalizedThrough: 0))
+    for _ in 0..<200 where session.timeline.velocity <= baseline {
+      await Task.yield()
+      await mainTurn()
+    }
+    #expect(session.timeline.velocity == baseline)
+
+    source.send(
+      TranscriptEvent(
+        isFinal: false, rangeStart: 1.2, rangeEnd: 1.2, availableAt: 1.3, words: [],
+        finalizedThrough: 1.1))
+    for _ in 0..<200 where session.timeline.velocity <= baseline {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.velocity > baseline)
+    #expect(session.timeline.velocity <= baseline * 1.4)
+    coordinator.stop()
+  }
+
+  @Test func paceResumeUsesNominalBaselineAfterPriorAdaptiveSpeed() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let index = ScriptIndex(text: text)
+    let lineTable = VoiceLineTable(
+      lines: index.tokens.enumerated().map { offset, token in
+        VoiceLine(utf16Range: token.range, minY: Double(offset) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    let nominal = session.nominalVelocity
+    try await start(coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+    source.send(transcript("North wind", startingAt: 0))
+    source.send(transcript("carries the", startingAt: 0.6))
+    for _ in 0..<200 where session.timeline.velocity <= nominal {
+      await Task.yield()
+      await mainTurn()
+    }
+    #expect(session.timeline.velocity > nominal)
+
+    try session.seek(0)
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1, resume: true)
+    #expect(session.timeline.velocity == nominal)
+    source.send(transcript("North wind", startingAt: 0))
+    source.send(transcript("carries the", startingAt: 0.6))
+    for _ in 0..<200 where session.timeline.voiceCeiling != 240 {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.voiceCeiling == 240)
+    #expect(session.timeline.velocity <= nominal * 1.4 + 0.001)
+    coordinator.stop()
+  }
+
+  @Test func volatileDistantSpeechWaitsForFinalizationBeforeSeeking() async throws {
+    let text =
+      "Opening lines set the stage. "
+      + String(repeating: "Filler words carry gently past the river. ", count: 6)
+      + "Silver moonlight ships return home safely."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let index = ScriptIndex(text: text)
+    try session.updateLayout(
+      end: Double(index.count * 80), paragraphs: [], wordCount: index.count,
+      lineCount: index.count)
+    let lineTable = VoiceLineTable(
+      lines: index.tokens.enumerated().map { offset, token in
+        VoiceLine(utf16Range: token.range, minY: Double(offset) * 80)
+      })
+    let distantStart = index.tokens.firstIndex { $0.text == "moonlight" }!
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+
+    source.send(
+      transcript(
+        "moonlight ships return home", startingAt: 1, isFinal: false, finalizedThrough: 0))
+    await mainTurn()
+    #expect(session.timeline.anchorPosition == 0)
+
+    source.send(
+      TranscriptEvent(
+        isFinal: false, rangeStart: 3, rangeEnd: 3, availableAt: 3, words: [],
+        finalizedThrough: 2))
+    for _ in 0..<200 where session.timeline.anchorPosition == 0 {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.anchorPosition == Double((distantStart + 3) * 80))
     coordinator.stop()
   }
 

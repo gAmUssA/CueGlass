@@ -712,6 +712,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     do {
       try claimAndPrepare()
+      if !session.voiceSessionActive,
+        session.state == .running || session.state == .countingDown
+      {
+        try session.pause()
+      }
     } catch {
       present(error)
       return

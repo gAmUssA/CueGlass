@@ -41,6 +41,40 @@ private func displays(_ result: ReplayResult, from start: Double, to end: Double
     #expect(WordMatch.score("harbour", "harbor") == 1)
     #expect(WordMatch.score("the", "she") == 0)
   }
+
+  @Test func sentenceIndexScalesAcrossManyShortSentences() {
+    let sentenceCount = 5_000
+    let index = ScriptIndex(
+      text: String(repeating: "Amber light guides the boat. ", count: sentenceCount))
+
+    #expect(index.sentences.count == sentenceCount)
+    #expect(index.count == sentenceCount * 5)
+    #expect(index.text(of: index.sentences[0]) == "Amber light guides the boat")
+    #expect(index.text(of: index.sentences[sentenceCount - 1]) == "Amber light guides the boat")
+  }
+
+  @Test func volatileDistantMatchWaitsForFinalizationBeforeJumping() {
+    let index = ScriptIndex(
+      text: "Opening lines set the stage. "
+        + String(repeating: "Filler words carry gently past the river. ", count: 6)
+        + "Silver moonlight ships return home safely.")
+    let distantStart = index.tokens.firstIndex { $0.text == "moonlight" }!
+    let words = ["moonlight", "ships", "return", "home"].enumerated().map { offset, text in
+      RecognizedWord(
+        text: text, start: Double(offset) * 0.3 + 0.1,
+        end: Double(offset) * 0.3 + 0.25, confidence: 0.9)
+    }
+    var policy = FollowPolicy(script: index)
+    policy.resume(at: 0, now: 0)
+
+    let volatile = policy.update(hypothesis: words, allowDiscontinuities: false)
+    #expect(policy.position == 0)
+    if case .jump = volatile { Issue.record("volatile transcript committed a jump") }
+
+    let finalized = policy.update(
+      hypothesis: words, allowDiscontinuities: true, reevaluateUnchangedHypothesis: true)
+    #expect(finalized == .jump(from: 0, to: distantStart + words.count - 1))
+  }
 }
 
 @Suite struct EvaluationTests {

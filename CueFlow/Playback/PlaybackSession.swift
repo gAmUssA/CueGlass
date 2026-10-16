@@ -54,6 +54,14 @@ struct VoiceStartIntent: Equatable {
   }
   var elapsedSeconds: Double { elapsed.value(at: effectiveTime) }
   var effectiveLPM: Double { timeline.velocity * 60 / lineAdvance }
+  var nominalVelocity: Double {
+    if let pace = try? SpeedModel(
+      lpm: preferredLPM, lineAdvance: lineAdvance, configuredMax: configuredMax)
+    {
+      return pace.pointsPerSecond
+    }
+    return max(0.1, lineAdvance * preferredLPM / 60)
+  }
   func beginVoiceStartIntent() -> VoiceStartIntent? {
     guard let snapshot, state != .idle else { return nil }
     invalidateVoiceStartIntent("A newer Follow Voice start replaced this request")
@@ -283,19 +291,18 @@ struct VoiceStartIntent: Equatable {
         domain: "CueGlass", code: 5,
         userInfo: [NSLocalizedDescriptionKey: "Switch to Forward before enabling Timed Scrolling."])
     }
+    let time = effectiveTime
     let lpm = try TimedScrollSolver.solve(
-      position: try position(at: effectiveTime), end: timeline.upperBound, seconds: seconds,
+      position: try position(at: time), end: timeline.upperBound, seconds: seconds,
       lineAdvance: lineAdvance, maximum: configuredMax)
     try timeline.setVelocity(
       SpeedModel(lpm: lpm, lineAdvance: lineAdvance, configuredMax: configuredMax).pointsPerSecond,
-      at: effectiveTime)
+      at: time)
     preferredLPM = lpm
     timedDuration = seconds
     timedElapsedBase = elapsedSeconds
     if wasFollowing {
-      try timeline.play(at: effectiveTime)
-      elapsed.play(at: effectiveTime)
-      state = .running
+      try start(at: time)
     }
     message = "Timed Scrolling enabled"
     onChange?()
@@ -388,11 +395,11 @@ struct VoiceStartIntent: Equatable {
     else { return }
     let time = effectiveTime
     let current = try timeline.position(at: time)
-    guard target.isFinite, target > current else { return }
+    guard target.isFinite, target >= 0 else { return }
     let maximum = max(0.1, lineAdvance * configuredMax / 60)
     let requested = velocity ?? timeline.velocity
     try timeline.setVelocity(min(max(requested, 0.1), maximum), at: time)
-    try timeline.setVoiceCeiling(target, at: time)
+    if target > current { try timeline.setVoiceCeiling(target, at: time) }
     onChange?()
   }
   func voiceJump(to target: Double, epoch: UInt64) throws {
@@ -449,6 +456,7 @@ struct VoiceStartIntent: Equatable {
     }
     voiceEpoch = epoch
     let time = effectiveTime
+    try timeline.setVelocity(nominalVelocity, at: time)
     try timeline.setVoiceCeiling(try timeline.position(at: time), at: time)
     try timeline.play(at: time)
     elapsed.play(at: time)
@@ -471,6 +479,7 @@ struct VoiceStartIntent: Equatable {
     } else if voiceSuspended {
       try? timeline.clearVoiceCeiling(at: effectiveTime)
     }
+    try? timeline.setVelocity(nominalVelocity, at: effectiveTime)
     voiceSessionActive = false
     voiceSuspended = false
     voiceCommandPaused = false

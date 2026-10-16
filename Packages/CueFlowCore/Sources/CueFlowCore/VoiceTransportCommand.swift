@@ -11,11 +11,14 @@ public enum VoiceTransportCommand: String, Equatable, Sendable {
 /// Recognizes short, prefixed transport phrases from stable speech results. It buffers at most
 /// four normalized words per channel, one possible command and audio times; it never stores a
 /// transcript. A command fires at the finalization watermark or after unchanged wording remains
-/// stable briefly. Known low-confidence words are rejected; missing confidence is treated as
-/// unknown.
+/// stable briefly. Low-confidence words remain as nonmatching boundaries; missing confidence is
+/// treated as unknown.
 public struct VoiceTransportCommandMatcher: Sendable {
   private struct Word: Sendable {
-    let text: String
+    /// `nil` is a recognized boundary that must not participate in a command. Keeping
+    /// low-confidence words in the rolling window prevents filtering from joining words that
+    /// were not adjacent in the original utterance.
+    let text: String?
     let start: Double
     let end: Double
   }
@@ -163,13 +166,12 @@ public struct VoiceTransportCommandMatcher: Sendable {
         word.end > consumedThrough + Self.epsilon
       else { return nil }
       let normalized = Tokenizer.normalize(word.text)
-      guard !normalized.isEmpty else { return nil }
-      if word.confidence.isFinite, word.confidence >= 0,
-        word.confidence < Self.minimumConfidence
-      {
-        return nil
-      }
-      return Word(text: normalized, start: word.start, end: word.end)
+      let confident =
+        !word.confidence.isFinite || word.confidence < 0
+        || word.confidence >= Self.minimumConfidence
+      return Word(
+        text: confident && !normalized.isEmpty ? normalized : nil,
+        start: word.start, end: word.end)
     }
   }
 
@@ -210,7 +212,8 @@ public struct VoiceTransportCommandMatcher: Sendable {
           zip(phrase, phrase.dropFirst()).allSatisfy({
             $1.start >= $0.start - epsilon && $1.start - $0.start <= maximumWordGap
           }),
-          let command = command(for: phrase.map(\.text))
+          phrase.allSatisfy({ $0.text != nil }),
+          let command = command(for: phrase.compactMap(\.text))
         else { continue }
 
         let candidate = Candidate(
