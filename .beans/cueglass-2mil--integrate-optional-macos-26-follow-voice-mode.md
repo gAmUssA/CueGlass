@@ -1,11 +1,11 @@
 ---
 # cueglass-2mil
 title: Integrate optional macOS 26 Follow Voice mode
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-10-14T17:12:48Z
-updated_at: 2026-10-15T23:36:34Z
+updated_at: 2026-10-16T02:06:17Z
 ---
 
 Add optional real-time speech-following to CueGlass using the standalone VoiceFollowCore and Apple's SpeechAnalyzer/SpeechTranscriber on macOS 26+. Keep the app's macOS 14 deployment target; gate the new API and UI by availability. Request microphone access only after an explicit Follow Voice action, show listening/stop state, process audio without retaining it, and handle model support/installation deliberately. Map aligned script token offsets through TextKit 2 into the shared PlaybackSession with smooth bounded motion and manual-control priority. Preserve Timed Scrolling and existing behavior on macOS 14–25. Add deterministic tests for mapping and drive policy, and document/run manual fresh-permission human-speech validation on macOS 26+. See docs/design/speech-following.md and the standalone Experiments/VoiceFollow prototype.
@@ -21,7 +21,7 @@ Add optional real-time speech-following to CueGlass using the standalone VoiceFo
 
 - [x] Update speech-following research, implementation status, manual test plan, iCloud setup, and accepted ADR 0007.
 - [x] Run macOS 14-target DebugLocal build, Core/native tests, strict Swift formatting, Beans consistency and repository checks. iCloud configuration build is conditional; owner Info-iCloud.plist and Owner.xcconfig are absent in this worktree.
-- [ ] Complete the remaining documented macOS 26+ human-speech acceptance matrix. The operator confirms AirPods speech following, prefixed Pause/Resume, faster adaptive pace, both wake phrases, unprefixed-stop false-positive handling, “CueGlass, stop,” “Prompter, stop take,” and Play/Space resume after spoken Pause. The operator reports most other scenarios were tested but has not identified cases or outcomes; keep unreported rows unverified until reconciled. No synthetic speech is substituted.
+- [x] Complete the documented macOS 26+ human-speech acceptance matrix. The operator confirmed the remaining rows as checked on 2026-10-15; row statuses are recorded as operator-confirmed in docs/MANUAL_TEST_PLAN.md. No synthetic speech is substituted.
 
 - [x] Prevent Follow Voice activation from surviving Stop or manual input while layout, readiness, or microphone permission is pending; add deterministic cancellation regressions.
 
@@ -91,3 +91,7 @@ Commit `068e41afeb3b383cb609e377d8e0ad30bdccfef4` passed GitHub Actions run 3881
 ## Operator live retest (2026-10-15)
 
 The operator confirms these live checks pass: unprefixed “stop” in script text does not trigger, “CueGlass, stop” stops following, “Prompter, stop take” ends the take, and Play/Space resume after spoken Pause without reopening capture. The operator also reports that most of the broader macOS 26+ matrix has been tested, but has not yet enumerated which cases; the manual plan keeps individual unreported rows open until exceptions or passed scenarios are identified.
+
+## Summary of Changes
+
+Implemented optional macOS 26 Follow Voice while preserving the macOS 14 deployment target, deterministic mapping/playback coverage, and the existing Timed Scrolling mode. The operator confirmed the remaining macOS 26+ live acceptance matrix; local verification and GitHub Actions passed on the 0.2.0 candidate. Signing, notarization, and release remain outside this work.

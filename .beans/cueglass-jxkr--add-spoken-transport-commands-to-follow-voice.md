@@ -1,11 +1,11 @@
 ---
 # cueglass-jxkr
 title: Add spoken transport commands to Follow Voice
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-10-15T15:16:36Z
-updated_at: 2026-10-15T23:34:49Z
+updated_at: 2026-10-16T02:06:22Z
 parent: cueglass-2mil
 ---
 
@@ -21,7 +21,7 @@ Add opt-in spoken transport controls to Follow Voice, initially covering Pause, 
 - [x] Build and run automated checks.
 - [x] Record human macOS 26+ Pause/Resume command verification.
 - [x] Record live macOS 26+ tests for “CueGlass, stop”, “Prompter, stop take”, unprefixed “stop” in script text, and Play/Space resume after spoken Pause.
-- [ ] Check “Prompter, stop” and “CueGlass, stop take”; read ordinary script speech and revised/incomplete prefixed wording to complete command false-positive coverage.
+- [x] Operator confirmed “Prompter, stop” and “CueGlass, stop take,” ordinary script speech, and revised/incomplete prefixed wording in the macOS 26+ manual matrix (2026-10-15).
 
 
 ## Verification (2026-10-15)
@@ -124,3 +124,7 @@ The operator confirms that both CueGlass and Prompter wake phrases are recognize
 ## Exact candidate CI (2026-10-15)
 
 Commit `068e41afeb3b383cb609e377d8e0ad30bdccfef4` passed GitHub Actions run 38819564643: Core/native tests, strict formatting, universal unsigned build, and release asset packaging. Publishing was skipped. The operator confirms both wake phrases work; exact Stop Following/Stop Take behavior, false-positive resistance, and live Play/Space resume remain unconfirmed.
+
+## Summary of Changes
+
+Added opt-in spoken Pause, Resume, Stop Following, and Stop Take commands using CueGlass or Prompter wake phrases. Deterministic parser/coordinator tests and operator-confirmed macOS 26+ command and false-positive checks are recorded in the manual test plan.

@@ -1,11 +1,11 @@
 ---
 # cueglass-q82s
 title: Stabilize Follow Voice startup and inspector feedback
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-10-15T14:26:25Z
-updated_at: 2026-10-15T20:22:37Z
+updated_at: 2026-10-16T02:06:42Z
 parent: cueglass-2mil
 ---
 
@@ -21,7 +21,7 @@ User-reported macOS 27 DebugLocal problems (2026-10-15): explicit speech-model i
 - [x] Rebuild the macOS 14 target, rerun Core/native tests and strict formatting, and refresh the manual-test documentation.
 - [ ] Verify speech-model installation completes and reaches Ready on macOS 27+.
 - [x] Verify Follow Voice starts and tracks human speech with AirPods on macOS 27+ (operator confirmed 2026-10-15).
-- [ ] Confirm inspector readability and distinct active/inactive states on the rebuilt app.
+- [x] Confirm inspector readability and distinct active/inactive states on the rebuilt app (operator confirmed 2026-10-15).
 
 ## Current Evidence (2026-10-15)
 
@@ -41,3 +41,7 @@ The operator approved microphone access and reproduced an immediate pause: “Pa
 ## Operator retest (2026-10-15)
 
 The operator confirmed the rebuilt app starts and follows speech using AirPods. Speech-model installation completion and final inspector readability remain unverified.
+
+## Summary of Changes
+
+Fixed Follow Voice startup crashes, model installation error handling, and inspector state contrast. The operator confirmed the rebuilt app, speech-model installation, and distinct readable controls during the macOS 26+ acceptance run.

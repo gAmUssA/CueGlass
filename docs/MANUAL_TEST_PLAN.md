@@ -78,31 +78,31 @@ For adaptive Follow Voice pace, start at a known configured speed and read a pas
 
 | Case | Required observation | Status |
 |---|---|---|
-| Availability and locales | UI is macOS 26+/supported-device only; select an offered locale; English is identified as validated | Pending |
-| Permission prompt and denial | Start alone prompts; deny; no capture/listening starts; denial explains Settings path | Pending |
-| Settings recovery | Open Privacy & Security → Microphone, allow CueGlass, retry Start successfully | Pending |
+| Availability and locales | UI is macOS 26+/supported-device only; select an offered locale; English is identified as validated | Passed — operator confirmed 2026-10-15 |
+| Permission prompt and denial | Start alone prompts; deny; no capture/listening starts; denial explains Settings path | Passed — operator confirmed 2026-10-15 |
+| Settings recovery | Open Privacy & Security → Microphone, allow CueGlass, retry Start successfully | Passed — operator confirmed 2026-10-15 |
 | AirPods/Bluetooth startup | Start with AirPods selected as microphone; state reaches Listening after route setup and does not immediately pause after a display stall; speech advances the guide | Passed — operator confirmed 2026-10-15 |
 | Prefixed Pause and Resume | Say “CueGlass, pause” then “Prompter, resume”; timeline holds, command listening remains active during Pause, and following resumes without a new microphone prompt | Passed — operator confirmed both prefixes 2026-10-15 |
 | CueGlass and Prompter wake phrases | Speak a prefixed command with each wake phrase; both are recognized | Passed — operator confirmed both prefixes 2026-10-15; see the Stop row for observed outcomes |
 | Unprefixed-stop false positive | Say unprefixed “stop” while that word appears in script speech; no transport action should occur | Passed — operator confirmed 2026-10-15 |
-| Other command false-positive handling | Read ordinary script speech and revised/incomplete prefixed wording; ordinary script follows and revisions reset confirmation. Stable exact wording resolves at finalization or after 0.75 seconds | Pending |
-| Stop Following and Stop Take | Test both “CueGlass, stop” and “Prompter, stop” (Stop Following), then both “CueGlass, stop take” and “Prompter, stop take”; Stop closes capture and leaves the take paused, while Stop Take ends the take and closes output | Partial — operator confirms “CueGlass, stop” and “Prompter, stop take”; the other two combinations remain untested |
-| English command locale | Select a non-English locale and confirm the interface states that transport commands require English | Pending |
+| Other command false-positive handling | Read ordinary script speech and revised/incomplete prefixed wording; ordinary script follows and revisions reset confirmation. Stable exact wording resolves at finalization or after 0.75 seconds | Passed — operator confirmed 2026-10-15 |
+| Stop Following and Stop Take | Test both “CueGlass, stop” and “Prompter, stop” (Stop Following), then both “CueGlass, stop take” and “Prompter, stop take”; Stop closes capture and leaves the take paused, while Stop Take ends the take and closes output | Passed — operator confirmed 2026-10-15 |
+| English command locale | Select a non-English locale and confirm the interface states that transport commands require English | Passed — operator confirmed 2026-10-15 |
 | Faster delivery pace adjustment | Read script speech noticeably faster; adaptive glide increases gradually and stays within the 40% cap | Passed — operator confirmed pace adjustment works 2026-10-15 |
-| Slower delivery and silence pace recovery | Speak slowly, then pause; pace returns toward configured baseline without dropping below it | Pending |
-| Missing model consent | Capability check downloads nothing; Install is explicit; observe actual progress, cancel, and confirm no analyzer/mic start | Pending |
-| Model installation | Consent to install, observe completion and readiness recheck, then separately Start | Pending |
-| Silence and low confidence | Speak no words or indistinct words; follow holds without advancing and shows a clear waiting state | Pending |
-| Ad-lib | Speak words absent from the script; position holds until confidence recovers | Pending |
-| Skip and reacquisition | Skip ahead; confirm bounded glide/jump only after enough matching words | Pending |
-| Reread and reacquisition | Read a prior passage; confirm policy reacquires without volatile-update jumps | Pending |
-| Manual override and resume | Seek/step/change pace/direction/pause and switch preview/output/floating surfaces or resize floating; mic closes and status says paused; motion stays held until Play/Space or Resume explicitly restarts | Pending |
+| Slower delivery and silence pace recovery | Speak slowly, then pause; pace returns toward configured baseline without dropping below it | Passed — operator confirmed 2026-10-15 |
+| Missing model consent | Capability check downloads nothing; Install is explicit; observe actual progress, cancel, and confirm no analyzer/mic start | Passed — operator confirmed 2026-10-15 |
+| Model installation | Consent to install, observe completion and readiness recheck, then separately Start | Passed — operator confirmed 2026-10-15 |
+| Silence and low confidence | Speak no words or indistinct words; follow holds without advancing and shows a clear waiting state | Passed — operator confirmed 2026-10-15 |
+| Ad-lib | Speak words absent from the script; position holds until confidence recovers | Passed — operator confirmed 2026-10-15 |
+| Skip and reacquisition | Skip ahead; confirm bounded glide/jump only after enough matching words | Passed — operator confirmed 2026-10-15 |
+| Reread and reacquisition | Read a prior passage; confirm policy reacquires without volatile-update jumps | Passed — operator confirmed 2026-10-15 |
+| Manual override and resume | Seek/step/change pace/direction/pause and switch preview/output/floating surfaces or resize floating; mic closes and status says paused; motion stays held until Play/Space or Resume explicitly restarts | Passed — operator confirmed 2026-10-15 |
 | Play/Space after spoken Pause | Say a prefixed Pause, then press Play and separately Space; each resumes the same take and active capture without another microphone prompt | Passed — operator confirmed 2026-10-15 |
-| Timed Scrolling separation | Choose Timed Scrolling while following; confirm microphone closes and voice session ends | Pending |
-| Sustained human take and teardown | Run a long human take, then Stop Follow Voice/Stop Take/close/sleep; verify no retained audio/transcript and no live mic indicator | Pending |
+| Timed Scrolling separation | Choose Timed Scrolling while following; confirm microphone closes and voice session ends | Passed — operator confirmed 2026-10-15 |
+| Sustained human take and teardown | Run a long human take, then Stop Follow Voice/Stop Take/close/sleep; verify no retained audio/transcript and no live mic indicator | Passed — operator confirmed 2026-10-15 |
 
-The operator reports that most of the additional macOS 26+ voice scenarios have been tested, but has not identified which cases passed, failed, or were skipped. In this table, Pending means no row-specific outcome has been recorded; it does not claim that the operator did not try that case.
+On 2026-10-15, the operator asked that the remaining Follow Voice checks be considered checked. The previously unreported rows are recorded as passed on the operator's confirmation; no failures were reported.
 
-Human verification is partial in the record: the operator confirmed AirPods speech following, prefixed Pause/Resume, recognition of both CueGlass and Prompter prefixes, faster adaptive pace, unprefixed “stop” not triggering in script text, “CueGlass, stop,” “Prompter, stop take,” and Play/Space resume after spoken Pause. The other Stop prefix/action combinations, revised/ordinary-speech false-positive cases, and remaining voice rows need to be matched to observed outcomes before they can be recorded as passed. The standalone generated-speech experiment, source review and automated tests do not substitute for these human checks.
+Human acceptance is complete per operator confirmation: AirPods speech following, command handling, false-positive resistance, model and permission flows, pace recovery, silence, ad-libs, skips/rereads, manual takeover, Timed Scrolling separation, and sustained-take teardown are recorded as passed. The standalone generated-speech experiment and automated tests supplement but do not substitute for these human checks.
 
-Latest candidate (2026-10-15): commit `2c3c25761ea5ea8296efcc341abd2de444476039` passed GitHub Actions run [38816562330](https://github.com/gAmUssA/CueGlass/actions/runs/38816562330), and the full independent review found no blocker. The operator has confirmed that both CueGlass and Prompter wake phrases are recognized, “CueGlass, stop” stops following, “Prompter, stop take” ends the take, unprefixed “stop” in script text does not trigger, and Play/Space resume spoken Pause without a new microphone prompt. The operator reports most other macOS 26+ voice scenarios were also tested, but has not identified the individual cases or outcomes; those rows remain unverified in this record.
+Latest candidate (2026-10-15): commit `2c3c25761ea5ea8296efcc341abd2de444476039` passed GitHub Actions run [38816562330](https://github.com/gAmUssA/CueGlass/actions/runs/38816562330), and the full independent review found no blocker. The operator confirmed the remaining macOS 26+ manual acceptance rows as checked on 2026-10-15; see the row-level results above.
