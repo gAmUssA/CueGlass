@@ -94,11 +94,15 @@ import Testing
     }
     return matched
   }
-  private func prepared(_ paragraphs: Int = 200) async throws -> OperatorWindowController {
+  private func prepared(
+    _ paragraphs: Int = 200, paragraphText: String? = nil
+  ) async throws -> OperatorWindowController {
     let doc = ScriptDocument()
     doc.source = NSAttributedString(
-      string: (0..<paragraphs).map { "Paragraph \($0) alpha beta gamma delta epsilon" }.joined(
-        separator: "\n"))
+      string: (0..<paragraphs).map { index in
+        paragraphText.map { "\($0) \(index)" }
+          ?? "Paragraph \(index) alpha beta gamma delta epsilon"
+      }.joined(separator: "\n"))
     let controller = OperatorWindowController(document: doc)
     controller.session.clock = { 0 }
     controller.state.countdown = 5
@@ -619,7 +623,7 @@ import Testing
   }
 
   @Test func cameraDockPreservesTimedPlaybackAcrossSurfaceChange() async throws {
-    let c = try await prepared()
+    let c = try await prepared(200, paragraphText: "Cue")
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
@@ -635,6 +639,9 @@ import Testing
     }
     let session = c.session
     let snapshot = try #require(session.snapshot?.id)
+    let endTarget = try #require(session.timeline.upperBound)
+    let remainingBeforeSwitch = try #require(session.remainingSeconds)
+    let expectedFinish = session.elapsedSeconds + remainingBeforeSwitch
 
     c.showCameraDock()
     let viewport = try #require(c.cameraDock?.reflection.viewport)
@@ -648,9 +655,9 @@ import Testing
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.elapsedSeconds == 10)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
-    let endTarget = try #require(c.session.timeline.upperBound)
-    let endDeadline = c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1)
-    #expect(endDeadline == 600)
+    #expect(c.session.timeline.upperBound == endTarget)
+    #expect(
+      abs(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) - expectedFinish) <= 1e-6)
     #expect(c.cameraDock != nil)
 
     try c.session.pause()
@@ -659,17 +666,21 @@ import Testing
     await settle(c)
     #expect(c.session.state == .running)
     #expect(c.session.elapsedSeconds == 10)
+    #expect(c.session.timedDuration == 600)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
     #expect(c.session.timeline.upperBound == endTarget)
-    #expect(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) == endDeadline)
+    #expect(
+      abs(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) - expectedFinish) <= 1e-6)
 
     c.setCameraDockLineCount(4)
     await settle(c)
     #expect(c.session.state == .running)
     #expect(c.session.elapsedSeconds == 10)
+    #expect(c.session.timedDuration == 600)
     #expect(abs((c.session.remainingSeconds ?? -1) - 590) < 0.00001)
     #expect(c.session.timeline.upperBound == endTarget)
-    #expect(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) == endDeadline)
+    #expect(
+      abs(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) - expectedFinish) <= 1e-6)
     c.stop()
   }
 
@@ -1102,13 +1113,22 @@ import Testing
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
     c.showCameraDock()
+    await settle(c)
     let dock = try #require(c.cameraDock)
     let root = try #require(dock.root)
     let panel = try #require(dock.window)
+    root.needsLayout = true
+    root.layoutSubtreeIfNeeded()
     let controls = try #require(root.cameraDockControls)
     #expect(root.isAccessibilityElement())
     #expect(root.accessibilityLabel() == "CueGlass prompt")
     #expect(panel.canBecomeKey)
+    #expect(root.grip.bounds.width > 0)
+    #expect(root.grip.bounds.height > 0)
+    #expect(controls.closeButton.frame.width > 0)
+    #expect(controls.playbackButton.frame.width > 0)
+    #expect(controls.adjustButton.frame.width > 0)
+    #expect(!panel.autorecalculatesKeyViewLoop)
     let accessibilityChildren = try #require(root.accessibilityChildren() as? [NSView])
     #expect(
       accessibilityChildren.compactMap { $0.accessibilityLabel() }

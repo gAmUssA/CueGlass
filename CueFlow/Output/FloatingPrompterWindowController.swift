@@ -113,6 +113,7 @@ enum PrompterPlacement: Equatable {
       window.collectionBehavior = [
         .canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications,
       ]
+      window.autorecalculatesKeyViewLoop = false
     }
     let root = FloatingRoot(reflection: reflection, controller: controller, placement: placement)
     root.logicalSize = viewportSize
@@ -129,8 +130,6 @@ enum PrompterPlacement: Equatable {
       root.setAccessibilityLabel("CueGlass prompt")
       if let controls = root.cameraDockControls {
         root.setAccessibilityChildren(controls.accessibilityControls)
-        window.initialFirstResponder = controls.closeButton
-        window.recalculateKeyViewLoop()
       }
     }
   }
@@ -232,6 +231,8 @@ enum PrompterPlacement: Equatable {
   weak var controller: OperatorWindowController?
   var logicalSize = CGSize(width: 800, height: 400) { didSet { needsLayout = true } }
   private var tracking: NSTrackingArea?
+  private var cameraDockKeyViewLoopInstalled = false
+  private var cameraDockKeyViewLoopInstallationScheduled = false
   init(
     reflection: ReflectionContainerView, controller: OperatorWindowController,
     placement: PrompterPlacement = .floating
@@ -294,6 +295,40 @@ enum PrompterPlacement: Equatable {
     }
     reflection.setBoundsSize(logicalSize)
     reflection.needsLayout = true
+    if placement == .cameraDock {
+      scheduleCameraDockKeyViewLoopInstallation()
+    }
+  }
+  private func scheduleCameraDockKeyViewLoopInstallation() {
+    guard !cameraDockKeyViewLoopInstalled, !cameraDockKeyViewLoopInstallationScheduled else {
+      return
+    }
+    cameraDockKeyViewLoopInstallationScheduled = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      self.cameraDockKeyViewLoopInstallationScheduled = false
+      self.grip.layoutSubtreeIfNeeded()
+      self.installCameraDockKeyViewLoopIfReady()
+    }
+  }
+  private func installCameraDockKeyViewLoopIfReady() {
+    guard !cameraDockKeyViewLoopInstalled,
+      let controls = cameraDockControls,
+      let window = window as? PresentationPanel,
+      bounds.width > 0, grip.bounds.width > 0, grip.bounds.height > 0,
+      controls.bounds.width > 0, controls.bounds.height > 0,
+      controls.closeButton.frame.width > 0,
+      controls.playbackButton.frame.width > 0,
+      controls.adjustButton.frame.width > 0
+    else { return }
+
+    cameraDockKeyViewLoopInstalled = true
+    window.recalculateKeyViewLoop()
+    controls.closeButton.nextKeyView = controls.playbackButton
+    controls.playbackButton.nextKeyView = controls.adjustButton
+    controls.adjustButton.nextKeyView = controls.closeButton
+    window.initialFirstResponder = controls.closeButton
+    if window.isKeyWindow { _ = window.makeFirstResponder(controls.closeButton) }
   }
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
