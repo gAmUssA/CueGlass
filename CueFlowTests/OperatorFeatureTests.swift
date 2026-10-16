@@ -602,6 +602,12 @@ import Testing
     #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
     #expect(panel.collectionBehavior.contains(.canJoinAllSpaces))
     #expect(panel.collectionBehavior.contains(.canJoinAllApplications))
+    #expect(panel.isVisible)
+    #expect(c.state.cameraDockReady)
+    #expect(!c.state.running)
+    #expect(!c.pendingResume)
+    #expect(CameraDockGrip(state: c.state, controller: c).statusText == "Ready · Space to play")
+    #expect(NSApp.modalWindow == nil)
     #expect(panel.frame.minX >= visible.minX - 0.5)
     #expect(panel.frame.maxX <= visible.maxX + 0.5)
     #expect(panel.frame.minY >= visible.minY - 0.5)
@@ -623,6 +629,176 @@ import Testing
     #expect(c.session.logicalSize == oldSize)
     #expect(c.session.snapshot?.id == oldSnapshot)
     #expect(c.authoritative.captureAnchor()?.utf16Offset == oldAnchor.utf16Offset)
+    #expect(c.session.state == .paused)
+  }
+
+  @Test func cameraDockCommitFromEverySurfaceStagesReadyAndRestoresPlayback() async throws {
+    for source in ["preview", "floating", "output"] {
+      do {
+        let c = try await prepared()
+        defer { c.close() }
+        c.preview.reflection.viewport.driver?.stop()
+        let display = try #require(DisplayDescriptor.all().first)
+        c.state.selectedDisplay = display.selectionKey
+        if source == "floating" {
+          c.showFloating()
+          c.floating?.reflection.viewport.driver?.stop()
+          c.floating?.reflection.viewport.driver = nil
+          await settle(c)
+        } else if source == "output" {
+          c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+          c.output?.reflection.viewport.driver?.stop()
+          c.output?.reflection.viewport.driver = nil
+          await settle(c)
+        }
+
+        c.seek(c.session.paragraphPositions[48])
+        c.state.countdown = 0
+        c.toggle()
+        await settle(c)
+        #expect(c.session.state == .running)
+        let snapshot = try #require(c.session.snapshot?.id)
+        let anchor = try #require(c.authoritative.captureAnchor())
+
+        c.showCameraDock()
+        let dock = try #require(c.cameraDock)
+        let dockDriver = try #require(dock.reflection.viewport.driver)
+        dock.reflection.viewport.driver?.stop()
+        dock.reflection.viewport.driver = nil
+        await settle(c)
+
+        #expect(c.selectedPresentationSurface == "cameraDock")
+        #expect(c.output == nil)
+        #expect(c.floating === dock)
+        #expect(dock.window?.isVisible == true)
+        #expect(dockDriver.authoritative)
+        #expect(c.preview.reflection.viewport.driver?.authoritative == false)
+        #expect(c.session.state == .paused)
+        #expect(!c.pendingResume)
+        #expect(c.state.cameraDockReady)
+        #expect(c.session.snapshot?.id == snapshot)
+        #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+        #expect(c.preview.placementMapView.isHidden == false)
+        #expect(NSApp.modalWindow == nil)
+
+        c.toggle()
+        await settle(c)
+        #expect(c.session.state == .running)
+        #expect(!c.state.cameraDockReady)
+
+        c.hideOutput()
+        #expect(c.pendingResume, "return did not restore the source's running intent")
+        c.floating?.reflection.viewport.driver?.authoritative = false
+        c.output?.reflection.viewport.driver?.authoritative = false
+        await settle(c)
+        #expect(c.selectedPresentationSurface == source)
+        #expect(
+          c.session.state == .running,
+          "source = \(source), pendingResume = \(c.pendingResume), measuring = \(c.session.measuring)"
+        )
+      }
+    }
+  }
+
+  @Test func cameraDockFirstUseCalloutIsNonmodalAndAcknowledgementDismissesForSession() async throws
+  {
+    let c = try await prepared()
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+
+    c.showCameraDock()
+    #expect(c.cameraDock != nil)
+    #expect(c.state.cameraDockFirstUseCalloutVisible)
+    #expect(NSApp.modalWindow == nil)
+    #expect(
+      OperatorWindowController.cameraDockCaptureDisclosure
+        == "The prompt may appear in screen recordings and full-display shares.")
+    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map?.caption.contains("CAMERA DOCK") == true)
+
+    c.acknowledgeCameraDockExplainer()
+    #expect(!c.state.cameraDockFirstUseCalloutVisible)
+    c.hideOutput()
+    await settle(c)
+    c.showCameraDock()
+    #expect(c.cameraDock != nil)
+    #expect(!c.state.cameraDockFirstUseCalloutVisible)
+    #expect(NSApp.modalWindow == nil)
+  }
+
+  @Test func cameraDockWindowUsesAttachedAndDetachedVisualStyles() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let frame = screen.frame
+    let safeTop = 32.0
+    let safeEdge = frame.maxY - safeTop
+    let sideWidth = (frame.width - 200) / 2
+    let notchedParameters = CameraDockScreenParameters(
+      screenFrame: CameraDockRect(
+        x: frame.minX, y: frame.minY, width: frame.width, height: frame.height),
+      visibleFrame: CameraDockRect(
+        x: frame.minX, y: frame.minY, width: frame.width, height: safeEdge - frame.minY),
+      safeTop: safeTop,
+      auxiliaryTopLeftArea: CameraDockRect(
+        x: frame.minX, y: safeEdge, width: sideWidth, height: safeTop),
+      auxiliaryTopRightArea: CameraDockRect(
+        x: frame.minX + sideWidth + 200, y: safeEdge, width: sideWidth, height: safeTop))
+    let builtIn = syntheticDisplay(
+      screen: screen, id: 9001, uuid: "attached-test-display", isBuiltIn: true,
+      parameters: notchedParameters)
+    c.displayProvider = { [builtIn] }
+    c.showCameraDock()
+    let attachedDock = try #require(c.cameraDock)
+    let attachedWindow = try #require(attachedDock.window)
+    let attachedRoot = try #require(attachedDock.root)
+    let attachedCorners = try #require(attachedRoot.layer).maskedCorners
+
+    #expect(attachedDock.dockStyle == .attached)
+    #expect(abs(attachedWindow.frame.maxY - safeEdge) < 0.5)
+    #expect(!attachedWindow.hasShadow)
+    let attachedColor = try #require(attachedWindow.backgroundColor.usingColorSpace(.sRGB))
+    #expect(attachedColor.redComponent == 0)
+    #expect(attachedColor.greenComponent == 0)
+    #expect(attachedColor.blueComponent == 0)
+    #expect(attachedRoot.layer?.cornerRadius == 14)
+    #expect(attachedCorners.contains(.layerMinXMinYCorner))
+    #expect(attachedCorners.contains(.layerMaxXMinYCorner))
+    #expect(!attachedCorners.contains(.layerMinXMaxYCorner))
+    #expect(!attachedCorners.contains(.layerMaxXMaxYCorner))
+    #expect(attachedDock.reflection.layer?.cornerRadius == 0)
+
+    c.stopPresenting()
+    let externalParameters = CameraDockScreenParameters(
+      screenFrame: CameraDockRect(
+        x: frame.minX, y: frame.minY, width: frame.width, height: frame.height),
+      visibleFrame: CameraDockRect(
+        x: screen.visibleFrame.minX, y: screen.visibleFrame.minY,
+        width: screen.visibleFrame.width, height: screen.visibleFrame.height),
+      safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+    let external = syntheticDisplay(
+      screen: screen, id: 9002, uuid: "detached-test-display", parameters: externalParameters)
+    c.displayProvider = { [external] }
+    c.state.selectedDisplay = external.selectionKey
+    c.showCameraDock()
+    let detachedDock = try #require(c.cameraDock)
+    let detachedWindow = try #require(detachedDock.window)
+    let detachedRoot = try #require(detachedDock.root)
+    let detachedCorners = try #require(detachedRoot.layer).maskedCorners
+    let detachedColor = try #require(detachedWindow.backgroundColor.usingColorSpace(.sRGB))
+
+    #expect(detachedDock.dockStyle == .detached)
+    #expect(detachedWindow.frame.maxY == screen.visibleFrame.maxY - 6)
+    #expect(detachedWindow.hasShadow)
+    #expect(detachedColor.redComponent > 0 && detachedColor.redComponent < 0.1)
+    #expect(detachedColor.greenComponent > 0 && detachedColor.greenComponent < 0.1)
+    #expect(detachedColor.blueComponent > 0 && detachedColor.blueComponent < 0.1)
+    #expect(detachedRoot.layer?.cornerRadius == 14)
+    #expect(detachedCorners.contains(.layerMinXMinYCorner))
+    #expect(detachedCorners.contains(.layerMaxXMinYCorner))
+    #expect(detachedCorners.contains(.layerMinXMaxYCorner))
+    #expect(detachedCorners.contains(.layerMaxXMaxYCorner))
   }
 
   @Test func cameraDockPreservesTimedPlaybackAcrossSurfaceChange() async throws {
@@ -630,6 +806,7 @@ import Testing
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
+    c.state.countdown = 0
     var time = 0.0
     c.session.clock = { time }
     c.seek(c.session.paragraphPositions[100])
@@ -652,7 +829,8 @@ import Testing
     viewport.driver = nil
     #expect(c.session.measuring)
     await settle(c)
-    #expect(c.session.state == .running)
+    #expect(c.session.state == .paused)
+    #expect(c.state.cameraDockReady)
     #expect(c.session.timedDuration == 600)
     #expect(c.session === session)
     #expect(c.session.snapshot?.id == snapshot)
@@ -662,6 +840,11 @@ import Testing
     #expect(
       abs(c.session.elapsedSeconds + (c.session.remainingSeconds ?? -1) - expectedFinish) <= 1e-6)
     #expect(c.cameraDock != nil)
+
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(!c.state.cameraDockReady)
 
     try c.session.pause()
     time = 40
@@ -712,7 +895,8 @@ import Testing
     viewport.driver = nil
     await settle(c)
     #expect(c.cameraDock != nil)
-    #expect(c.session.state == .running)
+    #expect(c.session.state == .paused)
+    #expect(c.state.cameraDockReady)
     time = 4
     try c.session.noteFrame(target: time, end: c.session.timeline.upperBound)
     let position = c.session.timeline.anchorPosition
@@ -735,6 +919,7 @@ import Testing
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
+    c.state.countdown = 0
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
     let window = try #require(dock.window)
@@ -875,6 +1060,7 @@ import Testing
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
+    c.state.countdown = 0
     var time = 0.0
     c.session.clock = { time }
     c.seek(c.session.paragraphPositions[72])
@@ -896,11 +1082,21 @@ import Testing
 
     #expect(c.session === session)
     #expect(session.snapshot?.id == snapshot)
-    #expect(session.state == .running)
+    #expect(session.state == .paused)
+    #expect(c.state.cameraDockReady)
+    #expect(!c.pendingResume)
     #expect(!session.pendingRevision)
     #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == runningAnchor.utf16Offset)
     let restored = try #require(dock.reflection.viewport.restore(runningAnchor))
     #expect(abs(session.timeline.anchorPosition - restored) < 1)
+
+    c.toggle()
+    await settle(c)
+    #expect(session.state == .running)
+    c.hideOutput()
+    await settle(c)
+    #expect(c.selectedPresentationSurface == "preview")
+    #expect(session.state == .running)
   }
 
   @Test func cameraDockScreenParameterCallbackRecomputesWithoutDirtyingDocument() async throws {
@@ -1639,7 +1835,8 @@ import Testing
     #expect(c.session.state != .running)
     #expect(!c.session.timeline.running)
     #expect(c.cameraDock != nil)
-    #expect(CameraDockGrip(state: c.state, controller: c).statusText == "Ready")
+    #expect(
+      CameraDockGrip(state: c.state, controller: c).statusText == "Ready")
     #expect(!CameraDockGrip(state: c.state, controller: c).canPlay)
     #expect(dock.root?.cameraDockControls?.playbackButton.isEnabled == false)
   }

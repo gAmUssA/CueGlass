@@ -32,7 +32,7 @@ import Testing
 
   #expect(placement?.location == .topOfDisplay)
   #expect(placement?.anchorX == -960)
-  #expect(placement?.frame.maxY == 1030)
+  #expect(placement?.frame.maxY == 1024)
   #expect(placement?.frame.isContained(in: visible) == true)
 }
 
@@ -45,7 +45,7 @@ import Testing
     width: 665.28, height: 180, horizontalNudge: 0)
 
   #expect(placement?.location == .topOfDisplay)
-  #expect(placement?.frame.maxY == 950)
+  #expect(placement?.frame.maxY == 944)
   #expect(placement?.anchorX == 756)
   #expect(placement?.frame.isContained(in: visible, tolerance: 0.5) == true)
 }
@@ -136,6 +136,100 @@ import Testing
     #expect(placement.frame.x.isFinite && placement.frame.y.isFinite)
     #expect(placement.frame.width.isFinite && placement.frame.height.isFinite)
   }
+}
+
+@Test func cameraDockLayoutUsesAttachedAndDetachedPlacementRules() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let notchedParameters = CameraDockScreenParameters(
+    screenFrame: screen, visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950),
+    safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 650, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 862, y: 950, width: 650, height: 32))
+  let notched = try #require(
+    CameraDockGeometry.layout(
+      on: notchedParameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
+
+  #expect(notched.style == .attached)
+  #expect(notched.placement.frame.maxY == 950)
+  #expect(notched.placement.anchorX == 756)
+  #expect(notched.viewportWidth == notched.placement.frame.width)
+  #expect(notched.viewportHeight == 146)
+
+  let fallbackParameters = CameraDockScreenParameters(
+    screenFrame: screen, visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950),
+    safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+  let builtInFallback = try #require(
+    CameraDockGeometry.layout(
+      on: fallbackParameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
+  let externalFallback = try #require(
+    CameraDockGeometry.layout(
+      on: fallbackParameters, isBuiltIn: false,
+      preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
+
+  #expect(builtInFallback.style == .detached)
+  #expect(externalFallback.style == .detached)
+  #expect(builtInFallback.placement.frame.maxY == 944)
+  #expect(externalFallback.placement.frame.maxY == 944)
+}
+
+@Test func cameraDockPlacementMapUsesLiveDockFrameAndNotchedDisplayDetails() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: -1920, y: -50, width: 1920, height: 1080),
+    visibleFrame: CameraDockRect(x: -1920, y: -50, width: 1920, height: 1048), safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: -1920, y: 998, width: 820, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: -900, y: 998, width: 900, height: 32))
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 760, lineCount: 3), lineAdvance: 40))
+  let map = try #require(
+    CameraDockGeometry.placementMap(for: layout, displayName: "Retina Display"))
+
+  #expect(map.displayAspectRatio == 1920.0 / 1080.0)
+  #expect(map.menuBarBand.x == 0)
+  #expect(map.menuBarBand.y == 1048.0 / 1080.0)
+  #expect(map.menuBarBand.width == 1)
+  #expect(map.menuBarBand.height == 32.0 / 1080.0)
+  #expect(map.cameraHousing != nil)
+  #expect(map.cameraHousing?.x == 820.0 / 1920.0)
+  #expect(map.cameraHousing?.width == 200.0 / 1920.0)
+  #expect(map.dock.x == (layout.placement.frame.x + 1920) / 1920)
+  #expect(map.dock.y == (layout.placement.frame.y + 50) / 1080)
+  #expect(map.dock.width == layout.placement.frame.width / 1920)
+  #expect(map.dock.height == layout.placement.frame.height / 1080)
+  #expect(map.caption == "CAMERA DOCK · Built-in Retina Display · below camera · 3 lines")
+}
+
+@Test func cameraDockPlacementMapCaptionsNoInsetAndExternalFallbacks() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+  let preferences = CameraDockPreferences(width: 665.28, lineCount: 3)
+  let builtInLayout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true, preferences: preferences, lineAdvance: 40))
+  let externalLayout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: false, preferences: preferences, lineAdvance: 40))
+  let builtInMap = try #require(
+    CameraDockGeometry.placementMap(for: builtInLayout, displayName: "Retina Display"))
+  let externalMap = try #require(
+    CameraDockGeometry.placementMap(
+      for: externalLayout, displayName: "Studio Display", cameraMayBeElsewhere: true))
+
+  #expect(builtInMap.cameraHousing == nil)
+  #expect(externalMap.cameraHousing == nil)
+  #expect(
+    builtInMap.caption
+      == "CAMERA DOCK · Built-in Retina Display · top of display · camera position assumed · 3 lines"
+  )
+  #expect(
+    externalMap.caption
+      == "CAMERA DOCK · External Studio Display · top of display · camera position assumed · 3 lines · Your camera may be on another display"
+  )
 }
 
 @Test func cameraDockGeometryRejectsMalformedAndTooSmallInputs() {

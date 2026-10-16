@@ -42,6 +42,11 @@ public struct CameraDockPlacement: Equatable, Sendable {
   public let location: CameraDockLocation
 }
 
+public enum CameraDockVisualStyle: String, Equatable, Sendable {
+  case attached
+  case detached
+}
+
 public struct CameraDockScreenParameters: Equatable, Sendable {
   public let screenFrame: CameraDockRect
   public let visibleFrame: CameraDockRect
@@ -61,10 +66,31 @@ public struct CameraDockScreenParameters: Equatable, Sendable {
   }
 }
 
+public struct CameraDockLayout: Equatable, Sendable {
+  public let screenParameters: CameraDockScreenParameters
+  public let placement: CameraDockPlacement
+  public let viewportWidth: Double
+  public let viewportHeight: Double
+  public let lineCount: Int
+  public let isBuiltInDisplay: Bool
+  public let style: CameraDockVisualStyle
+}
+
+public struct CameraDockPlacementMap: Equatable, Sendable {
+  public let displayAspectRatio: Double
+  public let style: CameraDockVisualStyle
+  public let menuBarBand: CameraDockRect
+  public let cameraHousing: CameraDockRect?
+  public let dock: CameraDockRect
+  public let caption: String
+}
+
 public enum CameraDockGeometry {
   public static let minimumWidth = 360.0
   public static let maximumWidth = 760.0
   public static let defaultWidthFraction = 0.44
+  public static let detachedGap = 6.0
+  public static let controlsHeight = 44.0
   public static let minimumLineCount = 2
   public static let maximumLineCount = 5
   public static let defaultLineCount = 3
@@ -81,6 +107,92 @@ public enum CameraDockGeometry {
       (minimumLineCount...maximumLineCount).contains(lineCount)
     else { return nil }
     return ceil(lineAdvance * (Double(lineCount) + 0.25) + 16)
+  }
+
+  public static func layout(
+    on parameters: CameraDockScreenParameters, isBuiltIn: Bool, isMirrored: Bool = false,
+    preferences: CameraDockPreferences, lineAdvance: Double
+  ) -> CameraDockLayout? {
+    let preferences = preferences.normalized()
+    guard
+      let viewportHeight = viewportHeight(
+        lineAdvance: lineAdvance, lineCount: preferences.lineCount)
+    else { return nil }
+    let builtInTarget = isBuiltIn && !isMirrored
+    guard
+      let placement = placement(
+        on: parameters, isBuiltIn: builtInTarget, width: preferences.width,
+        height: viewportHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
+    else { return nil }
+    return CameraDockLayout(
+      screenParameters: parameters, placement: placement,
+      viewportWidth: placement.frame.width, viewportHeight: viewportHeight,
+      lineCount: preferences.lineCount, isBuiltInDisplay: builtInTarget,
+      style: placement.location == .camera ? .attached : .detached)
+  }
+
+  public static func placementMap(
+    for layout: CameraDockLayout, displayName: String, cameraMayBeElsewhere: Bool = false
+  ) -> CameraDockPlacementMap? {
+    let parameters = layout.screenParameters
+    let screen = parameters.screenFrame
+    let aspectRatio = screen.width / screen.height
+    guard aspectRatio.isFinite, aspectRatio > 0 else { return nil }
+
+    func normalized(_ rect: CameraDockRect) -> CameraDockRect? {
+      guard rect.isFiniteAndPositive else { return nil }
+      let result = CameraDockRect(
+        x: (rect.minX - screen.minX) / screen.width,
+        y: (rect.minY - screen.minY) / screen.height,
+        width: rect.width / screen.width,
+        height: rect.height / screen.height)
+      return result.isFiniteAndPositive ? result : nil
+    }
+
+    let menuBarHeight = max(detachedGap / 3, screen.maxY - parameters.visibleFrame.maxY)
+    guard
+      let menuBarBand = normalized(
+        CameraDockRect(
+          x: screen.minX, y: screen.maxY - menuBarHeight,
+          width: screen.width, height: menuBarHeight)),
+      let dock = normalized(layout.placement.frame)
+    else { return nil }
+
+    var cameraHousing: CameraDockRect?
+    if layout.style == .attached, parameters.safeTop > 0 {
+      let housing: CameraDockRect
+      if let left = parameters.auxiliaryTopLeftArea,
+        let right = parameters.auxiliaryTopRightArea,
+        right.minX > left.maxX
+      {
+        housing = CameraDockRect(
+          x: left.maxX, y: screen.maxY - parameters.safeTop,
+          width: right.minX - left.maxX, height: parameters.safeTop)
+      } else {
+        let width = min(screen.width * 0.2, max(36, parameters.safeTop * 4.5))
+        housing = CameraDockRect(
+          x: screen.midX - width / 2, y: screen.maxY - parameters.safeTop,
+          width: width, height: parameters.safeTop)
+      }
+      guard let normalizedHousing = normalized(housing) else { return nil }
+      cameraHousing = normalizedHousing
+    }
+
+    let label = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    let display = label.isEmpty ? "Display" : label
+    let type = layout.isBuiltInDisplay ? "Built-in" : "External"
+    let placement =
+      layout.style == .attached
+      ? "below camera"
+      : "top of display · camera position assumed"
+    var caption = "CAMERA DOCK · \(type) \(display) · \(placement) · \(layout.lineCount) lines"
+    if cameraMayBeElsewhere {
+      caption += " · Your camera may be on another display"
+    }
+
+    return CameraDockPlacementMap(
+      displayAspectRatio: aspectRatio, style: layout.style, menuBarBand: menuBarBand,
+      cameraHousing: cameraHousing, dock: dock, caption: caption)
   }
 
   public static func placement(
@@ -117,7 +229,7 @@ public enum CameraDockGeometry {
     let hasCameraSafeArea = isBuiltIn && safeTop > 0
     let location: CameraDockLocation = hasCameraSafeArea ? .camera : .topOfDisplay
     var anchorX = screenFrame.midX
-    var top = visibleFrame.maxY
+    var top = visibleFrame.maxY - detachedGap
 
     if hasCameraSafeArea {
       top = screenFrame.maxY - safeTop

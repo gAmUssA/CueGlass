@@ -45,16 +45,27 @@ struct VoiceFollowPlatformCapability: Equatable {
   @Published var cameraDockWidth = 360.0
   @Published var cameraDockLineCount = CameraDockGeometry.defaultLineCount
   @Published var cameraDockHorizontalNudge = 0.0
+  @Published var cameraDockReady = false
+  @Published var cameraDockFirstUseCalloutVisible = false
+  @Published var cameraDockPlacementPreviewExpanded = false
 }
 
 private enum CameraDockReturnSurface {
-  case preview(CGSize)
-  case floating(CGSize)
-  case output(String, CGSize)
+  case preview(CGSize, wasRunning: Bool)
+  case floating(CGSize, wasRunning: Bool)
+  case output(String, CGSize, wasRunning: Bool)
 
   var logicalSize: CGSize {
     switch self {
-    case .preview(let size), .floating(let size), .output(_, let size): size
+    case .preview(let size, _), .floating(let size, _), .output(_, let size, _): size
+    }
+  }
+
+  var wasRunning: Bool {
+    switch self {
+    case .preview(_, let wasRunning), .floating(_, let wasRunning),
+      .output(_, _, let wasRunning):
+      wasRunning
     }
   }
 }
@@ -277,6 +288,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   private var disconnectedDisplayPreference: DisplayPreference?
   private var cameraDockPreferenceCatalog = CameraDockPreferenceCatalog()
   private var cameraDockReturnSurface: CameraDockReturnSurface?
+  private var cameraDockFirstUseAcknowledgedInProcess = false
   var displayProvider: () -> [DisplayDescriptor] = { DisplayDescriptor.all() }
   var pendingPlay: Bool {
     get { session.deferredStart == .play }
@@ -550,6 +562,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     do { try work() } catch let error as NSError { present(error) }
   }
   func toggle() {
+    if cameraDock != nil { state.cameraDockReady = false }
     if session.voiceSessionActive {
       if voiceCoordinator?.isCommandPaused == true {
         startVoiceFollow(resume: true)
@@ -595,6 +608,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     pendingPlay = false
     pendingResume = false
     pendingAnchor = nil
+    state.cameraDockReady = false
+    state.cameraDockFirstUseCalloutVisible = false
     pendingTimedDuration = nil
     session.measuring = false
     session.stop()
@@ -876,15 +891,23 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     preview.logicalSize = session.logicalSize
     updatePresentationBackground(style)
-    if session.logicalSize.width > 0, session.logicalSize.height > 0 {
+    let showsPlacementMap = cameraDock != nil || state.cameraDockPlacementPreviewExpanded
+    let placementMap = showsPlacementMap ? cameraDockPlacementMap : nil
+    preview.placementMapView.map = placementMap
+    preview.placementMapView.isHidden = placementMap == nil
+    if let placementMap {
+      previewAspectConstraint?.isActive = false
+      previewAspectConstraint = preview.heightAnchor.constraint(
+        equalTo: preview.widthAnchor, multiplier: 1 / placementMap.displayAspectRatio)
+      previewAspectConstraint?.isActive = true
+    } else if session.logicalSize.width > 0, session.logicalSize.height > 0 {
       previewAspectConstraint?.isActive = false
       previewAspectConstraint = preview.heightAnchor.constraint(
         equalTo: preview.widthAnchor,
         multiplier: session.logicalSize.height / session.logicalSize.width)
       previewAspectConstraint?.isActive = true
     }
-    previewCaption.stringValue =
-      "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
+    updatePreviewCaption()
     preview.reflection.viewport.configure(
       snapshot: snapshot, style: style, size: session.logicalSize)
     output?.reflection.viewport.configure(
@@ -1057,6 +1080,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     output?.reflection.vertical = state.vertical
     preview.reflection.horizontal = state.calibrated && state.horizontal
     preview.reflection.vertical = state.calibrated && state.vertical
+    updatePreviewCaption()
+  }
+
+  private func updatePreviewCaption() {
+    if !preview.placementMapView.isHidden,
+      let placementMap = preview.placementMapView.map
+    {
+      previewCaption.stringValue = placementMap.caption
+      return
+    }
     previewCaption.stringValue =
       "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
       + (state.calibrated && (state.horizontal || state.vertical) ? " · MIRRORED" : "")
@@ -1117,6 +1150,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     perform {
       try claimAndPrepare()
       cameraDockReturnSurface = nil
+      state.cameraDockReady = false
+      state.cameraDockFirstUseCalloutVisible = false
       let wasRunning = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
@@ -1148,19 +1183,28 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func hideOutput() {
     if let cameraDock {
-      let destination = cameraDockReturnSurface ?? .preview(session.logicalSize)
+      let destination =
+        cameraDockReturnSurface ?? .preview(session.logicalSize, wasRunning: false)
       pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
       cameraDockReturnSurface = nil
       cameraDock.onClose = nil
       cameraDock.close()
       floating = nil
+      state.cameraDockReady = false
+      state.cameraDockFirstUseCalloutVisible = false
+      perform {
+        try session.pause()
+        preservePreparationAnchor()
+        pendingPlay = false
+        pendingResume = destination.wasRunning
+      }
       switch destination {
-      case .floating(_):
+      case .floating(_, _):
         showFloating()
-      case .output(let displayKey, _):
+      case .output(let displayKey, _, _):
         state.selectedDisplay = displayKey
         showOutput(confirm: { _ in .alertFirstButtonReturn })
-      case .preview(let size):
+      case .preview(let size, _):
         returnToPreview(size: size)
       }
       return
@@ -1223,6 +1267,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       cameraDock.onClose = nil
       cameraDock.close()
       floating = nil
+      state.cameraDockReady = false
+      state.cameraDockFirstUseCalloutVisible = false
       refresh()
       state.status = "Camera Dock display disconnected — position retained"
       return
@@ -1430,8 +1476,11 @@ extension OperatorWindowController {
     refresh()
   }
 
+  static let cameraDockExplainerSeenKey = "cameraDockExplainerSeen"
   static let cameraDockExplainer =
-    "Camera Dock places a compact prompt below the Mac's camera safe area and never covers the camera housing. On other displays it uses the top-center position and assumes the camera is there. The prompt remains visible in screen recordings, and may overlap recording-app controls near the top of the screen. CueGlass does not access the camera or microphone for Camera Dock."
+    "On notched displays, Camera Dock sits flush below the camera safe area and never covers the camera housing. On other displays, it sits below the visible menu bar and assumes the camera is there. The prompt may be visible in screen recordings and full-display shares. CueGlass does not access the camera or microphone for Camera Dock."
+  static let cameraDockCaptureDisclosure =
+    "The prompt may appear in screen recordings and full-display shares."
 
   var cameraDockMenuTitle: String {
     cameraDockMenuTitle(for: displayProvider())
@@ -1448,8 +1497,10 @@ extension OperatorWindowController {
     switch surface {
     case "preview":
       if cameraDock != nil {
+        let wasRunning = cameraDockReturnSurface?.wasRunning ?? false
         cameraDockReturnSurface = .preview(
-          cameraDockReturnSurface?.logicalSize ?? session.logicalSize)
+          cameraDockReturnSurface?.logicalSize ?? session.logicalSize,
+          wasRunning: wasRunning)
         hideOutput()
       } else if output != nil || floating != nil {
         hideOutput()
@@ -1464,26 +1515,50 @@ extension OperatorWindowController {
 
   var cameraDockCameraMayBeElsewhere: Bool {
     guard let cameraDock, let displayID = cameraDock.displayID else { return false }
-    let connected = displayProvider()
-    guard connected.contains(where: { $0.id == displayID && !$0.isBuiltIn }) else { return false }
-    return connected.contains(where: \.isBuiltIn)
+    let displays = displayProvider()
+    guard let display = displays.first(where: { $0.id == displayID }) else { return false }
+    return cameraMayBeElsewhere(on: display, among: displays)
   }
 
-  private func presentCameraDockExplainerIfNeeded() {
-    guard ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1",
-      !UserDefaults.standard.bool(forKey: "cameraDockExplainerSeen")
-    else { return }
-    let alert = NSAlert()
-    alert.messageText = "Camera Dock"
-    alert.informativeText = Self.cameraDockExplainer
-    alert.addButton(withTitle: "Continue")
-    alert.runModal()
-    UserDefaults.standard.set(true, forKey: "cameraDockExplainerSeen")
+  private func cameraMayBeElsewhere(
+    on display: DisplayDescriptor, among displays: [DisplayDescriptor]
+  ) -> Bool {
+    !display.isBuiltIn && displays.contains(where: \.isBuiltIn)
+  }
+
+  var cameraDockPlacementMap: CameraDockPlacementMap? {
+    let displays = displayProvider()
+    let display =
+      cameraDock.flatMap { dock in
+        displays.first(where: { $0.id == dock.displayID })
+      } ?? cameraDockTarget(in: displays)
+    guard let display else { return nil }
+    let preferences = cameraDock?.dockPreferences ?? cameraDockPreferences(for: display)
+    let style = session.state == .idle ? state.style : session.style
+    guard
+      let layout = FloatingPrompterWindowController.cameraDockLayout(
+        display: display, preferences: preferences, style: style)
+    else { return nil }
+    return CameraDockGeometry.placementMap(
+      for: layout, displayName: display.screen.localizedName,
+      cameraMayBeElsewhere: cameraMayBeElsewhere(on: display, among: displays))
+  }
+
+  func setCameraDockPlacementPreviewExpanded(_ expanded: Bool) {
+    guard state.cameraDockPlacementPreviewExpanded != expanded else { return }
+    state.cameraDockPlacementPreviewExpanded = expanded
+    render()
+  }
+
+  func acknowledgeCameraDockExplainer() {
+    cameraDockFirstUseAcknowledgedInProcess = true
+    state.cameraDockFirstUseCalloutVisible = false
+    guard ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" else { return }
+    UserDefaults.standard.set(true, forKey: Self.cameraDockExplainerSeenKey)
   }
 
   func showCameraDock() {
     guard cameraDock == nil else { return }
-    presentCameraDockExplainerIfNeeded()
     perform {
       let displays = displayProvider()
       guard let display = cameraDockTarget(in: displays) else {
@@ -1506,15 +1581,17 @@ extension OperatorWindowController {
       state.cameraDockLineCount = preferences.lineCount
       state.cameraDockHorizontalNudge = preferences.horizontalNudge
 
+      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       let previous: CameraDockReturnSurface =
         output != nil
-        ? .output(state.selectedDisplay, session.logicalSize)
-        : floating != nil ? .floating(session.logicalSize) : .preview(session.logicalSize)
-      let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
+        ? .output(state.selectedDisplay, session.logicalSize, wasRunning: running)
+        : floating != nil
+          ? .floating(session.logicalSize, wasRunning: running)
+          : .preview(session.logicalSize, wasRunning: running)
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
-      pendingResume = running
+      pendingResume = false
       output?.onClose = nil
       output?.close()
       output = nil
@@ -1522,6 +1599,11 @@ extension OperatorWindowController {
       floating?.close()
       floating = next
       cameraDockReturnSurface = previous
+      state.cameraDockReady = true
+      let ephemeral = ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] == "1"
+      state.cameraDockFirstUseCalloutVisible =
+        !cameraDockFirstUseAcknowledgedInProcess
+        && (ephemeral || !UserDefaults.standard.bool(forKey: Self.cameraDockExplainerSeenKey))
       session.logicalSize = next.viewportSize
       next.reflection.viewport.driver = DisplayLinkDriver(
         viewport: next.reflection.viewport, session: session)
@@ -1532,6 +1614,8 @@ extension OperatorWindowController {
         self.cameraDockReturnSurface = nil
         self.perform { try self.session.pauseSafely("Camera Dock stopped — position retained") }
         self.floating = nil
+        self.state.cameraDockReady = false
+        self.state.cameraDockFirstUseCalloutVisible = false
         self.refresh()
       }
       render()
@@ -1547,6 +1631,8 @@ extension OperatorWindowController {
     perform {
       try claimAndPrepare()
       cameraDockReturnSurface = nil
+      state.cameraDockReady = false
+      state.cameraDockFirstUseCalloutVisible = false
       let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       try session.pause()
       preservePreparationAnchor()
@@ -1627,10 +1713,10 @@ extension OperatorWindowController {
   }
   func updateFloatingOptions() {
     floating?.root?.grip.alphaValue = session.state == .running ? 0 : 1
-    floating?.window?.backgroundColor =
-      cameraDock != nil
-      ? NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
-      : NSColor.black.withAlphaComponent(state.clickThrough && session.state == .running ? 0 : 0.02)
+    if cameraDock == nil {
+      floating?.window?.backgroundColor = NSColor.black.withAlphaComponent(
+        state.clickThrough && session.state == .running ? 0 : 0.02)
+    }
     floating?.window?.alphaValue =
       cameraDock != nil
       ? 1 : min(1, max(0.3, state.floatingOpacity))
@@ -1798,6 +1884,8 @@ extension OperatorWindowController {
     cameraDock.onClose = nil
     cameraDock.close()
     floating = nil
+    state.cameraDockReady = false
+    state.cameraDockFirstUseCalloutVisible = false
     refresh()
     setPersistentStatus(message)
   }

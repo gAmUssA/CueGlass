@@ -20,3 +20,13 @@ Camera Dock replaces the current presentation surface and reuses its session, im
 Pure Foundation geometry and preference tests cover notched, no-inset, external negative-origin, clamping, malformed, and unavailable cases. Native tests cover panel configuration, playback/timed-session continuity, and return to the prior surface. These checks prove arithmetic and application wiring only; they do not establish physical housing clearance, full-screen recording behavior, gaze, VoiceOver usability, accessibility appearance settings, Get Info compatibility behavior, or macOS 14 runtime behavior.
 
 Do not add `NSPrefersDisplaySafeAreaCompatibilityMode` until the compatibility-mode hardware audit is complete. Keep all M1–M12 hardware/runtime checks pending in the manual test plan.
+
+## Staged-flow implementation refinement
+
+The live Dock and the editor placement preview consume one immutable `CameraDockLayout` produced by CueFlowCore. The preview uses the target screen's true display aspect ratio and draws its visible menu-bar band, an estimated housing only when a built-in safe-area inset exists, and the exact Dock rectangle from that layout. Its caption distinguishes built-in placement, built-in no-inset fallback, and external-display fallback; it says the camera position is assumed on fallback displays and can note that the built-in camera may be elsewhere.
+
+The attached style is flush with the safe-area edge, pure opaque black, has square top corners and 14 pt lower corners, and has no shadow. No-inset and external fallback panels sit 6 pt below `visibleFrame.maxY`, use a near-black background with 14 pt corners, and have a subtle shadow. Both styles use the same placement frame shown in the map.
+
+Committing from Preview, Floating, or Output captures the shared guide anchor, prior surface, and prior play state. CueGlass pauses the one session, closes the prior surface, and shows Camera Dock in a visible paused Ready state. Play starts it. Exiting closes the Dock and restores the saved surface and play state. The Output inspector presents first-use guidance as a nonmodal callout and keeps a capture disclosure visible while Camera Dock is selected. The capture wording is limited to screen recordings and full-display shares; no claim is made about single-app window sharing.
+
+Automated geometry, map, callout, surface-transition, and styling tests cover this implementation. They do not satisfy any physical or runtime observations in M1–M12.

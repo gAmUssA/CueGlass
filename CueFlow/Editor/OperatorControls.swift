@@ -126,6 +126,27 @@ struct OperatorControls: View {
             ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key)
             }
           }.disabled(state.displays.isEmpty)
+          if controller.selectedPresentationSurface == "cameraDock" {
+            if state.cameraDockFirstUseCalloutVisible {
+              VStack(alignment: .leading, spacing: 8) {
+                Text("Camera Dock is ready")
+                  .font(.subheadline.weight(.semibold))
+                Text(OperatorWindowController.cameraDockExplainer)
+                  .font(.caption)
+                  .fixedSize(horizontal: false, vertical: true)
+                Button("Got it") { controller.acknowledgeCameraDockExplainer() }
+                  .buttonStyle(.borderless)
+              }
+              .padding(10)
+              .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+              .accessibilityElement(children: .contain)
+              .accessibilityLabel("Camera Dock first-use information")
+            }
+            Text(OperatorWindowController.cameraDockCaptureDisclosure)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
           if controller.cameraDock == nil {
             Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(
               of: state.horizontal
@@ -167,6 +188,10 @@ struct OperatorControls: View {
             Text("Horizontal nudge · \(Int(state.cameraDockHorizontalNudge.rounded())) pt")
               .font(.caption)
             Button("Reset Placement") { controller.resetCameraDockPreferences() }
+          }
+          .onAppear { controller.setCameraDockPlacementPreviewExpanded(cameraDockExpanded) }
+          .onChange(of: cameraDockExpanded) { _, expanded in
+            controller.setCameraDockPlacementPreviewExpanded(expanded)
           }
           DisclosureGroup("Floating Window", isExpanded: $floatingExpanded) {
             Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {

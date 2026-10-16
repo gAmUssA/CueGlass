@@ -326,6 +326,7 @@ import QuartzCore
 }
 @MainActor final class ScaledPreviewContainer: NSView {
   let reflection = ReflectionContainerView(frame: .zero)
+  let placementMapView = CameraDockPlacementMapView(frame: .zero)
   var logicalSize = CGSize(width: 1280, height: 720) {
     didSet {
       reflection.bounds = CGRect(origin: .zero, size: logicalSize)
@@ -336,6 +337,8 @@ import QuartzCore
   override init(frame: NSRect) {
     super.init(frame: frame)
     addSubview(reflection)
+    placementMapView.isHidden = true
+    addSubview(placementMapView)
     wantsLayer = true
     layer?.backgroundColor = NSColor.black.cgColor
   }
@@ -347,11 +350,79 @@ import QuartzCore
     reflection.frame = CGRect(
       x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width,
       height: size.height)
+    placementMapView.frame = bounds
+    placementMapView.needsDisplay = true
     reflection.bounds = CGRect(origin: .zero, size: logicalSize)
     reflection.needsLayout = true
     reflection.layoutSubtreeIfNeeded()
     // Native clip views may reset their origin while their ancestor is scaled.
     reflection.viewport.apply(position: reflection.viewport.currentPosition)
+  }
+}
+
+@MainActor final class CameraDockPlacementMapView: NSView {
+  var map: CameraDockPlacementMap? { didSet { needsDisplay = true } }
+
+  override var isOpaque: Bool { true }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor(srgbRed: 0.055, green: 0.059, blue: 0.067, alpha: 1).setFill()
+    bounds.fill()
+    guard let map else { return }
+
+    let available = bounds.insetBy(dx: 8, dy: 8)
+    let aspect = map.displayAspectRatio
+    let width = min(available.width, available.height * aspect)
+    let height = width / aspect
+    let display = CGRect(
+      x: available.midX - width / 2, y: available.midY - height / 2,
+      width: width, height: height)
+    NSColor(srgbRed: 0.15, green: 0.16, blue: 0.18, alpha: 1).setFill()
+    NSBezierPath(rect: display).fill()
+    NSColor(srgbRed: 0.38, green: 0.4, blue: 0.44, alpha: 1).setStroke()
+    NSBezierPath(rect: display).stroke()
+
+    func screenRect(_ rect: CameraDockRect) -> CGRect {
+      CGRect(
+        x: display.minX + display.width * rect.x,
+        y: display.minY + display.height * rect.y,
+        width: display.width * rect.width,
+        height: display.height * rect.height)
+    }
+
+    NSColor(srgbRed: 0.09, green: 0.1, blue: 0.12, alpha: 1).setFill()
+    NSBezierPath(rect: screenRect(map.menuBarBand)).fill()
+    if let housing = map.cameraHousing {
+      let rect = screenRect(housing)
+      let radius = min(5, rect.height / 3)
+      let path = NSBezierPath()
+      path.move(to: NSPoint(x: rect.minX, y: rect.maxY))
+      path.line(to: NSPoint(x: rect.maxX, y: rect.maxY))
+      path.line(to: NSPoint(x: rect.maxX, y: rect.minY + radius))
+      path.curve(
+        to: NSPoint(x: rect.maxX - radius, y: rect.minY),
+        controlPoint1: NSPoint(x: rect.maxX, y: rect.minY),
+        controlPoint2: NSPoint(x: rect.maxX - radius, y: rect.minY))
+      path.line(to: NSPoint(x: rect.minX + radius, y: rect.minY))
+      path.curve(
+        to: NSPoint(x: rect.minX, y: rect.minY + radius),
+        controlPoint1: NSPoint(x: rect.minX + radius, y: rect.minY),
+        controlPoint2: NSPoint(x: rect.minX, y: rect.minY))
+      path.close()
+      NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1).setFill()
+      path.fill()
+    }
+
+    let dockRect = screenRect(map.dock)
+    switch map.style {
+    case .attached: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1).setFill()
+    case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1).setFill()
+    }
+    NSBezierPath(rect: dockRect).fill()
+    NSColor.systemBlue.withAlphaComponent(0.9).setStroke()
+    let outline = NSBezierPath(rect: dockRect)
+    outline.lineWidth = 1
+    outline.stroke()
   }
 }
 

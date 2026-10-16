@@ -33,6 +33,7 @@ enum PrompterPlacement: Equatable {
   private(set) var displayUUID: String?
   private(set) var dockPreferences: CameraDockPreferences
   private(set) var dockLocation: CameraDockLocation = .topOfDisplay
+  private(set) var dockStyle: CameraDockVisualStyle = .detached
   weak var operatorController: OperatorWindowController?
 
   var isCameraDock: Bool { placement == .cameraDock }
@@ -77,17 +78,20 @@ enum PrompterPlacement: Equatable {
     displayID = display.id
     displayUUID = display.preference.uuid ?? screen.localizedName
     guard
-      let geometry = Self.cameraDockGeometry(
+      let geometry = Self.cameraDockLayout(
         display: display, preferences: dockPreferences, style: controller.state.style)
     else { return nil }
     dockLocation = geometry.placement.location
+    dockStyle = geometry.style
+    let frame = Self.cgRect(geometry.placement.frame)
     let window = PresentationPanel(
-      contentRect: geometry.frame, styleMask: [.borderless, .nonactivatingPanel],
+      contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered, defer: false, screen: screen)
     super.init(window: window)
     configure(
-      window: window, controller: controller, screen: screen, viewportSize: geometry.viewportSize)
-    window.setFrame(geometry.frame, display: false)
+      window: window, controller: controller, screen: screen,
+      viewportSize: CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight))
+    window.setFrame(frame, display: false)
   }
 
   private func configure(
@@ -104,9 +108,8 @@ enum PrompterPlacement: Equatable {
     window.level = .floating
     window.isReleasedWhenClosed = false
     window.isOpaque = isCameraDock
-    window.backgroundColor =
-      isCameraDock
-      ? NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1) : .clear
+    window.hasShadow = !isCameraDock || dockStyle == .detached
+    window.backgroundColor = isCameraDock ? Self.dockBackgroundColor(dockStyle) : .clear
     window.minSize =
       isCameraDock ? CGSize(width: 360, height: 120) : CGSize(width: 320, height: 180)
     if isCameraDock {
@@ -115,14 +118,16 @@ enum PrompterPlacement: Equatable {
       ]
       window.autorecalculatesKeyViewLoop = false
     }
-    let root = FloatingRoot(reflection: reflection, controller: controller, placement: placement)
+    let root = FloatingRoot(
+      reflection: reflection, controller: controller, placement: placement,
+      cameraDockStyle: dockStyle)
     root.logicalSize = viewportSize
     self.root = root
     window.contentView = root
     window.delegate = self
     window.acceptsMouseMovedEvents = true
     reflection.wantsLayer = true
-    reflection.layer?.cornerRadius = 14
+    reflection.layer?.cornerRadius = isCameraDock ? 0 : 14
     reflection.layer?.masksToBounds = true
     reflection.viewport.compactCountdown = isCameraDock
     if isCameraDock {
@@ -136,24 +141,24 @@ enum PrompterPlacement: Equatable {
 
   required init?(coder: NSCoder) { fatalError("Use an explicit presentation initializer") }
 
-  private static func cameraDockGeometry(
+  static func cameraDockLayout(
     display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
-  ) -> (placement: CameraDockPlacement, frame: CGRect, viewportSize: CGSize)? {
-    guard
-      let viewportHeight = CameraDockGeometry.viewportHeight(
-        lineAdvance: PresentationFont.lineAdvance(style), lineCount: preferences.lineCount)
-    else { return nil }
-    let viewportSize = CGSize(width: preferences.width, height: viewportHeight)
-    let panelHeight = viewportHeight + 44
-    guard
-      let placement = CameraDockGeometry.placement(
-        on: display.cameraDockParameters, isBuiltIn: display.isBuiltIn && !display.isMirrored,
-        width: preferences.width, height: panelHeight, horizontalNudge: preferences.horizontalNudge)
-    else { return nil }
-    let frame = CGRect(
-      x: placement.frame.x, y: placement.frame.y, width: placement.frame.width,
-      height: placement.frame.height)
-    return (placement, frame, viewportSize)
+  ) -> CameraDockLayout? {
+    CameraDockGeometry.layout(
+      on: display.cameraDockParameters, isBuiltIn: display.isBuiltIn,
+      isMirrored: display.isMirrored, preferences: preferences,
+      lineAdvance: PresentationFont.lineAdvance(style))
+  }
+
+  private static func cgRect(_ rect: CameraDockRect) -> CGRect {
+    CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
+  }
+
+  private static func dockBackgroundColor(_ style: CameraDockVisualStyle) -> NSColor {
+    switch style {
+    case .attached: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
+    case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
+    }
   }
 
   @discardableResult func updateCameraDockPlacement(
@@ -180,15 +185,20 @@ enum PrompterPlacement: Equatable {
     on display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
   ) -> Bool {
     guard isCameraDock, let window,
-      let geometry = Self.cameraDockGeometry(
+      let geometry = Self.cameraDockLayout(
         display: display, preferences: preferences, style: style)
     else { return false }
     dockPreferences = preferences.normalized()
     dockLocation = geometry.placement.location
+    dockStyle = geometry.style
     displayID = display.id
     displayUUID = display.preference.uuid ?? display.screen.localizedName
-    window.setFrame(geometry.frame, display: true)
-    root?.logicalSize = geometry.viewportSize
+    window.setFrame(Self.cgRect(geometry.placement.frame), display: true)
+    window.backgroundColor = Self.dockBackgroundColor(dockStyle)
+    window.hasShadow = dockStyle == .detached
+    root?.applyCameraDockStyle(dockStyle)
+    root?.reflection.layer?.cornerRadius = 0
+    root?.logicalSize = CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight)
     return true
   }
 
@@ -225,7 +235,7 @@ enum PrompterPlacement: Equatable {
 
 @MainActor final class FloatingRoot: NSView {
   let reflection: ReflectionContainerView
-  let grip: NSVisualEffectView
+  let grip: NSView
   let cameraDockControls: CameraDockControlsView?
   let placement: PrompterPlacement
   weak var controller: OperatorWindowController?
@@ -235,31 +245,38 @@ enum PrompterPlacement: Equatable {
   private var cameraDockKeyViewLoopInstallationScheduled = false
   init(
     reflection: ReflectionContainerView, controller: OperatorWindowController,
-    placement: PrompterPlacement = .floating
+    placement: PrompterPlacement = .floating,
+    cameraDockStyle: CameraDockVisualStyle = .detached
   ) {
     self.reflection = reflection
     self.controller = controller
     self.placement = placement
-    grip = NSVisualEffectView()
-    grip.material = .hudWindow
-    grip.blendingMode = .withinWindow
-    grip.state = .active
-    grip.alphaValue = controller.session.state == .running ? 0 : 1
-    grip.appearance = NSAppearance(named: .darkAqua)
-    if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
-      grip.wantsLayer = true
-      grip.layer?.backgroundColor =
-        NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1).cgColor
-    }
     let content: NSView
     if placement == .cameraDock {
       let controls = CameraDockControlsView(controller: controller)
       cameraDockControls = controls
       content = controls
+      let opaqueGrip = NSView()
+      opaqueGrip.wantsLayer = true
+      opaqueGrip.appearance = NSAppearance(named: .darkAqua)
+      opaqueGrip.layer?.backgroundColor = Self.backgroundColor(cameraDockStyle).cgColor
+      grip = opaqueGrip
     } else {
       cameraDockControls = nil
       content = NSHostingView(
         rootView: AnyView(FloatingGrip(state: controller.state, controller: controller)))
+      let effectGrip = NSVisualEffectView()
+      effectGrip.material = .hudWindow
+      effectGrip.blendingMode = .withinWindow
+      effectGrip.state = .active
+      effectGrip.alphaValue = controller.session.state == .running ? 0 : 1
+      effectGrip.appearance = NSAppearance(named: .darkAqua)
+      if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+        effectGrip.wantsLayer = true
+        effectGrip.layer?.backgroundColor =
+          NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1).cgColor
+      }
+      grip = effectGrip
     }
     content.translatesAutoresizingMaskIntoConstraints = false
     grip.addSubview(content)
@@ -273,13 +290,29 @@ enum PrompterPlacement: Equatable {
     addSubview(reflection)
     addSubview(grip)
     wantsLayer = true
-    layer?.cornerRadius = 14
-    layer?.masksToBounds = true
-    if placement == .cameraDock {
-      layer?.backgroundColor = NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1).cgColor
-    }
+    applyCameraDockStyle(cameraDockStyle)
   }
   required init?(coder: NSCoder) { fatalError("Use init(reflection:controller:)") }
+  private static func backgroundColor(_ style: CameraDockVisualStyle) -> NSColor {
+    switch style {
+    case .attached: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
+    case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
+    }
+  }
+  func applyCameraDockStyle(_ style: CameraDockVisualStyle) {
+    guard placement == .cameraDock else { return }
+    let color = Self.backgroundColor(style)
+    wantsLayer = true
+    layer?.backgroundColor = color.cgColor
+    layer?.cornerRadius = 14
+    layer?.maskedCorners =
+      style == .attached
+      ? [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+      : [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+    layer?.masksToBounds = true
+    grip.wantsLayer = true
+    grip.layer?.backgroundColor = color.cgColor
+  }
   override func layout() {
     super.layout()
     if placement == .cameraDock {
@@ -395,10 +428,13 @@ struct FloatingGrip: View {
   }
   var statusText: String {
     if controller.cameraDockCameraMayBeElsewhere {
-      let status = state.running ? "Playing" : "Paused"
+      let status = controller.state.cameraDockReady ? "Ready" : state.running ? "Playing" : "Paused"
       return "\(status) · camera may be on another display"
     }
     if state.voiceActive && !state.voiceMessage.isEmpty { return state.voiceMessage }
+    if controller.state.cameraDockReady {
+      return canPlay ? "Ready · Space to play" : "Ready"
+    }
     if state.running { return "Playing" }
     if controller.session.snapshot?.attributed.string.trimmingCharacters(
       in: .whitespacesAndNewlines
