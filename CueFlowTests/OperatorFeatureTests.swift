@@ -1352,10 +1352,12 @@ extension OperatorFeatureTests {
     let firstRow = CGRect(
       x: hostRect.minX, y: hostRect.maxY - 24, width: hostRect.width, height: 24)
     let split = controller.splitController.splitView
+    let dividerHitSlop = max(4, split.dividerThickness)
     let theme = try #require(content.superview)
     // An occluder paints after the target's owner in view order, belongs to
     // neither the owner's subtree, its ancestors nor the owner's own split
-    // column, and overlaps the target. Targets exclude the 4 pt divider hit slop.
+    // column, and overlaps the target. Exclude the actual system divider;
+    // its width can differ across supported macOS versions.
     func paintsAfter(_ a: NSView, _ b: NSView) -> Bool {
       func chain(_ view: NSView) -> [NSView] {
         var result: [NSView] = []
@@ -1389,7 +1391,7 @@ extension OperatorFeatureTests {
           continue
         }
         if let column, view.isDescendant(of: column) { continue }
-        let overlap = rect.intersection(target.insetBy(dx: 4, dy: 0))
+        let overlap = rect.intersection(target.insetBy(dx: dividerHitSlop, dy: 0))
         if !overlap.isNull, overlap.width > 0, overlap.height > 0, paintsAfter(view, owner) {
           occluders.append("\(type(of: view)) \(rect) over \(target)")
         }

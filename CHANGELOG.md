@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-10-15
 
 - Add opt-in macOS 26+ Follow Voice with on-device speech analysis, explicit microphone/model consent, bounded script alignment, and adaptive presenter-paced scrolling while retaining macOS 14 compatibility.
 - Add prefixed Pause, Resume, Stop Following, and Stop Take voice commands using either “CueGlass” or “Prompter” as the wake phrase, with an isolated contextual command channel; keep manual controls authoritative and Timed Scrolling separate ([ADRs 0007–0011](docs/adr/README.md)).

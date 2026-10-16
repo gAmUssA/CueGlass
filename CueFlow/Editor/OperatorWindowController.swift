@@ -393,7 +393,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     NSLayoutConstraint.activate([
       bar.topAnchor.constraint(equalTo: stageView.safeAreaLayoutGuide.topAnchor),
       bar.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
-      bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
+      // Keep the readout clear of the inspector split column's native divider,
+      // which can extend several points into the stage on newer macOS releases.
+      bar.trailingAnchor.constraint(equalTo: stageView.trailingAnchor, constant: -8),
       bar.heightAnchor.constraint(equalToConstant: 56),
       footer.leadingAnchor.constraint(equalTo: stageView.leadingAnchor),
       footer.trailingAnchor.constraint(equalTo: stageView.trailingAnchor),
