@@ -13,7 +13,7 @@ Add Camera Dock as an opt-in placement of the existing floating presentation con
 
 Use a 44% display-width default clamped to 360–760 pt, three visible text lines clamped to 2–5, and a zero horizontal nudge. Derive the strip height from the current presentation line advance. Keep its compact controls below the text strip. Persist width, line count, and horizontal nudge by display UUID. Screen changes recompute from fresh `NSScreenNumber`-identified display descriptors and current safe-area geometry.
 
-Camera Dock replaces the current presentation surface and reuses its session, immutable snapshot, guide anchor, Follow Voice and Timed Scrolling behavior, keyboard routing, and explicit exit/return path. It does not access the camera or microphone. Explain that screen recordings include the prompt and that external camera placement is assumed; show a hint when the built-in camera may be on another display. If the display disappears or placement becomes invalid, pause and retain the position without opening a fallback surface automatically.
+Camera Dock replaces the current presentation surface and reuses its session, immutable snapshot, guide anchor, Follow Voice and Timed Scrolling behavior, keyboard routing, and explicit exit/return path. Committing pauses the session and shows Camera Dock in a visible paused Ready state; Play starts the take. The inspector presents first-use guidance as a nonmodal disclosure. It does not access the camera or microphone. Explain that screen recordings include the prompt and that external camera placement is assumed; show a hint when the built-in camera may be on another display. If the display disappears or placement becomes invalid, pause and retain the position without opening a fallback surface automatically.
 
 ## Consequences
 
@@ -29,4 +29,4 @@ The attached style is flush with the safe-area edge, pure opaque black, has squa
 
 Committing from Preview, Floating, or Output captures the shared guide anchor, prior surface, and prior play state. CueGlass pauses the one session, closes the prior surface, and shows Camera Dock in a visible paused Ready state. Play starts it. Exiting closes the Dock and restores the saved surface and play state. The Output inspector presents first-use guidance as a nonmodal callout and keeps a capture disclosure visible while Camera Dock is selected. The capture wording is limited to screen recordings and full-display shares; no claim is made about single-app window sharing.
 
-Automated geometry, map, callout, surface-transition, and styling tests cover this implementation. They do not satisfy any physical or runtime observations in M1–M12.
+Automated geometry, map, callout, surface-transition, and styling tests cover this implementation. They do not satisfy any physical or runtime observations in M1–M14.
