@@ -423,6 +423,11 @@ import QuartzCore
     let outline = NSBezierPath(rect: dockRect)
     outline.lineWidth = 1
     outline.stroke()
+    let contentRect = screenRect(map.content)
+    NSColor.white.withAlphaComponent(0.75).setStroke()
+    let contentOutline = NSBezierPath(roundedRect: contentRect, xRadius: 3, yRadius: 3)
+    contentOutline.lineWidth = 0.75
+    contentOutline.stroke()
   }
 }
 

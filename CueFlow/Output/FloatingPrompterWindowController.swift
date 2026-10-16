@@ -34,6 +34,8 @@ enum PrompterPlacement: Equatable {
   private(set) var dockPreferences: CameraDockPreferences
   private(set) var dockLocation: CameraDockLocation = .topOfDisplay
   private(set) var dockStyle: CameraDockVisualStyle = .detached
+  private(set) var dockTopInset: CGFloat = 0
+  private(set) var dockContentOffsetX: CGFloat = 0
   weak var operatorController: OperatorWindowController?
 
   var isCameraDock: Bool { placement == .cameraDock }
@@ -83,6 +85,9 @@ enum PrompterPlacement: Equatable {
     else { return nil }
     dockLocation = geometry.placement.location
     dockStyle = geometry.style
+    dockTopInset = CGFloat(geometry.cameraSafeAreaHeight)
+    dockContentOffsetX = CGFloat(
+      geometry.placement.contentFrame.minX - geometry.placement.frame.minX)
     let frame = Self.cgRect(geometry.placement.frame)
     let window = PresentationPanel(
       contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
@@ -90,13 +95,15 @@ enum PrompterPlacement: Equatable {
     super.init(window: window)
     configure(
       window: window, controller: controller, screen: screen,
-      viewportSize: CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight))
+      viewportSize: CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight),
+      cameraDockTopInset: dockTopInset, cameraDockContentOffsetX: dockContentOffsetX)
     window.setFrame(frame, display: false)
   }
 
   private func configure(
     window: PresentationPanel, controller: OperatorWindowController, screen: NSScreen,
-    viewportSize: CGSize
+    viewportSize: CGSize, cameraDockTopInset: CGFloat = 0,
+    cameraDockContentOffsetX: CGFloat = 0
   ) {
     window.operatorController = controller
     window.title = isCameraDock ? "CueGlass · Camera Dock" : "CueGlass · Floating Prompter"
@@ -105,7 +112,7 @@ enum PrompterPlacement: Equatable {
     window.isMovable = !isCameraDock
     window.isMovableByWindowBackground = !isCameraDock
     window.hidesOnDeactivate = false
-    window.level = .floating
+    window.level = Self.cameraDockWindowLevel(isCameraDock: isCameraDock, style: dockStyle)
     window.isReleasedWhenClosed = false
     window.isOpaque = isCameraDock
     window.hasShadow = !isCameraDock || dockStyle == .detached
@@ -120,7 +127,8 @@ enum PrompterPlacement: Equatable {
     }
     let root = FloatingRoot(
       reflection: reflection, controller: controller, placement: placement,
-      cameraDockStyle: dockStyle)
+      cameraDockStyle: dockStyle, cameraDockTopInset: cameraDockTopInset,
+      cameraDockContentOffsetX: cameraDockContentOffsetX)
     root.logicalSize = viewportSize
     self.root = root
     window.contentView = root
@@ -148,6 +156,13 @@ enum PrompterPlacement: Equatable {
       on: display.cameraDockParameters, isBuiltIn: display.isBuiltIn,
       isMirrored: display.isMirrored, preferences: preferences,
       lineAdvance: PresentationFont.lineAdvance(style))
+  }
+
+  static func cameraDockWindowLevel(
+    isCameraDock: Bool, style: CameraDockVisualStyle
+  ) -> NSWindow.Level {
+    guard isCameraDock, style == .attached else { return .floating }
+    return NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3)
   }
 
   private static func cgRect(_ rect: CameraDockRect) -> CGRect {
@@ -195,12 +210,18 @@ enum PrompterPlacement: Equatable {
     dockPreferences = preferences.normalized()
     dockLocation = geometry.placement.location
     dockStyle = geometry.style
+    dockTopInset = CGFloat(geometry.cameraSafeAreaHeight)
+    dockContentOffsetX = CGFloat(
+      geometry.placement.contentFrame.minX - geometry.placement.frame.minX)
     displayID = display.id
     displayUUID = display.preference.uuid ?? display.screen.localizedName
     window.setFrame(Self.cgRect(geometry.placement.frame), display: true)
+    window.level = Self.cameraDockWindowLevel(isCameraDock: true, style: dockStyle)
     window.backgroundColor = Self.dockBackgroundColor(dockStyle)
     window.hasShadow = dockStyle == .detached
     root?.applyCameraDockStyle(dockStyle)
+    root?.cameraDockTopInset = dockTopInset
+    root?.cameraDockContentOffsetX = dockContentOffsetX
     root?.reflection.layer?.cornerRadius = 0
     root?.logicalSize = CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight)
     return true
@@ -244,17 +265,23 @@ enum PrompterPlacement: Equatable {
   let placement: PrompterPlacement
   weak var controller: OperatorWindowController?
   var logicalSize = CGSize(width: 800, height: 400) { didSet { needsLayout = true } }
+  var cameraDockTopInset: CGFloat = 0 { didSet { needsLayout = true } }
+  var cameraDockContentOffsetX: CGFloat = 0 { didSet { needsLayout = true } }
   private var tracking: NSTrackingArea?
   private var cameraDockKeyViewLoopInstalled = false
   private var cameraDockKeyViewLoopInstallationScheduled = false
   init(
     reflection: ReflectionContainerView, controller: OperatorWindowController,
     placement: PrompterPlacement = .floating,
-    cameraDockStyle: CameraDockVisualStyle = .detached
+    cameraDockStyle: CameraDockVisualStyle = .detached,
+    cameraDockTopInset: CGFloat = 0,
+    cameraDockContentOffsetX: CGFloat = 0
   ) {
     self.reflection = reflection
     self.controller = controller
     self.placement = placement
+    self.cameraDockTopInset = cameraDockTopInset
+    self.cameraDockContentOffsetX = cameraDockContentOffsetX
     let content: NSView
     if placement == .cameraDock {
       let controls = CameraDockControlsView(controller: controller)
@@ -326,9 +353,12 @@ enum PrompterPlacement: Equatable {
     super.layout()
     if placement == .cameraDock {
       let gripHeight = min(44, bounds.height)
+      let contentWidth = min(logicalSize.width, max(0, bounds.width - cameraDockContentOffsetX))
       reflection.frame = CGRect(
-        x: 0, y: gripHeight, width: bounds.width, height: max(0, bounds.height - gripHeight))
-      grip.frame = CGRect(x: 0, y: 0, width: bounds.width, height: gripHeight)
+        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth,
+        height: max(0, bounds.height - gripHeight - cameraDockTopInset))
+      grip.frame = CGRect(
+        x: cameraDockContentOffsetX, y: 0, width: contentWidth, height: gripHeight)
     } else {
       reflection.frame = bounds
       let height = controller?.state.contrastWarning.isEmpty == false ? 52.0 : 28.0

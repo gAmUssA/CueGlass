@@ -598,7 +598,10 @@ import Testing
     #expect(!panel.isMovable)
     #expect(!panel.isMovableByWindowBackground)
     #expect(panel.isOpaque)
-    #expect(panel.level == .floating)
+    #expect(
+      panel.level
+        == FloatingPrompterWindowController.cameraDockWindowLevel(
+          isCameraDock: true, style: dock.dockStyle))
     #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
     #expect(panel.collectionBehavior.contains(.canJoinAllSpaces))
     #expect(panel.collectionBehavior.contains(.canJoinAllApplications))
@@ -611,7 +614,11 @@ import Testing
     #expect(panel.frame.minX >= visible.minX - 0.5)
     #expect(panel.frame.maxX <= visible.maxX + 0.5)
     #expect(panel.frame.minY >= visible.minY - 0.5)
-    #expect(panel.frame.maxY <= visible.maxY + 0.5)
+    if dock.dockStyle == .attached {
+      #expect(panel.frame.maxY <= screen.frame.maxY + 0.5)
+    } else {
+      #expect(panel.frame.maxY <= visible.maxY + 0.5)
+    }
     dock.reflection.viewport.driver?.stop()
     dock.reflection.viewport.driver = nil
     await settle(c)
@@ -678,7 +685,7 @@ import Testing
         #expect(c.state.cameraDockReady)
         #expect(c.session.snapshot?.id == snapshot)
         #expect(dock.reflection.viewport.captureAnchor()?.utf16Offset == anchor.utf16Offset)
-        #expect(c.preview.placementMapView.isHidden == false)
+        #expect(c.preview.placementMapView.isHidden)
         #expect(NSApp.modalWindow == nil)
 
         c.toggle()
@@ -714,7 +721,7 @@ import Testing
     #expect(
       OperatorWindowController.cameraDockCaptureDisclosure
         == "The prompt may appear in screen recordings and full-display shares.")
-    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.isHidden)
     #expect(c.preview.placementMapView.map?.caption.contains("CAMERA DOCK") == true)
 
     c.acknowledgeCameraDockExplainer()
@@ -756,7 +763,10 @@ import Testing
     let attachedCorners = try #require(attachedRoot.layer).maskedCorners
 
     #expect(attachedDock.dockStyle == .attached)
-    #expect(abs(attachedWindow.frame.maxY - safeEdge) < 0.5)
+    #expect(abs(attachedWindow.frame.maxY - frame.maxY) < 0.5)
+    #expect(abs(attachedDock.dockTopInset - safeTop) < 0.5)
+    #expect(
+      attachedWindow.level == NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3))
     #expect(!attachedWindow.hasShadow)
     let attachedColor = try #require(attachedWindow.backgroundColor.usingColorSpace(.sRGB))
     #expect(attachedColor.redComponent == 0)
@@ -768,6 +778,8 @@ import Testing
     #expect(!attachedCorners.contains(.layerMinXMaxYCorner))
     #expect(!attachedCorners.contains(.layerMaxXMaxYCorner))
     #expect(attachedDock.reflection.layer?.cornerRadius == 0)
+    attachedRoot.layoutSubtreeIfNeeded()
+    #expect(abs(attachedRoot.bounds.maxY - attachedRoot.reflection.frame.maxY - safeTop) < 0.5)
 
     c.stopPresenting()
     let externalParameters = CameraDockScreenParameters(
@@ -949,7 +961,7 @@ import Testing
     let previewSize = c.session.logicalSize
     c.setCameraDockPlacementPreviewExpanded(true)
     let expandedMap = try #require(c.preview.placementMapView.map)
-    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.isHidden)
 
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
@@ -963,15 +975,16 @@ import Testing
     #expect(c.session.logicalSize == previewSize)
     #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
     #expect(c.state.status == "Camera Dock stopped — position retained")
-    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.isHidden)
     #expect(c.preview.placementMapView.map?.caption == expandedMap.caption)
-    #expect(c.previewCaption.stringValue == expandedMap.caption)
+    #expect(c.previewCaption.stringValue.contains("LOCAL PREVIEW"))
     #expect(
-      abs(Double(c.previewAspectConstraint?.multiplier ?? 0) - 1 / expandedMap.displayAspectRatio)
+      abs(
+        Double(c.previewAspectConstraint?.multiplier ?? 0) - previewSize.height / previewSize.width)
         < 0.000001)
     c.refresh()
     #expect(c.state.status == "Camera Dock stopped — position retained")
-    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.isHidden)
   }
 
   @Test func cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe() async throws {
@@ -1317,7 +1330,7 @@ import Testing
         screen: screen, id: 501, uuid: "failure-display", parameters: valid)
     ]
     c.setCameraDockPlacementPreviewExpanded(true)
-    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.isHidden)
     c.showCameraDock()
     let malformedDock = try #require(c.cameraDock)
     malformedDock.reflection.viewport.driver?.stop()

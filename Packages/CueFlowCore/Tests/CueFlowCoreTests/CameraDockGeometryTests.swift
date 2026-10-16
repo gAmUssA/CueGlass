@@ -16,10 +16,13 @@ import Testing
   #expect(placement?.location == .camera)
   #expect(placement?.anchorX == 756)
   #expect(placement?.frame.x == 423.36)
-  #expect(placement?.frame.maxY == 950)
-  #expect(placement?.frame.isContained(in: visible) == true)
+  #expect(placement?.frame.maxY == 982)
+  #expect(placement?.contentFrame.maxY == 950)
+  #expect(placement?.frame.isContained(in: screen) == true)
+  #expect(placement?.contentFrame.isContained(in: visible) == true)
   #expect(
-    placement?.frame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32)) == false)
+    placement?.contentFrame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32))
+      == false)
 }
 
 @Test func cameraDockFallsBackToVisibleTopCenterOnNegativeOriginDisplay() {
@@ -48,6 +51,58 @@ import Testing
   #expect(placement?.frame.maxY == 944)
   #expect(placement?.anchorX == 756)
   #expect(placement?.frame.isContained(in: visible, tolerance: 0.5) == true)
+}
+
+@Test func cameraDockUsesAuxiliaryTopAreasWhenSafeInsetIsMissing() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 650, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 862, y: 950, width: 650, height: 32))
+
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 665.28, lineCount: 2), lineAdvance: 40))
+  let map = try #require(
+    CameraDockGeometry.placementMap(for: layout, displayName: "Retina Display"))
+
+  #expect(layout.style == .attached)
+  #expect(layout.placement.frame.maxY == 982)
+  #expect(layout.placement.contentFrame.maxY == 950)
+  #expect(map.cameraHousing?.height == 32.0 / 982)
+  #expect(map.caption.contains("notch integrated"))
+  #expect(CameraDockGeometry.cameraSafeAreaHeight(on: parameters) == 32)
+  #expect(
+    CameraDockDisplaySelection.menuTitle(
+      isBuiltIn: true, isMirrored: false,
+      safeTop: CameraDockGeometry.cameraSafeAreaHeight(on: parameters)) == "Camera Dock")
+}
+
+@Test func cameraDockDoesNotInferNotchFromIncompleteOrMisalignedAuxiliaryAreas() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
+  let left = CameraDockRect(x: 0, y: 950, width: 650, height: 32)
+  let right = CameraDockRect(x: 862, y: 949, width: 650, height: 32)
+  let singleSide = CameraDockScreenParameters(
+    screenFrame: screen, visibleFrame: visible, safeTop: 0,
+    auxiliaryTopLeftArea: left, auxiliaryTopRightArea: nil)
+  let misalignedPair = CameraDockScreenParameters(
+    screenFrame: screen, visibleFrame: visible, safeTop: 0,
+    auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right)
+
+  #expect(CameraDockGeometry.cameraSafeAreaHeight(on: singleSide) == 0)
+  #expect(CameraDockGeometry.cameraSafeAreaHeight(on: misalignedPair) == 0)
+  #expect(
+    CameraDockGeometry.layout(
+      on: singleSide, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40)?.style
+      == .detached)
+  #expect(
+    CameraDockGeometry.layout(
+      on: misalignedPair, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40)?.style
+      == .detached)
 }
 
 @Test func cameraDockFallbackSelectionAndLabelUseSelectedExternalDisplay() {
@@ -85,13 +140,15 @@ import Testing
     auxiliaryTopRightArea: CameraDockRect(x: 1028, y: 1079, width: 700, height: 38),
     isBuiltIn: true, width: 760, height: 220, horizontalNudge: 0)
 
-  #expect(first?.frame.maxY == 950)
+  #expect(first?.frame.maxY == 982)
+  #expect(first?.contentFrame.maxY == 950)
   #expect(first?.anchorX == 756)
-  #expect(changed?.frame.maxY == 1079)
+  #expect(changed?.frame.maxY == 1117)
+  #expect(changed?.contentFrame.maxY == 1079)
   #expect(changed?.anchorX == 864)
   #expect(changed?.frame.width == 760)
   #expect(
-    changed?.frame.isContained(in: CameraDockRect(x: 0, y: 0, width: 1728, height: 1079)) == true)
+    changed?.frame.isContained(in: CameraDockRect(x: 0, y: 0, width: 1728, height: 1117)) == true)
 }
 
 @Test func cameraDockGeometryClampsWidthAndHorizontalNudge() {
@@ -129,10 +186,14 @@ import Testing
         screenFrame: screen, visibleFrame: visible, safeTop: 32,
         auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right, isBuiltIn: true,
         width: requestedWidth, height: 220, horizontalNudge: nudge))
-    #expect(placement.frame.width >= 360 && placement.frame.width <= 760)
-    #expect(placement.frame.maxY <= screen.maxY - 32 + 0.5)
-    #expect(!placement.frame.intersects(housing))
-    #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+    #expect(placement.contentFrame.width >= 360 && placement.contentFrame.width <= 760)
+    #expect(placement.frame.width >= placement.contentFrame.width)
+    #expect(placement.frame.maxY == screen.maxY)
+    #expect(placement.contentFrame.maxY == visible.maxY)
+    #expect(placement.frame.isContained(in: screen, tolerance: 0.5))
+    #expect(placement.contentFrame.isContained(in: visible, tolerance: 0.5))
+    #expect(placement.frame.isContained(in: housing) || housing.isContained(in: placement.frame))
+    #expect(!placement.contentFrame.intersects(housing))
     #expect(placement.frame.x.isFinite && placement.frame.y.isFinite)
     #expect(placement.frame.width.isFinite && placement.frame.height.isFinite)
   }
@@ -151,10 +212,12 @@ import Testing
       preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
 
   #expect(notched.style == .attached)
-  #expect(notched.placement.frame.maxY == 950)
+  #expect(notched.placement.frame.maxY == 982)
+  #expect(notched.placement.contentFrame.maxY == 950)
   #expect(notched.placement.anchorX == 756)
-  #expect(notched.viewportWidth == notched.placement.frame.width)
+  #expect(notched.viewportWidth == notched.placement.contentFrame.width)
   #expect(notched.viewportHeight == 146)
+  #expect(notched.cameraSafeAreaHeight == 32)
 
   let fallbackParameters = CameraDockScreenParameters(
     screenFrame: screen, visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950),
@@ -199,7 +262,8 @@ import Testing
   #expect(map.dock.y == (layout.placement.frame.y + 50) / 1080)
   #expect(map.dock.width == layout.placement.frame.width / 1920)
   #expect(map.dock.height == layout.placement.frame.height / 1080)
-  #expect(map.caption == "CAMERA DOCK · Built-in Retina Display · below camera · 3 lines")
+  #expect(map.caption == "CAMERA DOCK · Built-in Retina Display · notch integrated · 3 lines")
+  #expect(map.content.width == layout.placement.contentFrame.width / 1920)
 }
 
 @Test func cameraDockPlacementMapCaptionsNoInsetAndExternalFallbacks() throws {
@@ -230,6 +294,25 @@ import Testing
     externalMap.caption
       == "CAMERA DOCK · External Studio Display · top of display · camera position assumed · 3 lines · Your camera may be on another display"
   )
+}
+
+@Test func cameraDockPlacementMapRetainsEstimatedHousingWithMalformedAuxiliaryAreas() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: 900, y: 950, width: 700, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 0, y: 950, width: 700, height: 32))
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40))
+  let map = try #require(
+    CameraDockGeometry.placementMap(for: layout, displayName: "Retina Display"))
+
+  #expect(layout.style == .attached)
+  #expect(map.cameraHousing != nil)
+  #expect(map.cameraHousing?.x == (1512.0 / 2 - 72) / 1512)
+  #expect(map.caption.contains("notch integrated"))
 }
 
 @Test func cameraDockGeometryRejectsMalformedAndTooSmallInputs() {
@@ -287,7 +370,8 @@ import Testing
 
   #expect(placement.location == .camera)
   #expect(placement.anchorX == screen.midX)
-  #expect(placement.frame.maxY == visible.maxY)
+  #expect(placement.frame.maxY == screen.maxY)
+  #expect(placement.contentFrame.maxY == visible.maxY)
 }
 
 @Test func cameraDockKeepsSafeAreaPlacementWhenAuxiliaryAreasAreIncomplete() throws {
@@ -302,10 +386,13 @@ import Testing
 
   #expect(placement.location == .camera)
   #expect(placement.anchorX == 756)
-  #expect(placement.frame.maxY == 950)
-  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+  #expect(placement.frame.maxY == 982)
+  #expect(placement.contentFrame.maxY == 950)
+  #expect(placement.frame.isContained(in: screen, tolerance: 0.5))
+  #expect(placement.contentFrame.isContained(in: visible, tolerance: 0.5))
   #expect(
-    placement.frame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32)) == false)
+    placement.contentFrame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32))
+      == false)
 }
 
 @Test func cameraDockFitsTwoVisibleLinesAt32PointTextWithIncompleteAuxiliaryAreas() throws {
@@ -322,7 +409,11 @@ import Testing
   #expect(layout.style == .attached)
   #expect(layout.viewportHeight == 111)
   #expect(
-    layout.placement.frame.height == layout.viewportHeight + CameraDockGeometry.controlsHeight)
+    layout.placement.frame.height
+      == layout.viewportHeight + CameraDockGeometry.controlsHeight + layout.cameraSafeAreaHeight)
+  #expect(
+    layout.placement.contentFrame.height
+      == layout.viewportHeight + CameraDockGeometry.controlsHeight)
   #expect(layout.placement.anchorX == 756)
 }
 
@@ -339,10 +430,13 @@ import Testing
 
   #expect(placement.location == .camera)
   #expect(placement.anchorX == 756)
-  #expect(placement.frame.maxY == 950)
-  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+  #expect(placement.frame.maxY == 982)
+  #expect(placement.contentFrame.maxY == 950)
+  #expect(placement.frame.isContained(in: screen, tolerance: 0.5))
+  #expect(placement.contentFrame.isContained(in: visible, tolerance: 0.5))
   #expect(
-    placement.frame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32)) == false)
+    placement.contentFrame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32))
+      == false)
 }
 
 @Test func cameraDockGeometryRejectsTooShortAndMalformedDisplayParameters() {

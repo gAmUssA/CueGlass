@@ -891,16 +891,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     preview.logicalSize = session.logicalSize
     updatePresentationBackground(style)
-    let showsPlacementMap = cameraDock != nil || state.cameraDockPlacementPreviewExpanded
-    let placementMap = showsPlacementMap ? cameraDockPlacementMap : nil
+    let placementMap =
+      cameraDock != nil || state.cameraDockPlacementPreviewExpanded
+      ? cameraDockPlacementMap : nil
     preview.placementMapView.map = placementMap
-    preview.placementMapView.isHidden = placementMap == nil
-    if let placementMap {
-      previewAspectConstraint?.isActive = false
-      previewAspectConstraint = preview.heightAnchor.constraint(
-        equalTo: preview.widthAnchor, multiplier: 1 / placementMap.displayAspectRatio)
-      previewAspectConstraint?.isActive = true
-    } else if session.logicalSize.width > 0, session.logicalSize.height > 0 {
+    preview.placementMapView.isHidden = true
+    if session.logicalSize.width > 0, session.logicalSize.height > 0 {
       previewAspectConstraint?.isActive = false
       previewAspectConstraint = preview.heightAnchor.constraint(
         equalTo: preview.widthAnchor,
@@ -1084,12 +1080,6 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
 
   private func updatePreviewCaption() {
-    if !preview.placementMapView.isHidden,
-      let placementMap = preview.placementMapView.map
-    {
-      previewCaption.stringValue = placementMap.caption
-      return
-    }
     previewCaption.stringValue =
       "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
       + (state.calibrated && (state.horizontal || state.vertical) ? " · MIRRORED" : "")
@@ -1787,7 +1777,7 @@ extension OperatorWindowController {
     return CameraDockDisplaySelection.menuTitle(
       isBuiltIn: display.isBuiltIn && !display.isMirrored,
       isMirrored: display.isMirrored,
-      safeTop: display.cameraDockParameters.safeTop)
+      safeTop: CameraDockGeometry.cameraSafeAreaHeight(on: display.cameraDockParameters))
   }
 
   func cameraDockTarget(in displays: [DisplayDescriptor]) -> DisplayDescriptor? {

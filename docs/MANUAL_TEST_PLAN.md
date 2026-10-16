@@ -34,9 +34,9 @@ Camera Dock is opt-in and uses the existing playback session. Its Foundation geo
 
 | Case | Required observation | Status |
 |---|---|---|
-| M1 — housing clearance | On a notched MacBook, inspect the visible panel against the physical camera housing and Photo Booth preview. The top edge must sit flush below the safe-area edge; no Dock pixels may cover the housing. Compare the editor placement map with the visible panel. | Pending |
+| M1 — housing clearance | On a notched MacBook, inspect the visible panel against the physical camera housing and Photo Booth preview. The opaque black backing must meet the display top and visually join the housing; prompt text and controls must begin below the safe-area edge. Compare the inspector map's backing and content bounds with the live panel. | Pending |
 | M2 — near-lens gaze | Record a short FaceTime or Photo Booth take while reading a fixed script. Owner reviews whether gaze remains visibly near-lens; this is a human judgment with no numeric threshold. | Pending |
-| M3 — full-screen recording apps | Test full-screen FaceTime, Photo Booth, and QuickTime separately. Dock remains visible below the housing and the recording app remains frontmost and receives its own controls. | Pending |
+| M3 — full-screen recording apps | Test full-screen FaceTime, Photo Booth, and QuickTime separately. The integrated Dock remains visible around/below the housing and the recording app remains frontmost and receives its own controls. | Pending |
 | M4 — non-activating keyboard | With a recording app frontmost, click the Dock, then use Space, Page Up/Down, R, and Escape. CueGlass commands work while the recording app stays active; Escape returns to the prior surface. | Pending |
 | M5 — VoiceOver | Confirm VoiceOver announces “CueGlass prompt,” names each grip action distinctly, and can reach the controls through keyboard/menu routes. | Pending |
 | M6 — accessibility display settings | Test Increase Contrast, Reduce Transparency, and Reduce Motion independently. Check guide contrast, opaque readable panel, and immediate show/hide without an animated morph. | Pending |
@@ -46,8 +46,9 @@ Camera Dock is opt-in and uses the existing playback session. Its Foundation geo
 | M10 — Get Info compatibility mode | Before changing any plist compatibility key, record the current Get Info checkbox state and verify placement stays below the reported safe area with it on and off. The key remains deferred until the hardware audit. | Pending |
 | M11 — screen recording visibility | Record the desktop while Camera Dock is open. Confirm the captured desktop contains the prompt and matches the first-use disclosure. | Pending |
 | M12 — macOS 14 runtime | On a Mac running macOS 14, launch the app and opt into Camera Dock. Place, switch, and exit it without an availability failure. A build targeting 14.0 on a newer OS is not runtime evidence. | Pending |
-| M13 — placement map agreement | On a notched built-in display, a no-inset built-in display, and an external display, compare the Output inspector map and caption to the visible Camera Dock. Confirm true display aspect, menu-bar band, housing only on the notched display, matching Dock position, and correct fallback wording. | Pending |
+| M13 — placement map agreement | On a notched built-in display, a no-inset built-in display, and an external display, compare the Output inspector map and caption to the visible Camera Dock. Confirm true display aspect, menu-bar band, housing only on the notched display, matching backing/content bounds, and correct fallback wording. | Pending |
 | M14 — staged Ready and return | Start paused and playing takes from Preview, Floating, and Output. Commit Camera Dock: one visible surface remains, the same anchor is shown paused with Ready status, and Play starts it. Exit and confirm the prior surface and play state return. | Pending |
+| M15 — notch blend and editor preview | On a notched MacBook, confirm the black backing meets the physical display top and joins the camera housing without a visible seam. Verify text and controls start below the camera-safe band. While the Dock is open, the main editor stage still shows the live script preview; the placement map remains in the Camera Dock inspector. | Pending |
 
 ## Signed sandbox and iCloud (two Macs)
 

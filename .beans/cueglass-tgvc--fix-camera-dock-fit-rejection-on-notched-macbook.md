@@ -1,11 +1,11 @@
 ---
 # cueglass-tgvc
-title: Fix Camera Dock fit rejection on notched MacBook
+title: Attach Camera Dock to the MacBook notch and repair its preview
 status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-16T18:28:24Z
-updated_at: 2026-10-16T18:38:03Z
+updated_at: 2026-10-16T19:08:42Z
 parent: cueglass-wky0
 ---
 
@@ -24,3 +24,21 @@ Owner reported that selecting Camera Dock on a notched MacBook displays “Camer
 - [ ] Owner confirms the new build opens Camera Dock on the notched MacBook and reports whether the housing/map alignment is correct.
 
 Build commit: a57b4d3. iCloud Drive artifact: CueGlass/CueGlass-0.2.0-Camera-Dock-FitFix-a57b4d3.zip (SHA-256 bf34545a6a0ac22df1e98c4d4f28410b644c2d762ec95244761a240016bdc716).
+
+## Owner retest and reference investigation
+
+The owner reports the false fit error is gone. Their follow-up screenshot still shows the live Dock at the visible top of the screen with the placement caption “top of display · camera position assumed”; the small inspector map lacks a camera housing. The owner clarified that the main preview beside the editor is broken: Camera Dock selection replaces the live prompt stage with the placement map.
+
+The `jinkun1998/another.notch` reference uses a custom `NSPanel`, transparent and non-movable, above the menu bar, anchored to the top edge and centered on the screen. It sizes the simulated notch from the auxiliary top-left/right areas and uses `safeAreaInsets.top` for physical notch height. CueGlass currently gates attached placement on `safeAreaInsets.top > 0` and configures its Camera Dock at `.floating` level below the safe edge. No target Mac display metrics are available from the development host.
+
+
+## Sapphire reference and notch-integrated preview correction (2026-10-16)
+
+The owner likes Sapphire’s integrated notch treatment. Sapphire and another.notch use app-owned, top-anchored black surfaces with display safe-area geometry; neither relies on a public Dynamic Island API. Their GPL/AGPL-licensed source informed the visual and architectural review only; CueGlass code was implemented independently.
+
+- [x] Anchor the attached black backing at the physical display top and reserve the safe-area band above prompt text and controls.
+- [x] Infer the safe-band height only from a valid, paired, top-aligned auxiliary-area set when `safeAreaInsets.top` is zero; retain the explicit fallback for incomplete/misaligned values.
+- [x] Keep the editor stage as the live prompt preview; move the placement map into the Camera Dock inspector disclosure.
+- [x] Run the full 96-test Core and 130-test native suites, strict formatting, `git diff --check`, and Bean validation.
+- [ ] Build and share the fresh DebugLocal test app.
+- [ ] Owner checks notch blend, text/control clearance, and editor preview on the physical MacBook.

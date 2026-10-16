@@ -38,6 +38,7 @@ public enum CameraDockLocation: String, Codable, Sendable {
 
 public struct CameraDockPlacement: Equatable, Sendable {
   public let frame: CameraDockRect
+  public let contentFrame: CameraDockRect
   public let anchorX: Double
   public let location: CameraDockLocation
 }
@@ -74,6 +75,7 @@ public struct CameraDockLayout: Equatable, Sendable {
   public let lineCount: Int
   public let isBuiltInDisplay: Bool
   public let style: CameraDockVisualStyle
+  public let cameraSafeAreaHeight: Double
 }
 
 public struct CameraDockPlacementMap: Equatable, Sendable {
@@ -82,6 +84,7 @@ public struct CameraDockPlacementMap: Equatable, Sendable {
   public let menuBarBand: CameraDockRect
   public let cameraHousing: CameraDockRect?
   public let dock: CameraDockRect
+  public let content: CameraDockRect
   public let caption: String
 }
 
@@ -126,9 +129,18 @@ public enum CameraDockGeometry {
     else { return nil }
     return CameraDockLayout(
       screenParameters: parameters, placement: placement,
-      viewportWidth: placement.frame.width, viewportHeight: viewportHeight,
+      viewportWidth: placement.contentFrame.width, viewportHeight: viewportHeight,
       lineCount: preferences.lineCount, isBuiltInDisplay: builtInTarget,
-      style: placement.location == .camera ? .attached : .detached)
+      style: placement.location == .camera ? .attached : .detached,
+      cameraSafeAreaHeight: placement.location == .camera
+        ? cameraSafeAreaHeight(on: parameters) : 0)
+  }
+
+  public static func cameraSafeAreaHeight(on parameters: CameraDockScreenParameters) -> Double {
+    resolvedSafeTop(
+      screenFrame: parameters.screenFrame, safeTop: parameters.safeTop,
+      auxiliaryTopLeftArea: parameters.auxiliaryTopLeftArea,
+      auxiliaryTopRightArea: parameters.auxiliaryTopRightArea)
   }
 
   public static func placementMap(
@@ -157,22 +169,28 @@ public enum CameraDockGeometry {
           width: screen.width, height: menuBarHeight)),
       let dock = normalized(layout.placement.frame)
     else { return nil }
+    guard let content = normalized(layout.placement.contentFrame) else { return nil }
 
     var cameraHousing: CameraDockRect?
-    if layout.style == .attached, parameters.safeTop > 0 {
+    if layout.style == .attached, layout.cameraSafeAreaHeight > 0 {
       let housing: CameraDockRect
+      let safeEdge = screen.maxY - layout.cameraSafeAreaHeight
+      func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
+        area.isFiniteAndPositive && area.isContained(in: screen, tolerance: 0.5)
+          && area.minY >= safeEdge - 0.5
+      }
       if let left = parameters.auxiliaryTopLeftArea,
         let right = parameters.auxiliaryTopRightArea,
-        right.minX > left.maxX
+        isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX
       {
         housing = CameraDockRect(
-          x: left.maxX, y: screen.maxY - parameters.safeTop,
-          width: right.minX - left.maxX, height: parameters.safeTop)
+          x: left.maxX, y: screen.maxY - layout.cameraSafeAreaHeight,
+          width: right.minX - left.maxX, height: layout.cameraSafeAreaHeight)
       } else {
-        let width = min(screen.width * 0.2, max(36, parameters.safeTop * 4.5))
+        let width = min(screen.width * 0.2, max(36, layout.cameraSafeAreaHeight * 4.5))
         housing = CameraDockRect(
-          x: screen.midX - width / 2, y: screen.maxY - parameters.safeTop,
-          width: width, height: parameters.safeTop)
+          x: screen.midX - width / 2, y: screen.maxY - layout.cameraSafeAreaHeight,
+          width: width, height: layout.cameraSafeAreaHeight)
       }
       guard let normalizedHousing = normalized(housing) else { return nil }
       cameraHousing = normalizedHousing
@@ -183,7 +201,7 @@ public enum CameraDockGeometry {
     let type = layout.isBuiltInDisplay ? "Built-in" : "External"
     let placement =
       layout.style == .attached
-      ? "below camera"
+      ? "notch integrated"
       : "top of display · camera position assumed"
     var caption = "CAMERA DOCK · \(type) \(display) · \(placement) · \(layout.lineCount) lines"
     if cameraMayBeElsewhere {
@@ -192,7 +210,7 @@ public enum CameraDockGeometry {
 
     return CameraDockPlacementMap(
       displayAspectRatio: aspectRatio, style: layout.style, menuBarBand: menuBarBand,
-      cameraHousing: cameraHousing, dock: dock, caption: caption)
+      cameraHousing: cameraHousing, dock: dock, content: content, caption: caption)
   }
 
   public static func placement(
@@ -226,15 +244,24 @@ public enum CameraDockGeometry {
 
     let width = min(maximumWidth, max(minimumWidth, requestedWidth))
     let fittedWidth = min(width, visibleFrame.width)
-    let hasCameraSafeArea = isBuiltIn && safeTop > 0
+    let cameraSafeTop =
+      isBuiltIn
+      ? resolvedSafeTop(
+        screenFrame: screenFrame, safeTop: safeTop,
+        auxiliaryTopLeftArea: auxiliaryTopLeftArea,
+        auxiliaryTopRightArea: auxiliaryTopRightArea)
+      : 0
+    let hasCameraSafeArea = cameraSafeTop > 0
     var location: CameraDockLocation = .topOfDisplay
     var anchorX = screenFrame.midX
     var top = visibleFrame.maxY - detachedGap
+    var panelTopInset = 0.0
 
     if hasCameraSafeArea {
-      let cameraSafeEdge = screenFrame.maxY - safeTop
+      let cameraSafeEdge = screenFrame.maxY - cameraSafeTop
       if cameraSafeEdge <= visibleFrame.maxY + 0.5 {
-        top = cameraSafeEdge
+        top = screenFrame.maxY
+        panelTopInset = cameraSafeTop
         location = .camera
         // The safe edge keeps the panel below the housing. NSScreen's auxiliary areas refine
         // the horizontal anchor, but missing or inconsistent areas must not reject a safe fit.
@@ -253,17 +280,62 @@ public enum CameraDockGeometry {
       }
     }
 
-    guard top.isFinite, top - height >= visibleFrame.minY else { return nil }
+    let panelHeight = height + panelTopInset
+    guard top.isFinite, panelHeight.isFinite, top - panelHeight >= visibleFrame.minY else {
+      return nil
+    }
     let minimumX = visibleFrame.minX
     let maximumX = visibleFrame.maxX - fittedWidth
     let requestedX = anchorX - fittedWidth / 2 + horizontalNudge
     let x = min(maximumX, max(minimumX, requestedX))
     guard x.isFinite else { return nil }
-    let frame = CameraDockRect(x: x, y: top - height, width: fittedWidth, height: height)
-    guard frame.isFiniteAndPositive, frame.isContained(in: visibleFrame, tolerance: 0.5) else {
+    let frameX: Double
+    let frameWidth: Double
+    if location == .camera {
+      let cameraCenteredX = anchorX - fittedWidth / 2
+      let left = min(x, cameraCenteredX)
+      let right = max(x + fittedWidth, cameraCenteredX + fittedWidth)
+      frameX = max(visibleFrame.minX, left)
+      frameWidth = min(visibleFrame.maxX, right) - frameX
+    } else {
+      frameX = x
+      frameWidth = fittedWidth
+    }
+    let frame = CameraDockRect(
+      x: frameX, y: top - panelHeight, width: frameWidth, height: panelHeight)
+    let contentFrame = CameraDockRect(
+      x: x, y: top - panelHeight, width: fittedWidth, height: height)
+    let frameBoundary = location == .camera ? screenFrame : visibleFrame
+    guard frame.isFiniteAndPositive, frame.isContained(in: frameBoundary, tolerance: 0.5),
+      contentFrame.isFiniteAndPositive,
+      contentFrame.isContained(in: visibleFrame, tolerance: 0.5)
+    else {
       return nil
     }
-    return CameraDockPlacement(frame: frame, anchorX: frame.midX, location: location)
+    return CameraDockPlacement(
+      frame: frame, contentFrame: contentFrame, anchorX: contentFrame.midX, location: location)
+  }
+
+  private static func resolvedSafeTop(
+    screenFrame: CameraDockRect,
+    safeTop: Double,
+    auxiliaryTopLeftArea: CameraDockRect?,
+    auxiliaryTopRightArea: CameraDockRect?
+  ) -> Double {
+    guard screenFrame.isFiniteAndPositive, safeTop.isFinite, safeTop >= 0,
+      safeTop <= screenFrame.height
+    else { return 0 }
+    if safeTop > 0 { return safeTop }
+    guard let left = auxiliaryTopLeftArea, let right = auxiliaryTopRightArea,
+      left.isFiniteAndPositive, right.isFiniteAndPositive,
+      left.isContained(in: screenFrame, tolerance: 0.5),
+      right.isContained(in: screenFrame, tolerance: 0.5), left.maxX < right.minX,
+      abs(left.minY - right.minY) <= 0.5,
+      abs(left.maxY - screenFrame.maxY) <= 0.5,
+      abs(right.maxY - screenFrame.maxY) <= 0.5
+    else { return 0 }
+    let inferred = screenFrame.maxY - max(left.minY, right.minY)
+    return inferred.isFinite && inferred > 0 && inferred <= 96 ? inferred : 0
   }
 }
 

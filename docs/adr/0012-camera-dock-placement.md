@@ -36,3 +36,15 @@ Automated geometry, map, callout, surface-transition, and styling tests cover th
 `NSScreen.auxiliaryTopLeftArea` and `auxiliaryTopRightArea` refine the horizontal anchor when both rectangles are valid and ordered. If either rectangle is missing or inconsistent, center the panel on the display while keeping its top edge at the valid safe-area boundary; auxiliary-area metadata must not reject a fit that remains below the camera housing. If the safe-area boundary lies above the visible-frame top, use the detached top-of-display position below the visible frame. If the panel cannot fit below an in-frame safe-area boundary, reject the placement rather than moving it into the housing area. The live panel and placement map continue to use the same computed layout.
 
 Core regressions cover incomplete/reversed auxiliary rectangles and the detached fallback. These tests establish arithmetic only; owners still need to observe housing clearance and the placement map on notched hardware.
+
+## Notch-integrated surface refinement (2026-10-16)
+
+The owner clarified that the Camera Dock should visually join the MacBook notch, following the integrated black surface used by notch-focused apps. On a built-in, unmirrored display with a valid safe inset, CueGlass now anchors the whole opaque panel to `screen.frame.maxY`; the black backing occupies the camera-safe band, while the prompt and controls begin strictly below that band. The attached panel uses a window level above the menu bar while active. The text viewport can be nudged without moving the centered backing away from the camera area. The no-inset and external-display fallbacks keep their visible-frame placement and lower window level.
+
+If `safeAreaInsets.top` is zero but both auxiliary top areas are present, finite, top-aligned, and ordered, CueGlass derives the camera band from their shared lower edge. A single, misaligned, or otherwise invalid area does not imply a notch; the interface keeps the explicit top-of-display fallback label. The geometry exposes both the full black panel frame and the usable content frame so tests can assert that visible content stays below the housing even while its black backing joins the notch.
+
+The editor's main stage always remains a live prompt preview. The display map and placement controls live together in the Camera Dock inspector disclosure, so opening the Dock no longer replaces the script preview with a monitor diagram.
+
+The implementation was informed by [another.notch](https://github.com/jinkun1998/another.notch) and [Sapphire](https://github.com/cshariq/Sapphire). Both use app-owned top-anchored surfaces and display safe-area geometry rather than a public Dynamic Island API. CueGlass uses an independent static panel and its own geometry; no reference code is copied.
+
+Core and native tests cover the backing/content separation, auxiliary-area inference guard, menu-bar window level, and the editor preview remaining active. Hardware validation of the visual seam, text clearance, menu-bar overlap, recording visibility, and camera gaze remains pending under M1 and M15.

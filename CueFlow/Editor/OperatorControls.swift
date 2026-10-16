@@ -164,6 +164,15 @@ struct OperatorControls: View {
             Button("Calibration Pattern…") { controller.calibration() }
           }
           DisclosureGroup("Camera Dock Placement", isExpanded: $cameraDockExpanded) {
+            if let map = controller.cameraDockPlacementMap {
+              CameraDockPlacementMapPreview(map: map)
+                .aspectRatio(map.displayAspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel(Text(map.caption))
+            } else {
+              Text("Choose a display to preview Camera Dock placement.")
+                .font(.caption).foregroundStyle(.secondary)
+            }
             Slider(
               value: Binding(
                 get: { state.cameraDockWidth },
@@ -456,5 +465,19 @@ private struct InspectorSection<Content: View>: View {
       content
       Divider().padding(.top, 4)
     }
+  }
+}
+
+@MainActor private struct CameraDockPlacementMapPreview: NSViewRepresentable {
+  let map: CameraDockPlacementMap
+
+  func makeNSView(context: Context) -> CameraDockPlacementMapView {
+    let view = CameraDockPlacementMapView(frame: .zero)
+    view.map = map
+    return view
+  }
+
+  func updateNSView(_ view: CameraDockPlacementMapView, context: Context) {
+    view.map = map
   }
 }
