@@ -873,6 +873,7 @@ import Testing
   @Test func cameraDockDisplayLossPausesActivePlaybackAndRetainsPosition() async throws {
     let c = try await prepared()
     defer { c.close() }
+    let previewSize = c.session.logicalSize
     let display = try #require(DisplayDescriptor.all().first)
     var connected = [display]
     c.displayProvider = { connected }
@@ -910,8 +911,56 @@ import Testing
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.session.timeline.anchorPosition == position)
     #expect(c.state.status == "Camera Dock display disconnected — position retained")
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(
+      c.previewCaption.stringValue
+        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+    #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
     c.refresh()
     #expect(c.state.status == "Camera Dock display disconnected — position retained")
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(
+      c.previewCaption.stringValue
+        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+  }
+
+  @Test func cameraDockForcedPanelCloseRecomputesExpandedPreviewMap() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 490, uuid: "forced-close-display",
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    let previewSize = c.session.logicalSize
+    c.setCameraDockPlacementPreviewExpanded(true)
+    let expandedMap = try #require(c.preview.placementMapView.map)
+    #expect(!c.preview.placementMapView.isHidden)
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let anchor = try #require(dock.reflection.viewport.captureAnchor())
+    dock.close()
+    await settle(c)
+
+    #expect(c.cameraDock == nil)
+    #expect(c.floating == nil)
+    #expect(c.session.state == .paused)
+    #expect(c.session.logicalSize == previewSize)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.state.status == "Camera Dock stopped — position retained")
+    #expect(!c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map?.caption == expandedMap.caption)
+    #expect(c.previewCaption.stringValue == expandedMap.caption)
+    #expect(
+      abs(Double(c.previewAspectConstraint?.multiplier ?? 0) - 1 / expandedMap.displayAspectRatio)
+        < 0.000001)
+    c.refresh()
+    #expect(c.state.status == "Camera Dock stopped — position retained")
+    #expect(!c.preview.placementMapView.isHidden)
   }
 
   @Test func cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe() async throws {
@@ -1199,6 +1248,7 @@ import Testing
   @Test func cameraDockPlacementFailureClosesPausesAndRetainsTake() async throws {
     let c = try await prepared()
     defer { c.close() }
+    let previewSize = c.session.logicalSize
     let screen = try #require(NSScreen.screens.first)
     var connected = [
       syntheticDisplay(
@@ -1232,7 +1282,22 @@ import Testing
     #expect(c.session.state == .paused)
     #expect(c.session.snapshot?.id == snapshot)
     #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
-    #expect(c.state.status.contains("Camera Dock unavailable — position retained"))
+    #expect(
+      c.state.status
+        == "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    )
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(
+      c.previewCaption.stringValue
+        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+    #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
+    c.refresh()
+    #expect(
+      c.state.status
+        == "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    )
+    #expect(c.preview.placementMapView.isHidden)
     #expect(safeFrame.minX.isFinite && safeFrame.minY.isFinite)
     #expect(safeFrame.width.isFinite && safeFrame.height.isFinite)
 
@@ -1240,6 +1305,8 @@ import Testing
       syntheticDisplay(
         screen: screen, id: 501, uuid: "failure-display", parameters: valid)
     ]
+    c.setCameraDockPlacementPreviewExpanded(true)
+    #expect(!c.preview.placementMapView.isHidden)
     c.showCameraDock()
     let malformedDock = try #require(c.cameraDock)
     malformedDock.reflection.viewport.driver?.stop()
@@ -1260,10 +1327,23 @@ import Testing
     #expect(c.cameraDock == nil)
     #expect(c.session.state == .paused)
     #expect(c.session.snapshot?.id == snapshot)
-    #expect(c.state.status.contains("Camera Dock unavailable — position retained"))
-    let recoveryStatus = c.state.status
+    #expect(
+      c.state.status
+        == "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    )
+    #expect(c.session.logicalSize == previewSize)
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(
+      c.previewCaption.stringValue
+        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+    #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
     c.refresh()
-    #expect(c.state.status == recoveryStatus)
+    #expect(
+      c.state.status
+        == "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
+    )
+    #expect(c.preview.placementMapView.isHidden)
     #expect(malformedSafeFrame.minX.isFinite && malformedSafeFrame.minY.isFinite)
   }
 

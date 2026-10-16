@@ -883,11 +883,11 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     let style = session.state == .idle ? state.style : session.style
     if let cameraDock {
-      guard let size = cameraDock.updateCameraDockPresentation(style: style) else {
+      if let size = cameraDock.updateCameraDockPresentation(style: style) {
+        session.logicalSize = size
+      } else {
         cameraDockPlacementUnavailable()
-        return
       }
-      session.logicalSize = size
     }
     preview.logicalSize = session.logicalSize
     updatePresentationBackground(style)
@@ -1250,23 +1250,29 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     handleAvailableDisplayIDs(displays.map(\.id))
     refreshScreens(displays)
-    if cameraDockWasDisconnected { refreshStatus() }
+    if cameraDockWasDisconnected {
+      refreshStatus()
+      render()
+    }
     if let cameraDock,
       let display = displays.first(where: { $0.id == cameraDock.displayID }),
       !cameraDock.updateCameraDockPlacement(
         on: display, preferences: cameraDock.dockPreferences, style: session.style)
     {
       cameraDockPlacementUnavailable()
+      render()
     }
   }
   func handleAvailableDisplayIDs(_ ids: [CGDirectDisplayID]) {
     if let cameraDock, let id = cameraDock.displayID, !ids.contains(id) {
       pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
+      let restoredSize = cameraDockReturnSurface?.logicalSize ?? session.logicalSize
       cameraDockReturnSurface = nil
       perform { try session.pauseSafely("Camera Dock display disconnected — position retained") }
       cameraDock.onClose = nil
       cameraDock.close()
       floating = nil
+      session.logicalSize = restoredSize
       state.cameraDockReady = false
       state.cameraDockFirstUseCalloutVisible = false
       refresh()
@@ -1611,11 +1617,17 @@ extension OperatorWindowController {
       next.reflection.viewport.driver?.onError = { [weak self] in self?.present($0) }
       next.onClose = { [weak self] in
         guard let self else { return }
+        self.pendingAnchor =
+          self.cameraDock?.reflection.viewport.captureAnchor()
+          ?? self.pendingAnchor
+        let restoredSize = self.cameraDockReturnSurface?.logicalSize ?? self.session.logicalSize
         self.cameraDockReturnSurface = nil
         self.perform { try self.session.pauseSafely("Camera Dock stopped — position retained") }
         self.floating = nil
+        self.session.logicalSize = restoredSize
         self.state.cameraDockReady = false
         self.state.cameraDockFirstUseCalloutVisible = false
+        self.render()
         self.refresh()
       }
       render()
@@ -1841,6 +1853,7 @@ extension OperatorWindowController {
         on: display, preferences: normalized, style: session.style)
     {
       cameraDockPlacementUnavailable()
+      render()
     }
   }
 
@@ -1877,6 +1890,7 @@ extension OperatorWindowController {
   private func cameraDockPlacementUnavailable() {
     guard let cameraDock else { return }
     pendingAnchor = cameraDock.reflection.viewport.captureAnchor() ?? pendingAnchor
+    let restoredSize = cameraDockReturnSurface?.logicalSize ?? session.logicalSize
     cameraDockReturnSurface = nil
     let message =
       "Camera Dock unavailable — position retained. Choose a larger display or reduce text size."
@@ -1884,6 +1898,7 @@ extension OperatorWindowController {
     cameraDock.onClose = nil
     cameraDock.close()
     floating = nil
+    session.logicalSize = restoredSize
     state.cameraDockReady = false
     state.cameraDockFirstUseCalloutVisible = false
     refresh()
