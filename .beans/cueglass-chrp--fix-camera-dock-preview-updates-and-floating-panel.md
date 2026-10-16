@@ -1,11 +1,11 @@
 ---
 # cueglass-chrp
 title: Fix Camera Dock preview updates and floating-panel corners
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-10-16T16:59:40Z
-updated_at: 2026-10-16T17:22:16Z
+updated_at: 2026-10-16T17:30:38Z
 parent: cueglass-wky0
 ---
 
@@ -22,4 +22,15 @@ Add deterministic regressions for preference-driven placement-map updates and no
 - [x] Keep the expanded preview map in sync with successful Camera Dock preference changes and prove open-Dock nudge does not change playback state.
 - [x] Restore 14 pt clipping on ordinary floating panels and add a regression without changing Camera Dock styling.
 - [x] Update the implementation status to cite 127 native tests on CI, record the 130-test local regression suite, and leave M1–M14 pending.
-- [ ] Run required tests and checks; commit and push the bounded correction.
+- [x] Run required tests and checks; commit and push the bounded correction.
+
+## Summary of Changes
+
+- Successful Camera Dock preference edits now refresh the expanded map; the collapsed map stays hidden and preserves the script caption, aspect ratio, and logical size.
+- Open-Dock nudges render the changed placement directly when viewport size is unchanged, preserving paused or running playback state. Viewport-size changes keep the existing resize path.
+- Ordinary FloatingRoot restores its 14 pt corner radius and clipping; Camera Dock attached and detached corner styles remain unchanged.
+- Added deterministic tests: `cameraDockPlacementPreviewTracksSuccessfulPreferenceEdits`, `openCameraDockNudgeRefreshesMapWithoutChangingPlaybackState`, and `ordinaryFloatingRootRetainsRoundedClipping`.
+- Core: 89 passed. Full native suite: 130 passed, including the three regressions. Strict formatting, `beans check --json`, and `git diff --check` passed. A clean unsigned DebugLocal arm64 app build targets macOS 14.
+- Exact-tip GitHub Actions run [38939210624](https://github.com/gAmUssA/CueGlass/actions/runs/38939210624) passed commit `7c5073083c98b03305e10c13c0beae46dff037a1`, including Core/native tests, formatting, universal unsigned build, and package verification.
+- `docs/IMPLEMENTATION_STATUS.md` records 127 native tests from prior exact-tip run 38933730280 and the current 130-test local regression suite. M1–M14 remain pending.
+- Pushed to `feat/cueglass-camera-dock`; no PR was opened. The local unsigned build was not handed off as a final owner binary before independent verification.

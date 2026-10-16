@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2026-10-16T13:52:06Z
-updated_at: 2026-10-16T17:22:16Z
+updated_at: 2026-10-16T17:30:38Z
 blocked_by:
     - cueglass-c3a1
 ---
@@ -44,5 +44,13 @@ Complete the accepted Staged Camera Dock flow on feat/cueglass-camera-dock: plac
 ## Final review follow-up 2 — 2c65e10
 
 - [x] Resolve child bug @cueglass-chrp: refresh the truthful placement map after successful edits, restore ordinary floating-panel corner clipping, and update the native test count.
-- [ ] Run required verification on the corrected tip and build a fresh unsigned DebugLocal app for owner testing.
+- [x] Run required verification on the corrected tip and build a fresh unsigned DebugLocal app for owner testing.
 - [x] Keep physical M1–M14 checks pending until direct owner observation.
+
+
+## Correction round 2 result — 7c50730
+
+- Fixed stale map updates after successful width, line-count, nudge, and Reset preferences. Open-Dock nudge refreshes the map without changing paused/running playback state; ordinary FloatingRoot clipping is restored.
+- Core 89 and native 130 tests pass locally. Strict Swift formatting, Beans, diff checks, and a clean unsigned DebugLocal arm64 build targeting macOS 14 pass.
+- Pushed commit `7c5073083c98b03305e10c13c0beae46dff037a1` on `feat/cueglass-camera-dock`; exact-tip GitHub Actions run [38939210624](https://github.com/gAmUssA/CueGlass/actions/runs/38939210624) passed Core/native tests, formatting, universal unsigned build, and package verification.
+- M1–M14 remain pending for direct owner observation. This parent remains in-progress and blocked by `cueglass-c3a1`.
