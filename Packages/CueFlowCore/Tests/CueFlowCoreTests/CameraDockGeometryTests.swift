@@ -256,7 +256,8 @@ import Testing
     auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil, isBuiltIn: false,
     width: 360, height: 150, horizontalNudge: 0)
 
-  #expect(valid == nil)
+  #expect(valid?.location == .camera)
+  #expect(valid?.anchorX == screen.midX)
   #expect(nonFinite == nil)
   #expect(insetConsumesScreen == nil)
   #expect(tooNarrow == nil)
@@ -264,10 +265,10 @@ import Testing
     CameraDockGeometry.placement(
       screenFrame: screen, visibleFrame: visible, safeTop: 32,
       auxiliaryTopLeftArea: left, auxiliaryTopRightArea: nil, isBuiltIn: true,
-      width: 600, height: 200, horizontalNudge: 0) == nil)
+      width: 600, height: 200, horizontalNudge: 0)?.anchorX == screen.midX)
 }
 
-@Test func cameraDockGeometryRejectsReversedAuxiliaryAreas() {
+@Test func cameraDockCentersSafePlacementWhenAuxiliaryAreasAreReversed() throws {
   let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
   let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
   let left = CameraDockRect(x: 862, y: 950, width: 650, height: 32)
@@ -278,11 +279,70 @@ import Testing
   #expect(left.isContained(in: screen, tolerance: 0.5))
   #expect(right.isContained(in: screen, tolerance: 0.5))
   #expect(!left.intersects(right))
-  #expect(
+  let placement = try #require(
     CameraDockGeometry.placement(
       screenFrame: screen, visibleFrame: visible, safeTop: 32,
       auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right, isBuiltIn: true,
-      width: 600, height: 200, horizontalNudge: 0) == nil)
+      width: 600, height: 200, horizontalNudge: 0))
+
+  #expect(placement.location == .camera)
+  #expect(placement.anchorX == screen.midX)
+  #expect(placement.frame.maxY == visible.maxY)
+}
+
+@Test func cameraDockKeepsSafeAreaPlacementWhenAuxiliaryAreasAreIncomplete() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
+  let onlyLeft = CameraDockRect(x: 0, y: 950, width: 650, height: 32)
+  let placement = try #require(
+    CameraDockGeometry.placement(
+      screenFrame: screen, visibleFrame: visible, safeTop: 32,
+      auxiliaryTopLeftArea: onlyLeft, auxiliaryTopRightArea: nil, isBuiltIn: true,
+      width: 665.28, height: 180, horizontalNudge: 0))
+
+  #expect(placement.location == .camera)
+  #expect(placement.anchorX == 756)
+  #expect(placement.frame.maxY == 950)
+  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+  #expect(
+    placement.frame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32)) == false)
+}
+
+@Test func cameraDockFitsTwoVisibleLinesAt32PointTextWithIncompleteAuxiliaryAreas() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 650, height: 32),
+    auxiliaryTopRightArea: nil)
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 665.28, lineCount: 2), lineAdvance: 42))
+
+  #expect(layout.style == .attached)
+  #expect(layout.viewportHeight == 111)
+  #expect(
+    layout.placement.frame.height == layout.viewportHeight + CameraDockGeometry.controlsHeight)
+  #expect(layout.placement.anchorX == 756)
+}
+
+@Test func cameraDockUsesSafeScreenAnchorWhenAuxiliaryAreasAreMalformed() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
+  let left = CameraDockRect(x: 900, y: 950, width: 700, height: 32)
+  let right = CameraDockRect(x: 0, y: 950, width: 700, height: 32)
+  let placement = try #require(
+    CameraDockGeometry.placement(
+      screenFrame: screen, visibleFrame: visible, safeTop: 32,
+      auxiliaryTopLeftArea: left, auxiliaryTopRightArea: right, isBuiltIn: true,
+      width: 665.28, height: 180, horizontalNudge: 0))
+
+  #expect(placement.location == .camera)
+  #expect(placement.anchorX == 756)
+  #expect(placement.frame.maxY == 950)
+  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+  #expect(
+    placement.frame.intersects(CameraDockRect(x: 650, y: 950, width: 212, height: 32)) == false)
 }
 
 @Test func cameraDockGeometryRejectsTooShortAndMalformedDisplayParameters() {
@@ -331,9 +391,24 @@ import Testing
   #expect(infiniteInset == nil)
   #expect(infiniteWidth == nil)
   #expect(infiniteNudge == nil)
-  #expect(negativeAuxiliary == nil)
+  #expect(negativeAuxiliary?.location == .camera)
+  #expect(negativeAuxiliary?.anchorX == screen.midX)
   #expect(zeroVisible == nil)
   #expect(malformedPlacement == nil)
+}
+
+@Test func cameraDockUsesVisibleTopWhenSafeEdgeIsAboveTheUsableFrame() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
+  let placement = try #require(
+    CameraDockGeometry.placement(
+      screenFrame: screen, visibleFrame: visible, safeTop: 24,
+      auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil, isBuiltIn: true,
+      width: 665.28, height: 180, horizontalNudge: 0))
+
+  #expect(placement.location == .topOfDisplay)
+  #expect(placement.frame.maxY == visible.maxY - CameraDockGeometry.detachedGap)
+  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
 }
 
 @Test func cameraDockPreferenceDefaultsAndBoundsAreStable() throws {

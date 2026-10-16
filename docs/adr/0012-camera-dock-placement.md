@@ -30,3 +30,9 @@ The attached style is flush with the safe-area edge, pure opaque black, has squa
 Committing from Preview, Floating, or Output captures the shared guide anchor, prior surface, and prior play state. CueGlass pauses the one session, closes the prior surface, and shows Camera Dock in a visible paused Ready state. Play starts it. Exiting closes the Dock and restores the saved surface and play state. The Output inspector presents first-use guidance as a nonmodal callout and keeps a capture disclosure visible while Camera Dock is selected. The capture wording is limited to screen recordings and full-display shares; no claim is made about single-app window sharing.
 
 Automated geometry, map, callout, surface-transition, and styling tests cover this implementation. They do not satisfy any physical or runtime observations in M1–M14.
+
+## Safe-area geometry recovery refinement
+
+`NSScreen.auxiliaryTopLeftArea` and `auxiliaryTopRightArea` refine the horizontal anchor when both rectangles are valid and ordered. If either rectangle is missing or inconsistent, center the panel on the display while keeping its top edge at the valid safe-area boundary; auxiliary-area metadata must not reject a fit that remains below the camera housing. If the safe-area boundary lies above the visible-frame top, use the detached top-of-display position below the visible frame. If the panel cannot fit below an in-frame safe-area boundary, reject the placement rather than moving it into the housing area. The live panel and placement map continue to use the same computed layout.
+
+Core regressions cover incomplete/reversed auxiliary rectangles and the detached fallback. These tests establish arithmetic only; owners still need to observe housing clearance and the placement map on notched hardware.

@@ -227,25 +227,29 @@ public enum CameraDockGeometry {
     let width = min(maximumWidth, max(minimumWidth, requestedWidth))
     let fittedWidth = min(width, visibleFrame.width)
     let hasCameraSafeArea = isBuiltIn && safeTop > 0
-    let location: CameraDockLocation = hasCameraSafeArea ? .camera : .topOfDisplay
+    var location: CameraDockLocation = .topOfDisplay
     var anchorX = screenFrame.midX
     var top = visibleFrame.maxY - detachedGap
 
     if hasCameraSafeArea {
-      top = screenFrame.maxY - safeTop
-      guard top <= visibleFrame.maxY + 0.5 else { return nil }
-      switch (auxiliaryTopLeftArea, auxiliaryTopRightArea) {
-      case (.some(let left), .some(let right)):
-        guard left.isFiniteAndPositive, right.isFiniteAndPositive,
-          left.isContained(in: screenFrame, tolerance: 0.5),
-          right.isContained(in: screenFrame, tolerance: 0.5), left.minY >= top - 0.5,
-          right.minY >= top - 0.5, left.maxX < right.minX
-        else { return nil }
-        anchorX = left.maxX + (right.minX - left.maxX) / 2
-      case (.none, .none):
-        break
-      default:
-        return nil
+      let cameraSafeEdge = screenFrame.maxY - safeTop
+      if cameraSafeEdge <= visibleFrame.maxY + 0.5 {
+        top = cameraSafeEdge
+        location = .camera
+        // The safe edge keeps the panel below the housing. NSScreen's auxiliary areas refine
+        // the horizontal anchor, but missing or inconsistent areas must not reject a safe fit.
+        func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
+          area.isFiniteAndPositive && area.isContained(in: screenFrame, tolerance: 0.5)
+            && area.minY >= cameraSafeEdge - 0.5
+        }
+        switch (auxiliaryTopLeftArea, auxiliaryTopRightArea) {
+        case (.some(let left), .some(let right)):
+          if isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX {
+            anchorX = left.maxX + (right.minX - left.maxX) / 2
+          }
+        default:
+          break
+        }
       }
     }
 

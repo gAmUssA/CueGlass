@@ -36,6 +36,12 @@ Staged-flow local verification (2026-10-16, macOS 27.0.1 with Xcode 27.0 (27A266
 
 GitHub Actions run [38933730280](https://github.com/gAmUssA/CueGlass/actions/runs/38933730280) on the reviewed `2c65e10585399743c3d9e8723d411b9a3ac54c95` tip reported 127 native tests. Correction round 2 adds three deterministic native regressions; the updated local suite passes all 130 tests. These automated results do not satisfy M1–M14.
 
+## Camera Dock fit recovery follow-up
+
+The owner reported that Camera Dock still rejected a notched MacBook after setting two visible lines; the Text Size field showed 32 pt. The current development host exposes only a virtual display, so the target MacBook's private display geometry was not captured. A deterministic reproduction found that incomplete or inconsistent `NSScreen` auxiliary-area rectangles caused a false rejection even when the camera-safe edge and available panel height were valid. CueGlass now uses those rectangles only to refine horizontal centering, falls back to the safe display center when they are incomplete, and uses the visible-frame top when the safe edge itself lies above that frame. It still rejects a panel that cannot fit below the safe edge.
+
+The new Core regression was observed failing against the old guard (`CameraDockGeometry.placement` returned `nil`) and passes with the recovery. The full Core suite passes all 93 tests and the DebugLocal native suite passes all 130 tests. Strict Swift formatting, Bean validation, and `git diff --check` pass. This establishes the reproduced metadata case, not the cause on the owner's MacBook; the rebuilt test app still needs owner retest. M1–M14 physical/runtime observations remain pending.
+
 An earlier implementation snapshot recorded 81 CueFlowCore tests and 103 native tests. Those counts are historical and are superseded by the correction round 3 results below.
 
 Correction round 2 (2026-10-16): the local run reported 86 CueFlowCore tests and 121 native tests, but GitHub Actions run [38893949284](https://github.com/gAmUssA/CueGlass/actions/runs/38893949284) on pushed commit `94dee21cab53c035a5bd781d305e14e598d294c1` failed the native step with two issues. That exact CI run did not pass the native suite.
