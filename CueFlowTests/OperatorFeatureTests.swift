@@ -2429,6 +2429,213 @@ import Testing
     #expect(abs(try c.session.position(at: c.session.effectiveTime) - catchUp * 5) < 0.000001)
   }
 
+  /// Starts a Follow Voice take at a catch-up pace above the nominal pace under an injected
+  /// clock, so a later placement-only edit can be checked for leaving that pace alone.
+  private struct CatchUpTake {
+    let velocity: Double
+    let origin: Double
+    func position(at time: Double) -> Double { origin + velocity * time }
+  }
+
+  private func runningCatchUpTake(
+    _ c: OperatorWindowController, now: @escaping () -> Double
+  ) throws -> CatchUpTake {
+    c.session.clock = now
+    let nominal = c.session.nominalVelocity
+    try c.session.beginVoice(epoch: 4)
+    // The ceiling sits far ahead so the glide runs at the catch-up pace for the whole test.
+    try c.session.voiceGlide(to: 4000, velocity: nominal * 1.4, epoch: 4)
+    #expect(c.session.state == .running)
+    let catchUp = c.session.timeline.velocity
+    #expect(catchUp > nominal)
+    #expect(!c.session.measuring)
+    return CatchUpTake(
+      velocity: catchUp, origin: try c.session.position(at: c.session.effectiveTime))
+  }
+
+  /// A placement-only edit leaves a running take untouched: no render, no re-measure, the
+  /// catch-up velocity kept, and the position continuous before and after the edit.
+  private func expectRunningTakeUntouched(
+    _ c: OperatorWindowController, generation: Int, take: CatchUpTake, position: Double,
+    at time: Double
+  ) throws {
+    #expect(c.renderGeneration == generation)
+    #expect(!c.session.measuring)
+    #expect(c.session.state == .running)
+    #expect(c.session.timeline.velocity == take.velocity)
+    #expect(try c.session.position(at: c.session.effectiveTime) == position)
+    #expect(
+      abs(try c.session.position(at: c.session.effectiveTime) - take.position(at: time))
+        < 0.000001)
+  }
+
+  /// Choosing another display in the picker while the Output inspector shows the placement
+  /// preview refreshes that preview for the new target. The Dock is closed, so the playback
+  /// layout is unchanged and a running take keeps its catch-up pace.
+  @Test func displayPickerChangeWithExpandedPreviewLeavesRunningTakeUntouched() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let a = syntheticDisplay(screen: screen, id: 705, uuid: "picker-pace-a", parameters: parameters)
+    let b = syntheticDisplay(screen: screen, id: 706, uuid: "picker-pace-b", parameters: parameters)
+    let connected = [a, b]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.selectDisplay(a.selectionKey)
+    c.setCameraDockWidth(520)
+    c.preview.reflection.viewport.driver?.stop()
+    c.preview.reflection.viewport.driver = nil
+    c.setCameraDockPlacementPreviewExpanded(true)
+    await settle(c)
+    let mapForA = try #require(c.preview.placementMapView.map)
+
+    var now = 0.0
+    let take = try runningCatchUpTake(c) { now }
+    let generation = c.renderGeneration
+    now = 2
+    let positionBefore = try c.session.position(at: c.session.effectiveTime)
+
+    c.selectDisplay(b.selectionKey)
+    await settle(c)
+    #expect(c.cameraDockTarget(in: connected)?.id == b.id)
+    #expect(c.state.cameraDockWidth != 520)
+    let mapForB = try #require(c.preview.placementMapView.map)
+    #expect(mapForB.dock.width != mapForA.dock.width)
+    #expect(mapForB == c.cameraDockPlacementMap)
+    #expect(c.preview.placementMapView.isHidden)
+    try expectRunningTakeUntouched(
+      c, generation: generation, take: take, position: positionBefore, at: 2)
+    now = 3
+    #expect(
+      abs(try c.session.position(at: c.session.effectiveTime) - take.position(at: 3)) < 0.000001)
+  }
+
+  /// Width, line count, nudge, and island edits with the Dock closed change only the
+  /// placement preview. None of them changes the playback layout, so a running take keeps
+  /// its catch-up pace across each edit.
+  @Test func closedDockPreferenceEditsWithExpandedPreviewLeaveRunningTakeUntouched()
+    async throws
+  {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 707, uuid: "closed-edit-pace-display",
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    c.preview.reflection.viewport.driver?.stop()
+    c.preview.reflection.viewport.driver = nil
+    c.setCameraDockPlacementPreviewExpanded(true)
+    await settle(c)
+    let scriptSize = c.session.logicalSize
+
+    var now = 0.0
+    let take = try runningCatchUpTake(c) { now }
+    let generation = c.renderGeneration
+    var previous = try #require(c.preview.placementMapView.map)
+    let edits: [(String, (OperatorWindowController) -> Void, (CameraDockPlacementMap) -> Bool)] =
+      [
+        ("width", { $0.setCameraDockWidth(520) }, { $0.dock.width != previous.dock.width }),
+        ("lines", { $0.setCameraDockLineCount(4) }, { $0.dock.height != previous.dock.height }),
+        ("nudge", { $0.setCameraDockHorizontalNudge(24) }, { $0.content.x != previous.content.x }),
+        ("island", { $0.setCameraDockNotchIsland(false) }, { $0.dock != previous.dock }),
+      ]
+    for (index, (label, edit, changed)) in edits.enumerated() {
+      now = Double(index + 2)
+      let positionBefore = try c.session.position(at: c.session.effectiveTime)
+      edit(c)
+      await settle(c)
+      let map = try #require(c.preview.placementMapView.map, "\(label) map")
+      #expect(changed(map), "\(label) map changed")
+      #expect(map == c.cameraDockPlacementMap, "\(label) map current")
+      #expect(c.preview.placementMapView.isHidden)
+      #expect(c.session.logicalSize == scriptSize)
+      try expectRunningTakeUntouched(
+        c, generation: generation, take: take, position: positionBefore, at: now)
+      previous = map
+    }
+    now = 7
+    #expect(
+      abs(try c.session.position(at: c.session.effectiveTime) - take.position(at: 7)) < 0.000001)
+  }
+
+  /// A horizontal nudge of the live Dock moves its window and content without changing the
+  /// viewport size. That is a placement-only edit: the Dock repositions, the placement map
+  /// follows, and a running take keeps its catch-up pace. A width change still relayouts.
+  @Test func liveDockNudgeWithUnchangedViewportLeavesRunningTakeUntouched() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 708, uuid: "live-nudge-pace-display",
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    // An integral width keeps the panel frame on whole points, so the map's normalised
+    // dock origin and the window origin agree exactly on 1x and 2x displays alike.
+    c.setCameraDockWidth(520)
+    c.preview.reflection.viewport.driver?.stop()
+    c.preview.reflection.viewport.driver = nil
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let window = try #require(dock.window)
+    #expect(c.session.state == .paused)
+    #expect(dock.dockPreferences.width == 520)
+    let viewportSize = dock.viewportSize
+    let dockSize = c.session.logicalSize
+    let pausedMap = try #require(c.preview.placementMapView.map)
+
+    var now = 0.0
+    let take = try runningCatchUpTake(c) { now }
+    let generation = c.renderGeneration
+    let offsetBefore = dock.dockContentOffsetX
+    let frameBefore = window.frame
+    now = 2
+    let positionBefore = try c.session.position(at: c.session.effectiveTime)
+
+    c.setCameraDockHorizontalNudge(48)
+    await settle(c)
+    #expect(dock.dockPreferences.horizontalNudge == 48)
+    #expect(dock.viewportSize == viewportSize)
+    #expect(c.session.logicalSize == dockSize)
+    // Attached, the backing still spans the housing-centred position and the content moves
+    // inside it; the panel follows that span while the viewport itself keeps its size.
+    #expect(dock.dockContentOffsetX != offsetBefore)
+    #expect(window.frame != frameBefore)
+    let nudgedMap = try #require(c.preview.placementMapView.map)
+    #expect(nudgedMap.content.x != pausedMap.content.x)
+    #expect(nudgedMap == c.cameraDockPlacementMap)
+    #expect(
+      abs(nudgedMap.dock.x - (window.frame.minX - screen.frame.minX) / screen.frame.width) < 1e-9)
+    try expectRunningTakeUntouched(
+      c, generation: generation, take: take, position: positionBefore, at: 2)
+    now = 3
+    #expect(
+      abs(try c.session.position(at: c.session.effectiveTime) - take.position(at: 3)) < 0.000001)
+
+    // A width change alters the viewport size: that is a real relayout and still re-measures.
+    c.setCameraDockWidth(600)
+    await settle(c)
+    #expect(dock.viewportSize != viewportSize)
+    #expect(c.renderGeneration > generation)
+  }
+
   @Test func openCameraDockNudgeRefreshesMapWithoutChangingPlaybackState() async throws {
     let c = try await prepared()
     defer {

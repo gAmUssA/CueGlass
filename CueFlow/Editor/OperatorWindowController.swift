@@ -1642,7 +1642,11 @@ extension OperatorWindowController {
     updatePlacementMapPreview()
   }
 
-  private func updatePlacementMapPreview() {
+  /// Placement-only changes (the Display picker, a closed-Dock preference edit, a live Dock
+  /// nudge that keeps its viewport size) refresh this map and nothing else. `render()` is
+  /// reserved for a real playback layout change: it re-measures, and the measurement
+  /// callback's `session.updateLayout` resets a running take's velocity to the nominal pace.
+  func updatePlacementMapPreview() {
     preview.placementMapView.map =
       cameraDock != nil || state.cameraDockPlacementPreviewExpanded
       ? cameraDockPlacementMap : nil
@@ -1912,7 +1916,7 @@ extension OperatorWindowController {
     guard state.selectedDisplay != key else { return }
     state.selectedDisplay = key
     refreshCameraDockPreferencesForTarget()
-    if state.cameraDockPlacementPreviewExpanded { render() }
+    updatePlacementMapPreview()
   }
 
   private func cameraDockPreferences(for display: DisplayDescriptor) -> CameraDockPreferences {
@@ -1974,8 +1978,8 @@ extension OperatorWindowController {
         render()
         return
       }
-    } else if state.cameraDockPlacementPreviewExpanded {
-      render()
+    } else {
+      updatePlacementMapPreview()
     }
   }
 
