@@ -707,6 +707,47 @@ import Testing
     #expect(c.session.state == .paused)
   }
 
+  @Test func failedCameraDockOutputRecoveryStaysPausedAfterMeasurement() async throws {
+    for disappearsDuringRecovery in [false, true] {
+      let c = try await prepared()
+      defer { c.close() }
+      c.preview.reflection.viewport.driver?.stop()
+      let display = try #require(DisplayDescriptor.all().first)
+      c.state.selectedDisplay = display.selectionKey
+      c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+      stopPreparationDriver(c)
+      await settle(c)
+      let outputSize = c.session.logicalSize
+      c.session.countdownSeconds = 0
+      try c.session.toggle(c.script)
+      c.showCameraDock()
+      stopPreparationDriver(c)
+      await settle(c)
+      #expect(c.cameraDock != nil)
+      #expect(c.session.state == .paused)
+      let snapshot = c.session.snapshot?.id
+      let anchor = try #require(c.authoritative.captureAnchor())
+      var recoveryReads = 0
+      c.displayProvider = {
+        recoveryReads += 1
+        return disappearsDuringRecovery && recoveryReads == 1 ? [display] : []
+      }
+
+      c.hideOutput()
+      c.preview.reflection.viewport.driver?.stop()
+      #expect(c.output == nil && c.cameraDock == nil)
+      #expect(!c.pendingPlay && !c.pendingResume)
+      await settle(c)
+      #expect(c.session.state == .paused)
+      #expect(c.session.countdownDigit == nil)
+      #expect(c.session.logicalSize == outputSize)
+      #expect(c.session.snapshot?.id == snapshot)
+      #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+      #expect(c.state.status == "Output display disconnected — position retained")
+      if disappearsDuringRecovery { #expect(recoveryReads >= 2) }
+    }
+  }
+
   @Test func cameraDockCommitFromEverySurfaceStagesReadyAndRestoresPlayback() async throws {
     for source in ["preview", "floating", "output"] {
       do {

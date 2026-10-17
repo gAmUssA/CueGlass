@@ -1272,6 +1272,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         // no longer tracked it. If it is gone, Preview takes the saved size and anchor.
         let message = "Output display disconnected — position retained"
         guard displayProvider().contains(where: { $0.selectionKey == displayKey }) else {
+          pendingResume = false
           returnToPreview(size: size)
           setPersistentStatus(message)
           return
@@ -1279,6 +1280,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         selectDisplay(displayKey)
         showOutput(confirm: { _ in .alertFirstButtonReturn })
         if output == nil {
+          pendingResume = false
           returnToPreview(size: size)
           setPersistentStatus(message)
         }

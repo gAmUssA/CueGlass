@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-17T14:56:08Z
-updated_at: 2026-10-17T15:09:48Z
+updated_at: 2026-10-17T15:10:03Z
 parent: cueglass-aeqt
 ---
 
@@ -23,3 +23,5 @@ Resolve four source-correctness issues found by Copilot on PR #5 at a059bce903e9
 ## Verification evidence
 
 Audio sample clock: Thread Sanitizer reproduced the original Swift access race between append and audioTime. The fixed test passes with 64 contiguous 512-frame buffers, concurrent clock reads, and converter replacement; source yields outside the lock.
+
+Output recovery: both missing-display and disappeared-during-reopen paths reproduced a queued resume. The regression now passes with no countdown/resume, preserved snapshot/anchor/layout, and the disconnect notice after measurement. Existing successful restoration also passes.
