@@ -1129,6 +1129,60 @@ import Testing
       availableAt: words.last?.end ?? start, words: words)
   }
 
+  @Test func cameraDockBandControlsStayUsableAtMinimumWidthAndNudgeLimits() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let (_, housing) = try notchedDisplay(c, id: 9031, uuid: "band-limits-display")
+    c.setCameraDockWidth(CameraDockGeometry.minimumWidth)
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let root = try #require(dock.root)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let controls = try #require(root.cameraDockControls)
+
+    for nudge in [
+      0.0, CameraDockGeometry.maximumHorizontalNudge, CameraDockGeometry.minimumHorizontalNudge,
+    ] {
+      c.setCameraDockHorizontalNudge(nudge)
+      root.needsLayout = true
+      root.layoutSubtreeIfNeeded()
+      controls.layoutSubtreeIfNeeded()
+      let layout = try #require(dock.dockLayout)
+      #expect(abs(layout.placement.contentFrame.midX - (housing.midX + nudge)) < 1)
+      let originX = layout.placement.frame.minX
+      let housingLocal = (housing.minX - originX)...(housing.maxX - originX)
+      let mask = try #require(root.cameraDockMaskPath)
+      func inMask(_ view: NSView) -> Bool {
+        let point = root.convert(CGPoint(x: view.frame.midX, y: view.frame.midY), from: controls)
+        return mask.contains(point)
+      }
+      // Close and Play keep their full size left of the housing; Adjust and status sit right
+      // of it; every control is hittable inside the silhouette, whatever the text nudge.
+      #expect(!controls.closeButton.isHidden, "nudge \(nudge)")
+      #expect(controls.closeButton.frame.width == 28, "nudge \(nudge)")
+      #expect(controls.playbackButton.frame.width == 28, "nudge \(nudge)")
+      #expect(controls.adjustButton.frame.width == 32, "nudge \(nudge)")
+      #expect(controls.playbackButton.frame.minX >= controls.closeButton.frame.maxX)
+      #expect(controls.playbackButton.frame.maxX <= housingLocal.lowerBound - 10)
+      #expect(controls.statusLabel.frame.minX >= housingLocal.upperBound + 10)
+      #expect(controls.adjustButton.frame.minX >= controls.statusLabel.frame.maxX)
+      #expect(inMask(controls.closeButton), "close outside mask at nudge \(nudge)")
+      #expect(inMask(controls.playbackButton), "play outside mask at nudge \(nudge)")
+      #expect(inMask(controls.adjustButton), "adjust outside mask at nudge \(nudge)")
+      // Parked: Play and Adjust remain at the ends of the pill.
+      root.setCameraDockParked(true, animated: false)
+      root.layoutSubtreeIfNeeded()
+      controls.layoutSubtreeIfNeeded()
+      #expect(controls.playbackButton.frame.width == 28, "parked nudge \(nudge)")
+      #expect(controls.adjustButton.frame.width == 32, "parked nudge \(nudge)")
+      #expect(inMask(controls.playbackButton), "parked play outside mask at nudge \(nudge)")
+      #expect(inMask(controls.adjustButton), "parked adjust outside mask at nudge \(nudge)")
+      root.setCameraDockParked(false, animated: false)
+    }
+  }
+
   @Test func calibratedPreviewFollowsTheLiveCameraDockReflectionAndGuide() async throws {
     let c = try await prepared()
     defer { c.close() }

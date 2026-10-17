@@ -1006,19 +1006,22 @@ struct FloatingGrip: View {
     let adjustWidth: CGFloat = 32
     let leftRoom = max(0, band.housing.lowerBound - band.tray.lowerBound - edge * 2)
     let rightRoom = max(0, band.tray.upperBound - band.housing.upperBound - edge * 2)
-    closeButton.isHidden = band.compact
+    // Every control gets a frame on every path. Close yields to Play when the band is too
+    // narrow for both; Core reserves `controlsBandReserve` so the open tray never is.
+    let showsClose = !band.compact && leftRoom >= buttonWidth * 2 + gap
+    closeButton.isHidden = !showsClose
     statusLabel.isHidden = band.compact
     var leftX = band.tray.lowerBound + edge
-    if !band.compact, leftRoom >= buttonWidth {
-      closeButton.frame = CGRect(x: leftX, y: buttonY, width: buttonWidth, height: buttonHeight)
-      leftX += buttonWidth + gap
-    }
+    closeButton.frame = CGRect(
+      x: leftX, y: buttonY, width: showsClose ? buttonWidth : 0, height: buttonHeight)
+    if showsClose { leftX += buttonWidth + gap }
     let playbackWidth = min(buttonWidth, max(0, band.housing.lowerBound - edge - leftX))
     playbackButton.frame = CGRect(
       x: leftX, y: buttonY, width: playbackWidth, height: buttonHeight)
-    let adjustX = band.tray.upperBound - edge - min(adjustWidth, rightRoom)
+    let adjustVisibleWidth = min(adjustWidth, rightRoom)
+    let adjustX = band.tray.upperBound - edge - adjustVisibleWidth
     adjustButton.frame = CGRect(
-      x: adjustX, y: buttonY, width: min(adjustWidth, rightRoom), height: buttonHeight)
+      x: adjustX, y: buttonY, width: adjustVisibleWidth, height: buttonHeight)
     let statusX = band.housing.upperBound + edge
     statusLabel.frame = CGRect(
       x: statusX, y: buttonY, width: max(0, adjustX - gap - statusX), height: buttonHeight)
