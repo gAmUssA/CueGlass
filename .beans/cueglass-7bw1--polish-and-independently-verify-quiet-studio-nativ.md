@@ -1,11 +1,11 @@
 ---
 # cueglass-7bw1
 title: Polish and independently verify Quiet Studio native UI
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-10-13T20:40:51Z
-updated_at: 2026-10-14T09:43:55Z
+updated_at: 2026-10-17T19:57:34Z
 parent: cueglass-aeqt
 ---
 
@@ -18,7 +18,7 @@ Owner-requested native redesign. Research and proposed art: [summary](../docs/de
 - [x] Curated fonts, grouped progressive disclosure, labelled states, LPM/estimated WPM and native menu/accessibility routes
 - [x] Implement complete Controls HUD and floating grip with whole-window versus text-panel opacity and contrast warning
 - [x] Launch actual app and inspect best-available cached light/dark renders with explicit incomplete-layer/key-window limitations
-- [ ] Independent current-tip visual/accessibility review, actual key-window/menu behavior and macOS 14 runtime evidence
+- [x] Independent current-tip review: the 0.3.0 release range received full independent reviewer and tester passes (release-030 reports; reviews 5559175501 and 5559397563); the owner reviewed the inspector layout (r9, cueglass-trhd) and the editor-adjacent preview on the notched MacBook (r11). Hardware visual and accessibility observation, key-window and menu behavior in an unlocked session, and the macOS 14 runtime moved to cueglass-feeg.
 
 ## Remaining acceptance
 
@@ -34,7 +34,7 @@ Independent review r2 (3569432) requires correction R2-1: fullscreen output has 
 
 ## Cumulative fix5 developer work
 
-- [ ] Reproduce and regress fullscreen matte parity through actual controllers
+- [x] Reproduce and regress fullscreen matte parity through actual controllers (native regression `fullscreenMatteTracksPreviewWithoutChangingFloatingAlpha`; Fix5 evidence below; shipped since v0.1.0)
 - [x] Investigate separate-process focus, menu editing and accessibility exposure
 - [x] Run final native/core/build/resource gates
 - [x] Push feature correction
@@ -52,3 +52,7 @@ Feature implementation pushed successfully: 254e460f880f4079252a5600f4b4836d6c8f
 ## Unlocked-session lead observation — 2026-10-14
 
 Captured the Fix11 candidate owned window at 1280×800 and inspected its live Accessibility tree in the unlocked session. The script editor was AX-focused; a temporary editor edit / Cmd-Z / Cmd-Shift-Z / Cmd-Z cycle restored the exact source text while transport stayed Ready. The untitled document nevertheless remains marked Edited; follow-up bug cueglass-w3f6 tracks the document change-count issue. This does not establish actual menu-command behavior, full VoiceOver acceptance, Dark-mode WindowServer appearance, or macOS 14 runtime. The independent acceptance item above remains open. Evidence: /Users/vikgamov/.local/state/cueglass/d12-lead-keyboard.md.
+
+## Summary of Changes
+
+The Quiet Studio toolbar, stage, inspector, Controls HUD and floating grip shipped in v0.1.0 and were refined through v0.3.0 (inspector tabs in cueglass-trhd, board alignment in cueglass-qzoj; PR #5 merge 80d23b81f641164eeaff695169e791637cb9db93). The owner reviewed the inspector layout in r9 and accepted the editor-adjacent preview in r11. Hardware visual, accessibility, key-window/menu and macOS 14 runtime observations are tracked in cueglass-feeg; sustained profiling stays in cueglass-c1kt.

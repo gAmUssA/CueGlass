@@ -1,11 +1,11 @@
 ---
 # cueglass-f01c
 title: Resolve 0.3.0 independent release findings
-status: in-progress
+status: completed
 type: bug
 priority: normal
 created_at: 2026-10-17T05:10:50Z
-updated_at: 2026-10-17T14:36:21Z
+updated_at: 2026-10-17T19:57:03Z
 ---
 
 Continue original cueglass-tgvc correction1; related voice work cueglass-6nk0. Independent reports: /Users/vikgamov/.local/state/cueglass/release-030/reports/reviewer.md and tester.md.
@@ -17,7 +17,7 @@ Continue original cueglass-tgvc correction1; related voice work cueglass-6nk0. I
 - [x] T2 calibrated preview follows the live Dock reflection and guide; caption agrees.
 - [x] R5/R6 ADR 0013 supersedes the 0007 configuration-change clause (0007 restored to its accepted text); M1/M8/M13/M15 reconciled, M18 and microphone rows added.
 - [x] Regressions shown failing without each fix; Core, native, strict format, beans check, diff check green; pushed for independent verification.
-- [ ] Owner hardware rows (M15/M16/M18, microphone rows) with device details; macOS 14 runtime.
+Owner hardware rows (M15/M16/M18, microphone rows) and the macOS 14 runtime check beyond the three accepted r11 observations moved to cueglass-feeg on 2026-10-17.
 
 Owner passed r11 notch attachment/animation, main preview and microphone selection/switching; other observations remain unverified. No PR/merge/release in corrective developer assignment.
 
@@ -47,10 +47,14 @@ The exact candidate a8ac7c6b6121d5bf4078e9b6aec9798701856f7c passed PR CI, but C
 - [x] 4302916901 — limit old-default width migration to legacy catalog entries; preserve current saved widths at slider stops.
 - [x] 4302916924 — allow the selected mirrored built-in display fallback and align geometry tests with ADR 0012.
 - [x] Add deterministic native/core regression tests for all eight findings, run full Core/native/format/Beans/diff gates, commit and push the correction to release/cueglass-030.
-- [ ] Obtain full independent reviewer and tester passes on the corrected full branch tip; then re-request Copilot and pass new exact-head CI before release resumes.
+- [x] Obtain full independent reviewer and tester passes on the corrected full branch tip; then re-request Copilot and pass new exact-head CI before release resumes. Full independent review at 4f952f4 (review 5559175501) and scoped re-check PASS at e021d43 (review 5559397563); Copilot reviews 5558794956, 5559273824 and 5559388091; exact-head CI 39057584583 success; merged as 80d23b81f641164eeaff695169e791637cb9db93.
 
 Full Copilot artifacts: /Users/vikgamov/.local/state/cueglass/release-030/copilot-reviews.json and copilot-inline-comments.json. Release report: /Users/vikgamov/.local/state/cueglass/release-030/release-report.md. Hardware/Mac14 runtime rows remain deferred and unverified per owner scope decision.
 
 ### Correction 3 implementation (2026-10-17)
 
 Display picker edits route through `selectDisplay`, which reloads the target display's Dock values first. Stop Take converts the saved return surface into a Preview return at the pre-Dock size. The Output return checks the saved display against the current display list and falls back to paused Preview at the saved size and anchor; the return target is the active Output's own display id. Non-layout style edits and their undo call the Dock controller's `updateAids`, which refreshes the text-panel decision without a relayout. The coordinator reads one captured-audio clock from the source (`capturedAudioTime`, the AudioInputPipe sample clock) for silence detection and spoken-pause resume, with host time only as a fallback. The preference catalog marks entries written by current builds and migrates only unmarked legacy entries. Display selection accepts the selected mirrored built-in display; ADR 0012 records the retained contract. Regressions: three Core tests (catalog, selection), five native OperatorFeatureTests and one VoiceFollowTests test, each shown failing on the prior source and passing after. Hardware/macOS 14 rows remain unverified.
+
+## Summary of Changes
+
+All three correction rounds shipped in PR #5 (merge 80d23b81f641164eeaff695169e791637cb9db93) and in the v0.3.0 prerelease (run 39061330997): microphone routing and single tap ownership, Collapse manual priority, island controls, calibrated preview, ADR 0013, the two residual defects from the final verification, and the eight Copilot findings on a8ac7c6, each with regressions shown failing on the prior source. Hardware and macOS 14 rows beyond the owner's accepted r11 observations are tracked in cueglass-feeg.

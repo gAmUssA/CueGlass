@@ -1,11 +1,11 @@
 ---
 # cueglass-tgvc
 title: Attach Camera Dock to the MacBook notch and repair its preview
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-10-16T18:28:24Z
-updated_at: 2026-10-17T01:18:52Z
+updated_at: 2026-10-17T19:57:04Z
 parent: cueglass-wky0
 ---
 
@@ -21,7 +21,7 @@ Owner reported that selecting Camera Dock on a notched MacBook displays “Camer
 - [x] Prepare a fresh test app for owner retest and keep M1–M14 hardware observations pending.
 
 
-- [ ] Owner confirms the new build opens Camera Dock on the notched MacBook and reports whether the housing/map alignment is correct.
+- [x] Owner confirms the new build opens Camera Dock on the notched MacBook (owner retest below: the false fit error is gone) and that it attaches to the notch (owner r11 pass, 2026-10-17). Placement-map agreement on hardware (M13) moved to cueglass-feeg.
 
 Build commit: a57b4d3. iCloud Drive artifact: CueGlass/CueGlass-0.2.0-Camera-Dock-FitFix-a57b4d3.zip (SHA-256 bf34545a6a0ac22df1e98c4d4f28410b644c2d762ec95244761a240016bdc716).
 
@@ -41,7 +41,7 @@ The owner likes Sapphire’s integrated notch treatment. Sapphire and another.no
 - [x] Keep the editor stage as the live prompt preview; move the placement map into the Camera Dock inspector disclosure.
 - [x] Run the full 96-test Core and 130-test native suites, strict formatting, `git diff --check`, and Bean validation.
 - [x] Build and share the fresh DebugLocal test app.
-- [ ] Owner checks notch blend, text/control clearance, and editor preview on the physical MacBook.
+- [x] Owner checks notch blend and editor preview on the physical MacBook (owner r11 pass: notch attachment and the editor-adjacent preview). Text and control clearance (M15 remainder) moved to cueglass-feeg.
 
 Fresh artifact: `CueGlass/CueGlass-0.2.0-Camera-Dock-Notch-30acc42-UNSIGNED-UNNOTARIZED.zip` in iCloud Drive; SHA-256 `476e4730df54de0ddab8923a1ea86a322fad3796f988f2f8ed98d5e2815adbf7`. The archive and copied checksum passed verification. Minimum macOS is 14.0. Physical MacBook notch/preview confirmation remains open.
 
@@ -54,7 +54,7 @@ The owner likes Sapphire’s integrated notch treatment. Their latest screenshot
 - [x] Preserve readable prompt text, controls, shared playback state, full-screen behavior, and no-notch/external fallbacks.
 - [x] Add deterministic geometry/transition coverage and rerun Core/native suites, formatting, and Beans checks.
 - [x] Build and share a fresh macOS 14-targeted DebugLocal artifact for owner retest.
-- [ ] Owner confirms notch bleed, rounded expanded shape, motion, and prompt readability on the physical MacBook.
+- [x] Owner confirms notch bleed and motion on the physical MacBook (owner r11 pass: notch attachment and animation). Expanded shape and prompt readability (M15/M16 remainder) moved to cueglass-feeg.
 
 Fresh local test artifact: `CueGlass/CueGlass-0.2.0-Sapphire-Notch-Morph-r2-20261016-UNSIGNED-UNNOTARIZED.zip` in iCloud Drive. SHA-256: `80ad0c200503bf445719fb58f069f3edfffb98cbf319e4ecc06a981ba814325f`. Core 99 and native 131 tests pass; minimum macOS 14.0. Owner hardware confirmation remains open.
 
@@ -68,7 +68,7 @@ The owner tested the r2 build and reports it still has no finesse or satisfying 
 - [x] Replace the barely perceptible transition with a clear, polished expansion/retraction animation that respects Reduce Motion.
 - [x] Add deterministic regression coverage for expanded content bounds and transition endpoints/timing.
 - [x] Run relevant Core/native tests and build a fresh unsigned test artifact for owner retest.
-- [ ] Owner confirms the tray shape, motion, and prompt readability on the notched MacBook.
+- [x] Owner confirms the motion on the notched MacBook (owner r11 pass: animation). Tray shape and prompt readability (M15/M16 remainder) moved to cueglass-feeg.
 
 ## Claude + Axiom developer handoff (2026-10-17)
 
@@ -94,7 +94,7 @@ After reviewing the Sapphire demo frame by frame at the owner's request, the own
 - [x] Centre the Dock text, widen its column, hide the guide line, dim neighbouring lines, and fade the strip edges.
 - [x] Pace the morph after Sapphire: snappy empty-surface spring, blurred-to-sharp content, content-first collapse; Reduce Motion keeps a crossfade.
 - [x] Rerun Core and native suites, strict formatting, build and share the refreshed unsigned artifact.
-- [ ] Owner confirms the lyrics-style layout and the motion on the notched MacBook.
+- [x] Owner confirms the motion on the notched MacBook (owner r11 pass: animation). The lyrics-style layout (centred reading line, dimmed neighbours, edge fades) moved to cueglass-feeg (M15 remainder).
 
 Not implemented: a timed line-by-line step mode; Follow Voice already glides per spoken line and is the closest existing behaviour.
 
@@ -103,3 +103,7 @@ Owner on-device screenshot (2026-10-16 22:44) rejected the stem-and-tray shape: 
 Owner request (2026-10-16 22:55): "integrate controls pane to notch island (or i guess you call it pill)". The attached Dock's controls now sit in the camera band beside the housing (Close and Play left; status and Adjust right), the bottom controls band is gone so the open tray is text only, and the parked pill carries Play and Adjust at its ends. Detached fallback unchanged.
 
 Owner (2026-10-16 23:05, Sapphire screenshot on a flat display): "sapphire actually emulates notch in the screen what doesn't have notch". The island is now the default on every display, drawn around an emulated housing when none is reported; the inspector toggle "Notch island on displays without a notch" is the per-display opt-out to the plain tray. New M17 covers it.
+
+## Summary of Changes
+
+The false fit rejection, the notch-integrated black backing, the Sapphire-style silhouette and morph, the centred reading line, the in-band controls and the emulated island on displays without a notch all shipped in PR #5 (merge 80d23b81f641164eeaff695169e791637cb9db93) and the v0.3.0 prerelease (run 39061330997). The owner accepted three r11 observations on the notched MacBook (notch attachment and animation, the editor-adjacent preview, microphone selection and switching), recorded in docs/MANUAL_TEST_PLAN.md. Every other hardware observation named in this Bean is tracked in cueglass-feeg.
