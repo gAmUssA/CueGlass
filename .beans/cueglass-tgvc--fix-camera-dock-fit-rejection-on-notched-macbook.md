@@ -85,3 +85,15 @@ Diagnosis: the presentation viewport reserves one fifth of its height above the 
 Not changed: `CueFlow/Editor/OperatorWindowController.swift` is outside this task's allowed paths, so the editor preview still uses the style's guide fraction and a literal `0.2` remains there; a two-line follow-up is proposed in the round report. The `forceNotchAttachment` preference has no inspector control yet. The development host has no notch; M15/M16 remain owner observations.
 
 r3 verification (macOS 27.0.1 host, Xcode 27): Core 104 tests pass; native DebugLocal suite 131 tests pass; branch CI run 38992977384 (`ed6d669`) is green after the first run on a 1024 pt runner display exposed a fractional panel width and a reflow-sensitive timed test, both fixed; strict swift-format, `git diff --check` pass. `beans check --json` reports a pre-existing broken `blocked_by` link from `cueglass-wky0` to `cueglass-c3a1` (that Bean is untracked in the shared checkout and absent from this branch; outside this task's allowed paths). Fresh unsigned, unnotarized, ad-hoc-signed DebugLocal app: `CueGlass-0.2.0-Notch-Polish-r3-UNSIGNED-UNNOTARIZED.zip` in the r3 reports directory, minimum macOS 14.0; SHA-256 `785d36a0a3ee6b5b72646787c5c89ab3eb7adea41e667208f23aaa394f55fcfe`, also recorded beside it. Owner hardware confirmation (M15/M16) remains open.
+
+## Owner scope extension: Sapphire lyrics look and pacing (2026-10-17)
+
+After reviewing the Sapphire demo frame by frame at the owner's request, the owner pointed at the lyrics view around 0:35 as the exact use case and said: "we can extend a scope - i want to nice and snappy". That authorizes edits outside the original allowed paths: `CueFlow/Editor/OperatorWindowController.swift` (Dock guide fraction for the live Dock and the editor preview), `CueFlow/Presentation/PrompterViewport.swift` and `PresentationBuilder.swift` (centred paragraphs, column override, hidden guide).
+
+- [x] Centre the reading line in the strip with equal context above and below; mirror it in the editor preview.
+- [x] Centre the Dock text, widen its column, hide the guide line, dim neighbouring lines, and fade the strip edges.
+- [x] Pace the morph after Sapphire: snappy empty-surface spring, blurred-to-sharp content, content-first collapse; Reduce Motion keeps a crossfade.
+- [x] Rerun Core and native suites, strict formatting, build and share the refreshed unsigned artifact.
+- [ ] Owner confirms the lyrics-style layout and the motion on the notched MacBook.
+
+Not implemented: a timed line-by-line step mode; Follow Voice already glides per spoken line and is the closest existing behaviour.
