@@ -8,7 +8,14 @@ import Testing
 @MainActor private final class CameraDockVoiceCaptureProbe: VoiceCaptureSource {
   var startCount = 0
   var stopCount = 0
+  /// Holds `start` at the analyzer-preparation boundary until `completeStart()`.
+  var startShouldWait = false
   private var continuation: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
+  private var startCompletion: CheckedContinuation<Void, Never>?
+  func completeStart() {
+    startCompletion?.resume()
+    startCompletion = nil
+  }
 
   func supportedLocales() async -> [VoiceLocaleOption] {
     [VoiceLocaleOption(identifier: "en-US", displayName: "English (US)")]
@@ -20,6 +27,9 @@ import Testing
     TranscriptEvent, any Error
   > {
     startCount += 1
+    if startShouldWait {
+      await withCheckedContinuation { startCompletion = $0 }
+    }
     let pair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream()
     continuation = pair.continuation
     return pair.stream
@@ -1159,6 +1169,125 @@ import Testing
     await settle(c)
     c.reflect()
     #expect(!c.preview.reflection.viewport.guide.isHidden)
+  }
+
+  @Test func cameraDockCollapseCancelsAPendingFollowVoiceStart() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    _ = try notchedDisplay(c, id: 9033, uuid: "collapse-pending-voice-display")
+    let source = CameraDockVoiceCaptureProbe()
+    source.startShouldWait = true
+    let coordinator = VoiceFollowCoordinator(
+      session: c.session, source: source, microphone: CameraDockMicrophoneProbe(.granted),
+      usageDescription: { "Microphone access is used only for Follow Voice." },
+      captureClock: { 0 })
+    c.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let root = try #require(dock.root)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let before = try #require(c.authoritative.captureAnchor())
+
+    c.startVoiceFollow()
+    for _ in 0..<2000 where source.startCount == 0 { await mainTurn() }
+    #expect(source.startCount == 1)
+    #expect(coordinator.state == .starting)
+    #expect(c.session.state == .paused)
+
+    // Collapse while the source is still starting: the start intent is cancelled and the
+    // microphone closed, so the delayed completion cannot start playback or reopen the Dock.
+    dock.collapseToNotch()
+    await settle(c)
+    #expect(root.cameraDockIsParked)
+    #expect(!root.cameraDockIsExpanded)
+    #expect(source.stopCount == 1)
+    #expect(coordinator.state == .ready)
+
+    source.completeStart()
+    for _ in 0..<50 { await mainTurn() }
+    #expect(c.session.state == .paused)
+    #expect(!c.session.voiceSessionActive)
+    #expect(root.cameraDockIsParked)
+    #expect(!root.cameraDockIsExpanded)
+    #expect(!root.cameraDockPlaybackActive)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == before.utf16Offset)
+
+    // Only an explicit Play reopens it.
+    c.state.countdown = 0
+    c.session.countdownSeconds = 0
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(!root.cameraDockIsParked)
+    #expect(root.cameraDockIsExpanded)
+  }
+
+  @Test func cameraDockCollapseDuringSpokenPauseClosesCaptureAndStaysParked() async throws {
+    let document = ScriptDocument()
+    document.source = NSAttributedString(
+      string: "North wind carries the lantern home.\nEast wind carries the harbor light.")
+    let c = OperatorWindowController(document: document)
+    defer {
+      c.stop()
+      c.close()
+    }
+    _ = try notchedDisplay(c, id: 9034, uuid: "collapse-spoken-pause-display")
+    c.session.clock = { 0 }
+    try c.session.prepare(document)
+    c.render()
+    await settle(c)
+    let source = CameraDockVoiceCaptureProbe()
+    let coordinator = VoiceFollowCoordinator(
+      session: c.session, source: source, microphone: CameraDockMicrophoneProbe(.granted),
+      usageDescription: { "Microphone access is used only for Follow Voice." },
+      captureClock: { 0 })
+    c.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let root = try #require(dock.root)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator, matching: { coordinator.state == .listening }, label: "listening",
+        perform: { c.startVoiceFollow() }))
+    #expect(c.session.state == .running)
+    #expect(root.cameraDockIsExpanded)
+
+    #expect(
+      await awaitVoiceUpdate(
+        coordinator, matching: { coordinator.state == .commandPaused }, label: "spoken pause",
+        perform: { source.send(self.commandEvent("CueGlass pause", startingAt: 1)) }))
+    #expect(c.session.voiceCommandPaused)
+    #expect(source.stopCount == 0)
+    let before = try #require(c.authoritative.captureAnchor())
+
+    // Collapse is a manual takeover: the microphone closes and a spoken Resume is ignored.
+    dock.collapseToNotch()
+    await settle(c)
+    #expect(root.cameraDockIsParked)
+    #expect(!root.cameraDockIsExpanded)
+    #expect(source.stopCount == 1)
+    #expect(c.session.voiceSuspended)
+    #expect(!c.session.voiceCommandPaused)
+    #expect(!coordinator.isCommandPaused)
+    #expect(coordinator.state == .suspended("Collapse to Notch"))
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == before.utf16Offset)
+
+    source.send(commandEvent("CueGlass resume", startingAt: 3))
+    for _ in 0..<50 { await mainTurn() }
+    #expect(c.session.state == .paused)
+    #expect(root.cameraDockIsParked)
+    #expect(!root.cameraDockIsExpanded)
+    #expect(source.startCount == 1)
   }
 
   @Test func explicitCameraDockCollapsePausesWithoutMovingAndPlaybackReexpands() async throws {

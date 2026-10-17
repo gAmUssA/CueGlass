@@ -178,13 +178,14 @@ enum PrompterPlacement: Equatable {
     root?.revealCameraDock()
   }
 
-  /// Parks the attached Dock as a chin under the housing. Playback pauses first so the
-  /// take never scrolls while hidden; hover peeks, and Play re-opens it.
+  /// Parks the attached Dock as a chin under the housing. The operator takes manual control
+  /// first — playback pauses, a pending or spoken-paused Follow Voice start is cancelled and
+  /// its microphone closed — so nothing can reopen the Dock until an explicit Play.
   func collapseToNotch() {
     guard isCameraDock, dockStyle == .attached, let controller = operatorController else {
       return
     }
-    if controller.state.running { controller.toggle() }
+    controller.takeManualControl("Collapse to Notch")
     root?.setCameraDockParked(true)
   }
 

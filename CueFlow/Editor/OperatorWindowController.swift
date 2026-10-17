@@ -624,6 +624,21 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       refresh()
     }
   }
+  /// Manual takeover without a transport command: pauses a running take, cancels queued
+  /// playback and any pending or spoken-paused Follow Voice activation, and closes its
+  /// microphone. The position is kept; only an explicit Play or Resume starts again.
+  func takeManualControl(_ reason: String) {
+    pendingPlay = false
+    pendingResume = false
+    pendingVoiceRequest = nil
+    state.cameraDockReady = false
+    if session.state == .running || session.state == .countingDown {
+      perform { try session.pause() }
+    } else {
+      session.suspendVoiceForManualControl(reason)
+    }
+    refresh()
+  }
   func stop() {
     pendingVoiceRequest = nil
     voiceCoordinator?.stop()
