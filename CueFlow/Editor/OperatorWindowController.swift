@@ -946,10 +946,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     preview.logicalSize = session.logicalSize
     updatePresentationBackground(style)
-    let placementMap =
-      cameraDock != nil || state.cameraDockPlacementPreviewExpanded
-      ? cameraDockPlacementMap : nil
-    preview.placementMapView.map = placementMap
+    updatePlacementMapPreview()
     preview.placementMapView.isHidden = true
     if session.logicalSize.width > 0, session.logicalSize.height > 0 {
       previewAspectConstraint?.isActive = false
@@ -1635,10 +1632,20 @@ extension OperatorWindowController {
       cameraMayBeElsewhere: cameraMayBeElsewhere(on: display, among: displays))
   }
 
+  /// The Output inspector tab expands the placement preview while it is visible. The
+  /// flag drives only the preview map, so switching tabs during a take must not
+  /// re-render or re-measure the playback surfaces: a re-measure resets the timeline
+  /// velocity to the nominal pace and would drop a Follow Voice catch-up.
   func setCameraDockPlacementPreviewExpanded(_ expanded: Bool) {
     guard state.cameraDockPlacementPreviewExpanded != expanded else { return }
     state.cameraDockPlacementPreviewExpanded = expanded
-    render()
+    updatePlacementMapPreview()
+  }
+
+  private func updatePlacementMapPreview() {
+    preview.placementMapView.map =
+      cameraDock != nil || state.cameraDockPlacementPreviewExpanded
+      ? cameraDockPlacementMap : nil
   }
 
   func acknowledgeCameraDockExplainer() {

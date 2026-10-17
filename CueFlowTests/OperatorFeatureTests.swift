@@ -2366,6 +2366,69 @@ import Testing
     #expect(resetMap == c.cameraDockPlacementMap)
   }
 
+  /// Entering or leaving the Output inspector tab toggles the placement preview. That
+  /// toggle only drives the preview map, so a running take keeps its velocity, position,
+  /// and measured layout; a catch-up pace must not fall back to the nominal pace.
+  @Test func placementPreviewToggleLeavesRunningTakeVelocityAndLayoutUntouched() async throws {
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let display = syntheticDisplay(
+      screen: screen, id: 604, uuid: "preview-toggle-display",
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [display] }
+    c.refreshScreens([display])
+    c.state.selectedDisplay = display.selectionKey
+    c.preview.reflection.viewport.driver?.stop()
+    c.preview.reflection.viewport.driver = nil
+    var now = 0.0
+    c.session.clock = { now }
+    #expect(c.preview.placementMapView.map == nil)
+
+    let nominal = c.session.nominalVelocity
+    try c.session.beginVoice(epoch: 4)
+    try c.session.voiceGlide(to: 400, velocity: nominal * 1.4, epoch: 4)
+    #expect(c.session.state == .running)
+    let catchUp = c.session.timeline.velocity
+    #expect(catchUp > nominal)
+    #expect(!c.session.measuring)
+    let generation = c.renderGeneration
+    now = 2
+    let positionBeforeExpand = try c.session.position(at: c.session.effectiveTime)
+    #expect(abs(positionBeforeExpand - catchUp * 2) < 0.000001)
+
+    c.setCameraDockPlacementPreviewExpanded(true)
+    await settle(c)
+    #expect(c.state.cameraDockPlacementPreviewExpanded)
+    let expandedMap = try #require(c.preview.placementMapView.map)
+    #expect(expandedMap == c.cameraDockPlacementMap)
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.renderGeneration == generation)
+    #expect(!c.session.measuring)
+    #expect(c.session.state == .running)
+    #expect(c.session.timeline.velocity == catchUp)
+    #expect(try c.session.position(at: c.session.effectiveTime) == positionBeforeExpand)
+    now = 3
+    #expect(abs(try c.session.position(at: c.session.effectiveTime) - catchUp * 3) < 0.000001)
+
+    let positionBeforeCollapse = try c.session.position(at: c.session.effectiveTime)
+    c.setCameraDockPlacementPreviewExpanded(false)
+    await settle(c)
+    #expect(!c.state.cameraDockPlacementPreviewExpanded)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(c.preview.placementMapView.isHidden)
+    #expect(c.renderGeneration == generation)
+    #expect(!c.session.measuring)
+    #expect(c.session.state == .running)
+    #expect(c.session.timeline.velocity == catchUp)
+    #expect(try c.session.position(at: c.session.effectiveTime) == positionBeforeCollapse)
+    now = 5
+    #expect(abs(try c.session.position(at: c.session.effectiveTime) - catchUp * 5) < 0.000001)
+  }
+
   @Test func openCameraDockNudgeRefreshesMapWithoutChangingPlaybackState() async throws {
     let c = try await prepared()
     defer {
