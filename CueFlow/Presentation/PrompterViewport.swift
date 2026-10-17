@@ -30,6 +30,11 @@ import QuartzCore
   private(set) var voiceLineTable: VoiceLineTable?
   var fractionalTranslation = true
   var compactCountdown = false
+  /// Camera Dock presentation: centre each paragraph, widen the column, and let the
+  /// Dock's own emphasis stand in for the reading guide.
+  var centersText = false
+  var columnWidthFractionOverride: Double?
+  var hidesReadingGuide = false
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -86,13 +91,15 @@ import QuartzCore
     frame.size = size
     topPadding = size.height * (guideFractionOverride ?? style.readingGuideFraction)
     scroll.frame = bounds
-    let width = max(80, size.width * style.columnWidthFraction * (1 - 2 * style.sideMarginFraction))
+    let columnFraction = columnWidthFractionOverride ?? style.columnWidthFraction
+    let width = max(80, size.width * columnFraction * (1 - 2 * style.sideMarginFraction))
     let insetX = (size.width - width) / 2
     text.textContainerInset = CGSize(width: insetX, height: topPadding)
     text.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
     text.textContainer?.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+    let built = PresentationBuilder.build(snapshot.attributed, style: style)
     text.textStorage?.setAttributedString(
-      PresentationBuilder.build(snapshot.attributed, style: style))
+      centersText ? PresentationBuilder.centered(built) : built)
     updateAids(style)
     preparedUntil = 0
     endPosition = nil
@@ -118,7 +125,7 @@ import QuartzCore
     }
     style = next
     layer?.backgroundColor = NSColor.clear.cgColor
-    let width = bounds.width * next.columnWidthFraction
+    let width = bounds.width * (columnWidthFractionOverride ?? next.columnWidthFraction)
     panelBackground.frame = CGRect(
       x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height)
     panelBackground.layer?.backgroundColor =
@@ -127,7 +134,7 @@ import QuartzCore
     guide.frame = NSRect(x: 0, y: topPadding - 8, width: bounds.width, height: 16)
     guide.style = next
     guide.needsDisplay = true
-    guide.isHidden = !next.showsReadingGuide
+    guide.isHidden = hidesReadingGuide || !next.showsReadingGuide
     if next.edgeFadeFraction > 0 {
       let mask = CAGradientLayer()
       mask.frame = bounds

@@ -142,6 +142,9 @@ enum PrompterPlacement: Equatable {
     reflection.layer?.masksToBounds = true
     reflection.viewport.compactCountdown = isCameraDock
     if isCameraDock {
+      reflection.viewport.centersText = true
+      reflection.viewport.columnWidthFractionOverride = CameraDockGeometry.textColumnFraction
+      reflection.viewport.hidesReadingGuide = true
       applyCameraDockTextPanelVisibility(style: controller.state.style)
       root.setAccessibilityElement(true)
       root.setAccessibilityLabel("CueGlass prompt")
@@ -292,10 +295,11 @@ enum PrompterPlacement: Equatable {
   let reflection: ReflectionContainerView
   let grip: NSView
   let cameraDockControls: CameraDockControlsView?
-  /// Camera Dock only: clips the logical prompt viewport to its visible strip. The band
-  /// above the reading guide (`CameraDockLayout.hiddenViewportTop`) overflows this view's
-  /// top edge and is never drawn, so the guide line is the first visible line.
+  /// Camera Dock only: hosts the prompt strip, fades its top and bottom edges, and
+  /// carries the reading emphasis overlay.
   let cameraDockContentClip = NSView()
+  let cameraDockEmphasis = CameraDockEmphasisView()
+  private let cameraDockEdgeFade = CAGradientLayer()
   let placement: PrompterPlacement
   weak var controller: OperatorWindowController?
   var logicalSize = CGSize(width: 800, height: 400) {
@@ -390,6 +394,17 @@ enum PrompterPlacement: Equatable {
       cameraDockContentClip.wantsLayer = true
       cameraDockContentClip.layer?.masksToBounds = true
       cameraDockContentClip.addSubview(reflection)
+      cameraDockContentClip.addSubview(cameraDockEmphasis)
+      reflection.layerUsesCoreImageFilters = true
+      let fade = CameraDockGeometry.edgeFadeFraction
+      cameraDockEdgeFade.startPoint = CGPoint(x: 0.5, y: 0)
+      cameraDockEdgeFade.endPoint = CGPoint(x: 0.5, y: 1)
+      cameraDockEdgeFade.colors = [
+        NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+        NSColor.clear.cgColor,
+      ]
+      cameraDockEdgeFade.locations = [0, NSNumber(value: fade), NSNumber(value: 1 - fade), 1]
+      cameraDockContentClip.layer?.mask = cameraDockEdgeFade
       addSubview(cameraDockContentClip)
     } else {
       addSubview(reflection)
@@ -577,17 +592,26 @@ enum PrompterPlacement: Equatable {
       return
     }
     let reduceMotion = cameraDockReduceMotion
+    let opening = cameraDockIsExpanded
     if reduceMotion {
       cameraDockMask.removeAnimation(forKey: shapeKey)
     } else {
+      // Sapphire pacing: the empty surface snaps open first and the content resolves
+      // after it; closing hides the content first and shrinks the surface afterwards.
       let spring = CASpringAnimation(keyPath: "path")
       spring.fromValue = fromPath
       spring.toValue = newPath
       spring.mass = CameraDockMotion.springMass
       spring.stiffness = CameraDockMotion.springStiffness
       spring.damping = CameraDockMotion.springDamping
-      spring.initialVelocity = cameraDockIsExpanded ? CameraDockMotion.expandInitialVelocity : 0
+      spring.initialVelocity = opening ? CameraDockMotion.expandInitialVelocity : 0
       spring.duration = CameraDockMotion.shapeDuration(settling: spring.settlingDuration)
+      if !opening {
+        spring.beginTime =
+          cameraDockMask.convertTime(CACurrentMediaTime(), from: nil)
+          + CameraDockMotion.collapseShapeDelay
+        spring.fillMode = .backwards
+      }
       cameraDockMask.add(spring, forKey: shapeKey)
     }
     for (view, alpha) in contentTargets {
@@ -597,24 +621,59 @@ enum PrompterPlacement: Equatable {
       let fade = CABasicAnimation(keyPath: "opacity")
       fade.fromValue = fromOpacity
       fade.toValue = Float(alpha)
-      let opening = alpha > 0
+      let revealing = alpha > 0
+      var delay = 0.0
       if reduceMotion {
         fade.duration = CameraDockMotion.reducedMotionContentDuration
       } else {
         fade.duration =
-          opening
+          revealing
           ? CameraDockMotion.expandContentDuration
           : CameraDockMotion.collapseContentDuration
-        if opening, let layer = view.layer {
-          fade.beginTime =
-            layer.convertTime(CACurrentMediaTime(), from: nil) + CameraDockMotion.expandContentDelay
+        delay = revealing ? CameraDockMotion.expandContentDelay : 0
+        if revealing, let layer = view.layer {
+          fade.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + delay
           fade.fillMode = .backwards
         }
       }
       fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
       view.layer?.add(fade, forKey: opacityKey)
+      if view === reflection, !reduceMotion {
+        animateCameraDockBlur(revealing: revealing, delay: delay, duration: fade.duration)
+      }
     }
     window?.invalidateShadow()
+  }
+  static let cameraDockBlurFilterName = "cameraDockBlur"
+  static let cameraDockBlurAnimationKey = "cameraDockBlurRadius"
+  /// Resolves the prompt from blurred to sharp as it fades in, and blurs it as it fades
+  /// out. The filter is attached only for the animation's lifetime so playback never
+  /// renders through Core Image.
+  private func animateCameraDockBlur(revealing: Bool, delay: Double, duration: Double) {
+    guard let layer = reflection.layer, let blur = CIFilter(name: "CIGaussianBlur") else {
+      return
+    }
+    let radius = CameraDockMotion.contentBlurRadius
+    blur.name = Self.cameraDockBlurFilterName
+    blur.setValue(revealing ? 0 : radius, forKey: kCIInputRadiusKey)
+    layer.filters = [blur]
+    let animation = CABasicAnimation(
+      keyPath: "filters.\(Self.cameraDockBlurFilterName).inputRadius")
+    animation.fromValue = revealing ? radius : 0
+    animation.toValue = revealing ? 0 : radius
+    animation.duration = duration
+    animation.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + delay
+    animation.fillMode = .backwards
+    animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { [weak layer] in
+      guard let layer, layer.animation(forKey: Self.cameraDockBlurAnimationKey) == nil else {
+        return
+      }
+      layer.filters = nil
+    }
+    layer.add(animation, forKey: Self.cameraDockBlurAnimationKey)
+    CATransaction.commit()
   }
   var cameraDockMaskPath: CGPath? { cameraDockMask.path }
   var cameraDockShapeAnimation: CAAnimation? {
@@ -632,12 +691,16 @@ enum PrompterPlacement: Equatable {
     if placement == .cameraDock {
       let gripHeight = min(44, bounds.height)
       let contentWidth = min(logicalSize.width, max(0, bounds.width - cameraDockContentOffsetX))
-      let visibleHeight = max(0, bounds.height - gripHeight - cameraDockTopInset)
+      let stripHeight = max(0, bounds.height - gripHeight - cameraDockTopInset)
       cameraDockContentClip.frame = CGRect(
-        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth, height: visibleHeight)
-      // The logical viewport is taller than the strip; its hidden band overflows the top.
-      reflection.frame = CGRect(
-        x: 0, y: 0, width: contentWidth, height: max(visibleHeight, logicalSize.height))
+        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth, height: stripHeight)
+      let strip = cameraDockContentClip.bounds
+      reflection.frame = strip
+      cameraDockEmphasis.frame = strip
+      cameraDockEdgeFade.frame = strip
+      cameraDockEmphasis.apply(
+        readingLineTop: (cameraDockLayout?.guideFraction ?? 0) * logicalSize.height,
+        lineAdvance: cameraDockLayout?.lineAdvance ?? 0, stripHeight: strip.height)
       grip.frame = CGRect(
         x: cameraDockContentOffsetX, y: 0, width: contentWidth, height: gripHeight)
       if cameraDockShapeNeedsUpdate || cameraDockLastMaskSize != bounds.size {
@@ -727,6 +790,50 @@ enum PrompterPlacement: Equatable {
     updateCameraDockPlaybackState(controller?.state.running ?? false)
   }
 }
+/// A static overlay that keeps the reading line at full brightness and dims the lines
+/// above and below it. It never intercepts clicks.
+@MainActor final class CameraDockEmphasisView: NSView {
+  private(set) var bandRange: ClosedRange<Double> = 0...0
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    wantsLayer = true
+  }
+  required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+  override func makeBackingLayer() -> CALayer {
+    let gradient = CAGradientLayer()
+    gradient.startPoint = CGPoint(x: 0.5, y: 0)
+    gradient.endPoint = CGPoint(x: 0.5, y: 1)
+    return gradient
+  }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+  /// `readingLineTop` is measured from the strip's top edge in flipped viewport
+  /// coordinates; the gradient runs bottom-to-top in layer coordinates.
+  func apply(readingLineTop: Double, lineAdvance: Double, stripHeight: Double) {
+    guard let gradient = layer as? CAGradientLayer else { return }
+    guard stripHeight > 0, lineAdvance > 0, readingLineTop.isFinite, lineAdvance.isFinite else {
+      gradient.colors = nil
+      gradient.locations = nil
+      bandRange = 0...0
+      return
+    }
+    let padding = CameraDockGeometry.emphasisBandPadding
+    let soft = CameraDockGeometry.emphasisSoftness
+    let dim = NSColor.black.withAlphaComponent(CameraDockGeometry.dimmedLineAlpha).cgColor
+    let clear = NSColor.clear.cgColor
+    let bandBottom = max(0, stripHeight - (readingLineTop + lineAdvance + padding))
+    let bandTop = min(stripHeight, stripHeight - (readingLineTop - padding))
+    bandRange = bandBottom...max(bandBottom, bandTop)
+    func fraction(_ y: Double) -> NSNumber {
+      NSNumber(value: min(1, max(0, y / stripHeight)))
+    }
+    gradient.colors = [dim, dim, clear, clear, dim, dim]
+    gradient.locations = [
+      0, fraction(bandBottom - soft), fraction(bandBottom), fraction(bandTop),
+      fraction(bandTop + soft), 1,
+    ]
+  }
+}
+
 struct FloatingGrip: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController

@@ -904,14 +904,21 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       previewAspectConstraint?.isActive = true
     }
     updatePreviewCaption()
+    // While Camera Dock is active the editor preview mirrors the Dock's reading layout:
+    // centred paragraphs, the wider column, and the reading line in the vertical centre.
+    let dockLayout = cameraDock?.dockLayout
+    preview.reflection.viewport.centersText = dockLayout != nil
+    preview.reflection.viewport.columnWidthFractionOverride =
+      dockLayout == nil ? nil : CameraDockGeometry.textColumnFraction
     preview.reflection.viewport.configure(
-      snapshot: snapshot, style: style, size: session.logicalSize)
+      snapshot: snapshot, style: style, size: session.logicalSize,
+      guideFractionOverride: dockLayout?.guideFraction)
     output?.reflection.viewport.configure(
       snapshot: snapshot, style: style, size: session.logicalSize)
     floating?.root?.logicalSize = session.logicalSize
     floating?.reflection.viewport.configure(
       snapshot: snapshot, style: style, size: session.logicalSize,
-      guideFractionOverride: cameraDock == nil ? nil : 0.2,
+      guideFractionOverride: dockLayout?.guideFraction,
       fadesTopEdge: cameraDock == nil)
     for (viewport, reflection) in [
       (preview.reflection.viewport, preview.reflection),

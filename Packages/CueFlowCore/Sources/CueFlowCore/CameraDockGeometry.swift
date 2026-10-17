@@ -73,15 +73,15 @@ public struct CameraDockLayout: Equatable, Sendable {
   public let cameraHousing: CameraDockRect?
   public let contentTopInset: Double
   public let viewportWidth: Double
-  /// The logical prompt viewport height handed to the shared playback session.
+  /// The prompt viewport height handed to the shared playback session: exactly
+  /// `lineCount` lines plus the vertical padding.
   public let viewportHeight: Double
-  /// The part of the logical viewport the Dock shows: the reading guide sits at the top
-  /// edge of this band and exactly `lineCount` lines fit below it.
-  public let visibleViewportHeight: Double
-  /// The band above the reading guide that the Dock hides. The presentation viewport
-  /// reserves `CameraDockGeometry.guideFraction` of its height above the guide; the
-  /// Dock clips that band so no partially scrolled line is cut under the camera.
-  public let hiddenViewportTop: Double
+  /// The line pitch the viewport was sized for.
+  public let lineAdvance: Double
+  /// Fraction of the viewport height above the reading line, so the current line sits
+  /// in the vertical centre of the strip with equal context above and below it. The
+  /// presentation layer passes this as the viewport's guide fraction.
+  public let guideFraction: Double
   public let lineCount: Int
   public let isBuiltInDisplay: Bool
   public let style: CameraDockVisualStyle
@@ -103,20 +103,26 @@ public struct CameraDockMorphMetrics: Equatable, Sendable {
   public let contentOpacity: Double
 }
 
-/// Motion contract for the attached Camera Dock morph. The timings are deterministic
-/// inputs for the presentation layer; the spring parameters describe one settled,
-/// slightly under-damped spring (damping ratio ≈ 0.8).
+/// Motion contract for the attached Camera Dock morph, paced after the Sapphire
+/// reference: the empty black surface snaps open in roughly a quarter second, then the
+/// content resolves from blurred to sharp; closing hides the content first and shrinks
+/// the empty surface afterwards. The spring is settled, slightly under-damped
+/// (damping ratio ≈ 0.85).
 public enum CameraDockMotion {
   public static let springMass = 1.0
-  public static let springStiffness = 220.0
-  public static let springDamping = 24.0
-  public static let expandInitialVelocity = 0.2
-  public static let minimumShapeDuration = 0.5
-  public static let maximumShapeDuration = 0.8
-  public static let expandContentDelay = 0.08
-  public static let expandContentDuration = 0.22
-  public static let collapseContentDuration = 0.12
-  /// Reduce Motion keeps a short crossfade and skips the shape motion entirely.
+  public static let springStiffness = 450.0
+  public static let springDamping = 36.0
+  public static let expandInitialVelocity = 0.3
+  public static let minimumShapeDuration = 0.3
+  public static let maximumShapeDuration = 0.5
+  /// Content starts resolving once the shape has mostly landed.
+  public static let expandContentDelay = 0.16
+  public static let expandContentDuration = 0.3
+  public static let contentBlurRadius = 14.0
+  public static let collapseContentDuration = 0.1
+  /// The empty surface starts shrinking after the content has gone.
+  public static let collapseShapeDelay = 0.08
+  /// Reduce Motion keeps a short crossfade and skips the shape motion and blur.
   public static let reducedMotionContentDuration = 0.15
 
   /// Clamps a spring's estimated settling time into the perceptible, well-paced window.
@@ -150,11 +156,7 @@ public enum CameraDockGeometry {
   public static let minimumHorizontalNudge = -120.0
   public static let maximumHorizontalNudge = 120.0
   public static let estimatedNotchSafeAreaHeight = 37.0
-  /// Fraction of the logical viewport height the presentation layer places above the
-  /// reading guide when it configures the Camera Dock viewport. The Dock hides that
-  /// band (`CameraDockLayout.hiddenViewportTop`) so the guide line is the first line.
-  public static let guideFraction = 0.2
-  /// Margin kept above the first line and below the last line of the visible strip.
+  /// Margin kept above the first line and below the last line of the strip.
   public static let viewportVerticalPadding = 8.0
 
   /// Compact (parked) silhouette: a short chin under the housing with fully rounded
@@ -171,35 +173,44 @@ public enum CameraDockGeometry {
   public static let expandedShoulderRadius = 12.0
   /// Content fades in only once the tray has mostly opened.
   public static let contentFadeStartProgress = 0.45
+  /// Reading emphasis inside the open tray: the line on the guide stays at full
+  /// brightness, neighbouring lines dim to this alpha, and the strip's top and bottom
+  /// edges fade over `edgeFadeFraction` of the visible height so lines enter and leave
+  /// softly instead of being cut.
+  public static let dimmedLineAlpha = 0.5
+  public static let emphasisBandPadding = 4.0
+  public static let emphasisSoftness = 6.0
+  public static let edgeFadeFraction = 0.14
+  /// The Dock's text column is wider than the stage default so more words fit per line.
+  public static let textColumnFraction = 0.86
 
   public static func defaultWidth(screenWidth: Double) -> Double {
     guard screenWidth.isFinite, screenWidth > 0 else { return minimumWidth }
     return min(maximumWidth, max(minimumWidth, screenWidth * defaultWidthFraction))
   }
 
-  /// Logical viewport height: once the presentation layer reserves `guideFraction`
-  /// above the guide, the remainder holds exactly `lineCount` lines plus the padding.
-  /// The result is a whole multiple of `viewportHeightStep`, so the hidden band, the
-  /// visible strip, and the panel frame are all whole points and survive AppKit's
-  /// integral window frames.
-  public static let viewportHeightStep = 5.0
+  /// Strip height: exactly `lineCount` lines plus the padding, in whole points so the
+  /// panel frame survives AppKit's integral window frames.
   public static func viewportHeight(lineAdvance: Double, lineCount: Int) -> Double? {
     guard lineAdvance.isFinite, lineAdvance > 0,
       (minimumLineCount...maximumLineCount).contains(lineCount)
     else { return nil }
-    let visibleLines = lineAdvance * Double(lineCount) + viewportVerticalPadding
-    let exact = visibleLines / (1 - guideFraction)
-    return ceil(exact / viewportHeightStep) * viewportHeightStep
+    return ceil(lineAdvance * Double(lineCount) + viewportVerticalPadding * 2)
   }
 
-  public static func hiddenViewportTop(viewportHeight: Double) -> Double {
-    guard viewportHeight.isFinite, viewportHeight > 0 else { return 0 }
-    return max(0, viewportHeight * guideFraction - viewportVerticalPadding)
+  /// Offset of the reading line's top edge from the strip's top edge: the current line
+  /// is centred, so the space above equals the space below it.
+  public static func readingLineTop(viewportHeight: Double, lineAdvance: Double) -> Double {
+    guard viewportHeight.isFinite, lineAdvance.isFinite, viewportHeight > lineAdvance,
+      lineAdvance > 0
+    else { return 0 }
+    return (viewportHeight - lineAdvance) / 2
   }
 
-  public static func visibleViewportHeight(viewportHeight: Double) -> Double {
+  public static func guideFraction(viewportHeight: Double, lineAdvance: Double) -> Double {
     guard viewportHeight.isFinite, viewportHeight > 0 else { return 0 }
-    return viewportHeight - hiddenViewportTop(viewportHeight: viewportHeight)
+    return readingLineTop(viewportHeight: viewportHeight, lineAdvance: lineAdvance)
+      / viewportHeight
   }
 
   public static func layout(
@@ -227,11 +238,10 @@ public enum CameraDockGeometry {
       let viewportHeight = viewportHeight(
         lineAdvance: lineAdvance, lineCount: preferences.lineCount)
     else { return nil }
-    let visibleHeight = visibleViewportHeight(viewportHeight: viewportHeight)
     guard
       let placement = placement(
         on: effectiveParameters, isBuiltIn: builtInTarget, width: preferences.width,
-        height: visibleHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
+        height: viewportHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
     else { return nil }
     let attached = placement.location == .camera
     let safeAreaHeight = attached ? cameraSafeAreaHeight(on: effectiveParameters) : 0
@@ -242,8 +252,8 @@ public enum CameraDockGeometry {
       cameraHousing: attached ? cameraHousingFrame(on: effectiveParameters) : nil,
       contentTopInset: contentTopInset,
       viewportWidth: placement.contentFrame.width, viewportHeight: viewportHeight,
-      visibleViewportHeight: visibleHeight,
-      hiddenViewportTop: hiddenViewportTop(viewportHeight: viewportHeight),
+      lineAdvance: lineAdvance,
+      guideFraction: guideFraction(viewportHeight: viewportHeight, lineAdvance: lineAdvance),
       lineCount: preferences.lineCount, isBuiltInDisplay: builtInTarget,
       style: placement.location == .camera ? .attached : .detached,
       cameraSafeAreaHeight: safeAreaHeight)

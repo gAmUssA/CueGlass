@@ -153,7 +153,7 @@ import Testing
   #expect(expanded.shoulderRadius == CameraDockGeometry.expandedShoulderRadius)
   #expect(expanded.contentOpacity == 1)
   #expect(playing.tray.height == content.height - CameraDockGeometry.controlsHeight)
-  #expect(playing.tray.height == layout.visibleViewportHeight)
+  #expect(playing.tray.height == layout.viewportHeight)
   #expect(playing.tray.width == content.width)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: .nan) == nil)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 2)?.progress == 1)
@@ -188,7 +188,7 @@ import Testing
       on: parameters, isBuiltIn: false,
       preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40))
   #expect(layout.style == .detached)
-  #expect(layout.hiddenViewportTop == 14)
+  #expect(layout.viewportHeight == 96)
   #expect(layout.placement.contentFrame.height == 96 + CameraDockGeometry.controlsHeight)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 1) == nil)
 }
@@ -349,9 +349,9 @@ import Testing
   #expect(notched.placement.contentFrame.maxY == 950)
   #expect(notched.placement.anchorX == 756)
   #expect(notched.viewportWidth == notched.placement.contentFrame.width)
-  #expect(notched.viewportHeight == 160)
-  #expect(notched.hiddenViewportTop == 24)
-  #expect(notched.visibleViewportHeight == 136)
+  #expect(notched.viewportHeight == 136)
+  #expect(notched.lineAdvance == 40)
+  #expect(abs(notched.guideFraction - 48.0 / 136.0) < 1e-12)
   #expect(notched.placement.contentFrame.height == 136 + CameraDockGeometry.controlsHeight)
   #expect(notched.cameraSafeAreaHeight == 32)
 
@@ -543,15 +543,13 @@ import Testing
       preferences: CameraDockPreferences(width: 665.28, lineCount: 2), lineAdvance: 42))
 
   #expect(layout.style == .attached)
-  #expect(layout.viewportHeight == 115)
-  #expect(layout.visibleViewportHeight == 100)
+  #expect(layout.viewportHeight == 100)
   #expect(
     layout.placement.frame.height
-      == layout.visibleViewportHeight + CameraDockGeometry.controlsHeight
-      + layout.contentTopInset)
+      == layout.viewportHeight + CameraDockGeometry.controlsHeight + layout.contentTopInset)
   #expect(
     layout.placement.contentFrame.height
-      == layout.visibleViewportHeight + CameraDockGeometry.controlsHeight)
+      == layout.viewportHeight + CameraDockGeometry.controlsHeight)
   #expect(layout.placement.anchorX == 756)
 }
 
@@ -662,52 +660,64 @@ import Testing
   #expect(CameraDockPreferences(width: 500, horizontalNudge: 1000).horizontalNudge == 120)
   #expect(CameraDockPreferences(width: 761, lineCount: 6).width == 760)
   #expect(CameraDockPreferences(width: 359, lineCount: 1).lineCount == 2)
-  #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 3) == 160)
+  #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 3) == 136)
   #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 1) == nil)
 }
 
-@Test func cameraDockViewportHidesTheBandAboveTheGuideAndShowsWholeLines() throws {
-  // The presentation layer places `guideFraction` of the logical height above the guide.
-  // The visible strip must start `viewportVerticalPadding` above the first line and hold
-  // exactly `lineCount` lines plus the same padding below, for every supported count.
+@Test func cameraDockViewportCentresTheReadingLineAndShowsWholeLines() throws {
+  // The strip holds exactly `lineCount` lines plus padding, and the reading line sits in
+  // its vertical centre with equal context above and below, for every supported count.
   for lineCount in CameraDockGeometry.minimumLineCount...CameraDockGeometry.maximumLineCount {
     for lineAdvance in [24.0, 41.6, 83.2, 124.8] {
       let height = try #require(
         CameraDockGeometry.viewportHeight(lineAdvance: lineAdvance, lineCount: lineCount))
-      let hidden = CameraDockGeometry.hiddenViewportTop(viewportHeight: height)
-      let visible = CameraDockGeometry.visibleViewportHeight(viewportHeight: height)
-      let guideOffset = height * CameraDockGeometry.guideFraction
-      let needed = lineAdvance * Double(lineCount) + CameraDockGeometry.viewportVerticalPadding * 2
+      let padding = CameraDockGeometry.viewportVerticalPadding * 2
+      let needed = lineAdvance * Double(lineCount) + padding
+      let top = CameraDockGeometry.readingLineTop(viewportHeight: height, lineAdvance: lineAdvance)
+      let fraction = CameraDockGeometry.guideFraction(
+        viewportHeight: height, lineAdvance: lineAdvance)
+      let below = height - lineAdvance - top
 
-      #expect(hidden >= 0)
-      #expect(abs(guideOffset - hidden - CameraDockGeometry.viewportVerticalPadding) < 1e-9)
-      #expect(visible >= needed - 1e-9)
-      let slack = CameraDockGeometry.viewportHeightStep * (1 - CameraDockGeometry.guideFraction)
-      #expect(visible <= needed + slack + 1e-9)
-      #expect(hidden + visible == height)
-      #expect(hidden == hidden.rounded() && visible == visible.rounded())
-      #expect(height.truncatingRemainder(dividingBy: CameraDockGeometry.viewportHeightStep) == 0)
+      #expect(height >= needed - 1e-9)
+      #expect(height < needed + 1)
+      #expect(height == height.rounded())
+      #expect(abs(top - below) < 1e-9)
+      #expect(abs(fraction * height - top) < 1e-9)
+      #expect(fraction > 0)
+      #expect(fraction < 0.5)
     }
   }
-  #expect(CameraDockGeometry.hiddenViewportTop(viewportHeight: .nan) == 0)
-  #expect(CameraDockGeometry.hiddenViewportTop(viewportHeight: 20) == 0)
-  #expect(CameraDockGeometry.visibleViewportHeight(viewportHeight: -1) == 0)
+  // Three lines at 40 pt: one full line above the reading line, one below, 8 pt margins.
+  #expect(CameraDockGeometry.readingLineTop(viewportHeight: 136, lineAdvance: 40) == 48)
+  #expect(CameraDockGeometry.readingLineTop(viewportHeight: .nan, lineAdvance: 40) == 0)
+  #expect(CameraDockGeometry.readingLineTop(viewportHeight: 30, lineAdvance: 40) == 0)
+  #expect(CameraDockGeometry.guideFraction(viewportHeight: 0, lineAdvance: 40) == 0)
 }
 
 @Test func cameraDockMotionDurationsStayPerceptibleAndBounded() {
   #expect(CameraDockMotion.shapeDuration(settling: 0.1) == CameraDockMotion.minimumShapeDuration)
-  #expect(CameraDockMotion.shapeDuration(settling: 0.62) == 0.62)
+  #expect(CameraDockMotion.shapeDuration(settling: 0.42) == 0.42)
   #expect(CameraDockMotion.shapeDuration(settling: 3) == CameraDockMotion.maximumShapeDuration)
   #expect(CameraDockMotion.shapeDuration(settling: .nan) == CameraDockMotion.minimumShapeDuration)
-  #expect(CameraDockMotion.minimumShapeDuration >= 0.4)
-  #expect(CameraDockMotion.maximumShapeDuration <= 1)
-  #expect(CameraDockMotion.expandContentDelay + CameraDockMotion.expandContentDuration < 0.5)
+  // Sapphire pacing: the shape lands in well under half a second, the content resolves
+  // right after it, and the whole open reads in about half a second.
+  #expect(CameraDockMotion.minimumShapeDuration >= 0.25)
+  #expect(CameraDockMotion.maximumShapeDuration <= 0.5)
+  #expect(CameraDockMotion.expandContentDelay < CameraDockMotion.maximumShapeDuration)
+  #expect(CameraDockMotion.expandContentDelay + CameraDockMotion.expandContentDuration <= 0.5)
+  #expect(CameraDockMotion.collapseContentDuration <= CameraDockMotion.collapseShapeDelay + 0.05)
+  #expect(CameraDockMotion.contentBlurRadius > 0)
   #expect(CameraDockMotion.reducedMotionContentDuration <= 0.2)
   // Damping ratio of the published spring stays slightly under critical: settled, not floppy.
   let ratio =
     CameraDockMotion.springDamping
     / (2 * (CameraDockMotion.springStiffness * CameraDockMotion.springMass).squareRoot())
   #expect(ratio > 0.7 && ratio < 1)
+  // Estimated settling time of the published spring sits inside the duration window.
+  let omega = (CameraDockMotion.springStiffness / CameraDockMotion.springMass).squareRoot()
+  let settling = -log(0.001) / (ratio * omega)
+  #expect(settling >= CameraDockMotion.minimumShapeDuration)
+  #expect(settling <= CameraDockMotion.maximumShapeDuration)
 }
 
 @Test func cameraDockPreferenceCatalogPersistsByDisplayUUID() throws {

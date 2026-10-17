@@ -841,24 +841,49 @@ import Testing
     let viewport = attachedDock.reflection.viewport
     #expect(attachedRoot.reflection.superview === clip)
     #expect(abs(attachedRoot.bounds.maxY - clip.frame.maxY - safeTop) < 0.5)
-    #expect(abs(clip.frame.height - attachedLayout.visibleViewportHeight) < 0.5)
-    #expect(attachedRoot.reflection.frame.minY == 0)
-    #expect(abs(attachedRoot.reflection.frame.height - attachedLayout.viewportHeight) < 0.5)
-    #expect(
-      abs(
-        attachedRoot.reflection.frame.height - clip.frame.height
-          - attachedLayout.hiddenViewportTop) < 0.5)
+    #expect(abs(clip.frame.height - attachedLayout.viewportHeight) < 0.5)
+    #expect(attachedRoot.reflection.frame == clip.bounds)
     #expect(attachedRoot.reflection.bounds.size == attachedRoot.reflection.frame.size)
-    // The operator reserves `guideFraction` of the viewport above the guide; the clip hides
-    // exactly that band minus the padding, so the guide line is the first visible line.
+    // The reading line sits in the vertical centre of the strip: the operator passes the
+    // layout's guide fraction, and the viewport reserves exactly that much above it.
+    let readingLineTop = CameraDockGeometry.readingLineTop(
+      viewportHeight: attachedLayout.viewportHeight, lineAdvance: attachedLayout.lineAdvance)
+    #expect(abs(viewport.topPadding - readingLineTop) < 1e-9)
     #expect(
-      abs(viewport.topPadding - attachedLayout.viewportHeight * CameraDockGeometry.guideFraction)
+      abs(viewport.topPadding - attachedLayout.viewportHeight * attachedLayout.guideFraction)
         < 1e-9)
     #expect(
       abs(
-        viewport.topPadding - attachedLayout.hiddenViewportTop
-          - CameraDockGeometry.viewportVerticalPadding) < 1e-9)
+        (attachedLayout.viewportHeight - attachedLayout.lineAdvance - readingLineTop)
+          - readingLineTop) < 1e-9)
+    #expect(viewport.centersText)
+    #expect(viewport.columnWidthFractionOverride == CameraDockGeometry.textColumnFraction)
+    #expect(viewport.guide.isHidden)
     #expect(viewport.panelBackground.isHidden)
+    let paragraph = try #require(
+      viewport.text.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+        as? NSParagraphStyle)
+    #expect(paragraph.alignment == .center)
+    // The editor preview mirrors that layout while the Dock is active.
+    #expect(c.preview.reflection.viewport.centersText)
+    #expect(abs(c.preview.reflection.viewport.topPadding - readingLineTop) < 1e-9)
+    // Emphasis: the band around the reading line is clear; above and below are dimmed.
+    let emphasis = attachedRoot.cameraDockEmphasis
+    #expect(emphasis.superview === clip)
+    #expect(emphasis.hitTest(NSPoint(x: 1, y: 1)) == nil)
+    let band = emphasis.bandRange
+    let lineBottomInLayer = clip.bounds.height - (readingLineTop + attachedLayout.lineAdvance)
+    let lineTopInLayer = clip.bounds.height - readingLineTop
+    #expect(band.lowerBound < lineBottomInLayer)
+    #expect(band.upperBound > lineTopInLayer)
+    #expect(band.lowerBound > 0)
+    #expect(band.upperBound < clip.bounds.height)
+    let emphasisGradient = try #require(emphasis.layer as? CAGradientLayer)
+    #expect(emphasisGradient.colors?.count == 6)
+    let fadeMask = try #require(clip.layer?.mask as? CAGradientLayer)
+    let fade = CameraDockGeometry.edgeFadeFraction
+    #expect(fadeMask.locations?.map(\.doubleValue) == [0, fade, 1 - fade, 1])
+    #expect(fadeMask.frame == clip.bounds)
 
     // Showing the Dock reveals it: the open tray with its controls band, sprung from the chin.
     #expect(attachedRoot.cameraDockIsExpanded)
@@ -953,6 +978,9 @@ import Testing
       attachedRoot.reflection.layer?.animation(forKey: opacityKey) as? CABasicAnimation)
     #expect(reducedFade.duration == CameraDockMotion.reducedMotionContentDuration)
     #expect(attachedRoot.reflection.alphaValue == 0)
+    #expect(
+      attachedRoot.reflection.layer?.animation(forKey: FloatingRoot.cameraDockBlurAnimationKey)
+        == nil)
     // Full motion: a spring on the shape, and the content fades in after a short delay.
     attachedRoot.cameraDockReduceMotionOverride = false
     attachedRoot.setCameraDockParked(false, animated: true)
@@ -963,6 +991,26 @@ import Testing
     #expect(openFade.duration == CameraDockMotion.expandContentDuration)
     #expect(openFade.fillMode == .backwards)
     #expect(attachedRoot.reflection.alphaValue == 1)
+    // The content resolves from blurred to sharp after the shape has landed.
+    let blurIn = try #require(
+      attachedRoot.reflection.layer?.animation(forKey: FloatingRoot.cameraDockBlurAnimationKey)
+        as? CABasicAnimation)
+    #expect(blurIn.keyPath == "filters.\(FloatingRoot.cameraDockBlurFilterName).inputRadius")
+    #expect((blurIn.fromValue as? Double) == CameraDockMotion.contentBlurRadius)
+    #expect((blurIn.toValue as? Double) == 0)
+    #expect(blurIn.fillMode == .backwards)
+    #expect(attachedRoot.reflection.layerUsesCoreImageFilters)
+    #expect(attachedRoot.reflection.layer?.filters?.isEmpty == false)
+    // Collapsing with full motion hides the content first; the shape follows after a delay.
+    attachedRoot.setCameraDockParked(true, animated: true)
+    let closeShape = try #require(attachedRoot.cameraDockShapeAnimation as? CASpringAnimation)
+    #expect(closeShape.fillMode == .backwards)
+    #expect(closeShape.beginTime > 0)
+    let closeFade = try #require(
+      attachedRoot.reflection.layer?.animation(forKey: opacityKey) as? CABasicAnimation)
+    #expect(closeFade.duration == CameraDockMotion.collapseContentDuration)
+    #expect(closeFade.beginTime == 0)
+    attachedRoot.setCameraDockParked(false, animated: false)
     attachedRoot.cameraDockReduceMotionOverride = nil
 
     c.stopPresenting()
@@ -2385,6 +2433,10 @@ import Testing
     await settle(c)
     let floatingWindow = try #require(floating.window)
     floatingWindow.setContentSize(CGSize(width: displayWidth, height: 320))
+    // Match the Dock's column so both surfaces wrap the same text identically.
+    floating.reflection.viewport.columnWidthFractionOverride =
+      CameraDockGeometry.textColumnFraction
+    floating.reflection.viewport.centersText = true
     c.floatingResized()
     await settle(c)
     let floatingTable = try #require(c.authoritative.voiceLineTable)
