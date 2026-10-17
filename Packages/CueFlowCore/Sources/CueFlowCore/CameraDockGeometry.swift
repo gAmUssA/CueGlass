@@ -400,7 +400,9 @@ public enum CameraDockGeometry {
     guard visibleFrame.width >= minimumWidth, visibleFrame.height >= height else { return nil }
 
     let width = min(maximumWidth, max(minimumWidth, requestedWidth))
-    let fittedWidth = min(width, visibleFrame.width)
+    // AppKit integralizes window frames; a fractional width would leave the mask path up
+    // to a point narrower than the panel. Preferences keep their fractional value.
+    let fittedWidth = min(width, visibleFrame.width).rounded(.down)
     let cameraSafeTop =
       isBuiltIn
       ? resolvedSafeTop(

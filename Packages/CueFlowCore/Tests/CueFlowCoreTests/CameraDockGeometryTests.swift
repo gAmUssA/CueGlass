@@ -15,7 +15,8 @@ import Testing
 
   #expect(placement?.location == .camera)
   #expect(placement?.anchorX == 756)
-  #expect(placement?.frame.x == 423.36)
+  #expect(placement?.frame.x == 423.5)
+  #expect(placement?.frame.width == 665)
   #expect(placement?.frame.maxY == 982)
   #expect(placement?.contentFrame.maxY == 950)
   #expect(placement?.frame.isContained(in: screen) == true)
@@ -157,6 +158,24 @@ import Testing
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: .nan) == nil)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 2)?.progress == 1)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: -1)?.progress == 0)
+}
+
+@Test func cameraDockPlacementWidthsAreWholePoints() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1024, height: 768)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1024, height: 736)
+  for requested in [389.12, 574.56, 665.28, 360.5, 759.9] {
+    let placement = try #require(
+      CameraDockGeometry.placement(
+        screenFrame: screen, visibleFrame: visible, safeTop: 32,
+        auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 736, width: 412, height: 32),
+        auxiliaryTopRightArea: CameraDockRect(x: 612, y: 736, width: 412, height: 32),
+        isBuiltIn: true, width: requested, height: 180, horizontalNudge: 0))
+    #expect(placement.contentFrame.width == requested.rounded(.down))
+    #expect(placement.frame.width == placement.frame.width.rounded())
+    #expect(abs(placement.contentFrame.midX - 512) < 1e-9)
+  }
+  // The stored preference keeps its fractional default; only the placement rounds.
+  #expect(abs(CameraDockPreferences.defaults(screenWidth: 1024).width - 389.12) < 1e-9)
 }
 
 @Test func cameraDockMorphMetricsAreAbsentForDetachedLayouts() throws {
