@@ -480,6 +480,7 @@ enum PrompterPlacement: Equatable {
     cameraDockIsExpanded = shouldExpand
     updateCameraDockShape(animated: animated)
     refreshTrackingArea()
+    needsLayout = true
   }
   /// Playback opens the Dock and tightens the tray to the text strip; pausing brings the
   /// controls band back. Both edges of the change animate.
@@ -497,11 +498,10 @@ enum PrompterPlacement: Equatable {
     cameraDockReduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
   }
   private var cameraDockControlsVisible: Bool { !cameraDockPlaybackActive }
-  private func cameraDockPath(expanded: Bool, controlsVisible: Bool) -> CGPath {
+  private func cameraDockPath(expanded: Bool) -> CGPath {
     let bounds = self.bounds
     guard cameraDockStyle == .attached, let layout = cameraDockLayout,
-      let metrics = CameraDockGeometry.morphMetrics(
-        for: layout, progress: expanded ? 1 : 0, controlsVisible: controlsVisible),
+      let metrics = CameraDockGeometry.morphMetrics(for: layout, progress: expanded ? 1 : 0),
       bounds.width > 0, bounds.height > 0
     else {
       return CGPath(
@@ -555,19 +555,22 @@ enum PrompterPlacement: Equatable {
     cameraDockShapeNeedsUpdate = false
     cameraDockLastMaskSize = bounds.size
     cameraDockMask.frame = layer.bounds
-    let newPath = cameraDockPath(
-      expanded: cameraDockIsExpanded, controlsVisible: cameraDockControlsVisible)
+    let newPath = cameraDockPath(expanded: cameraDockIsExpanded)
     let fromPath =
       cameraDockMask.presentation()?.path
       ?? cameraDockMask.path
-      ?? cameraDockPath(expanded: !cameraDockIsExpanded, controlsVisible: cameraDockControlsVisible)
+      ?? cameraDockPath(expanded: !cameraDockIsExpanded)
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     cameraDockMask.path = newPath
     CATransaction.commit()
+    // Attached, the controls sit in the camera band and stay with the pill; only the
+    // prompt fades with the tray. Detached keeps its controls band under the text.
+    let gripVisible =
+      cameraDockStyle == .attached
+      ? cameraDockControlsVisible : cameraDockIsExpanded && cameraDockControlsVisible
     let contentTargets: [(NSView, CGFloat)] = [
-      (reflection, cameraDockIsExpanded ? 1 : 0),
-      (grip, cameraDockIsExpanded && cameraDockControlsVisible ? 1 : 0),
+      (reflection, cameraDockIsExpanded ? 1 : 0), (grip, gripVisible ? 1 : 0),
     ]
     let shapeKey = Self.cameraDockShapeAnimationKey
     let opacityKey = Self.cameraDockContentOpacityAnimationKey
@@ -591,8 +594,10 @@ enum PrompterPlacement: Equatable {
       spring.fromValue = fromPath
       spring.toValue = newPath
       spring.mass = CameraDockMotion.springMass
-      spring.stiffness = CameraDockMotion.springStiffness
-      spring.damping = CameraDockMotion.springDamping
+      spring.stiffness =
+        opening ? CameraDockMotion.openSpringStiffness : CameraDockMotion.closeSpringStiffness
+      spring.damping =
+        opening ? CameraDockMotion.openSpringDamping : CameraDockMotion.closeSpringDamping
       spring.initialVelocity = opening ? CameraDockMotion.expandInitialVelocity : 0
       spring.duration = CameraDockMotion.shapeDuration(settling: spring.settlingDuration)
       if !opening {
@@ -678,11 +683,15 @@ enum PrompterPlacement: Equatable {
   override func layout() {
     super.layout()
     if placement == .cameraDock {
-      let gripHeight = min(44, bounds.height)
       let contentWidth = min(logicalSize.width, max(0, bounds.width - cameraDockContentOffsetX))
-      let stripHeight = max(0, bounds.height - gripHeight - cameraDockTopInset)
+      let controlsInBand = cameraDockStyle == .attached && cameraDockTopInset > 0
+      let gripHeight = controlsInBand ? cameraDockTopInset : min(44, bounds.height)
+      // In the band the controls share the top inset; below the text they take 44 pt.
+      let stripBottom = controlsInBand ? 0 : gripHeight
+      let stripHeight = max(
+        0, bounds.height - gripHeight - (controlsInBand ? 0 : cameraDockTopInset))
       cameraDockContentClip.frame = CGRect(
-        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth, height: stripHeight)
+        x: cameraDockContentOffsetX, y: stripBottom, width: contentWidth, height: stripHeight)
       let strip = cameraDockContentClip.bounds
       reflection.frame = strip
       cameraDockEmphasis.frame = strip
@@ -690,8 +699,27 @@ enum PrompterPlacement: Equatable {
       cameraDockEmphasis.apply(
         readingLineTop: (cameraDockLayout?.guideFraction ?? 0) * logicalSize.height,
         lineAdvance: cameraDockLayout?.lineAdvance ?? 0, stripHeight: strip.height)
-      grip.frame = CGRect(
-        x: cameraDockContentOffsetX, y: 0, width: contentWidth, height: gripHeight)
+      if controlsInBand {
+        // The controls share the camera band with the housing: close and play on the
+        // left, status and the adjust menu on the right, inside the current silhouette.
+        grip.frame = CGRect(
+          x: 0, y: bounds.height - cameraDockTopInset, width: bounds.width,
+          height: cameraDockTopInset)
+        if let layout = cameraDockLayout, let housing = layout.cameraHousing,
+          let metrics = CameraDockGeometry.morphMetrics(
+            for: layout, progress: cameraDockIsExpanded ? 1 : 0)
+        {
+          let originX = layout.placement.frame.minX
+          cameraDockControls?.bandLayout = CameraDockControlsView.BandLayout(
+            housing: (housing.minX - originX)...(housing.maxX - originX),
+            tray: (metrics.tray.minX - originX)...(metrics.tray.maxX - originX),
+            compact: !cameraDockIsExpanded)
+        }
+      } else {
+        cameraDockControls?.bandLayout = nil
+        grip.frame = CGRect(
+          x: cameraDockContentOffsetX, y: 0, width: contentWidth, height: gripHeight)
+      }
       if cameraDockShapeNeedsUpdate || cameraDockLastMaskSize != bounds.size {
         updateCameraDockShape(animated: false)
       }
@@ -893,9 +921,20 @@ struct FloatingGrip: View {
   let closeButton = NSButton(frame: .zero)
   let playbackButton = NSButton(frame: .zero)
   let adjustButton = NSPopUpButton(frame: .zero, pullsDown: true)
-  private let statusLabel = NSTextField(labelWithString: "Ready")
+  let statusLabel = NSTextField(labelWithString: "Ready")
   static let collapseMenuTitle = "Collapse to Notch"
   private(set) var collapseItem: NSMenuItem?
+  /// Attached Camera Dock: the controls sit in the camera band on either side of the
+  /// housing, within the current silhouette's horizontal range. Parked, the pill keeps
+  /// only play and adjust at its ends.
+  struct BandLayout: Equatable {
+    var housing: ClosedRange<CGFloat>
+    var tray: ClosedRange<CGFloat>
+    var compact: Bool
+  }
+  var bandLayout: BandLayout? {
+    didSet { if bandLayout != oldValue { needsLayout = true } }
+  }
 
   var accessibilityControls: [NSView] { [closeButton, playbackButton, adjustButton] }
 
@@ -929,6 +968,12 @@ struct FloatingGrip: View {
 
   override func layout() {
     super.layout()
+    if let band = bandLayout {
+      layoutInBand(band)
+      return
+    }
+    closeButton.isHidden = false
+    statusLabel.isHidden = false
     let inset: CGFloat = min(6, max(0, bounds.width / 2))
     let gap: CGFloat = 6
     let buttonHeight: CGFloat = min(28, bounds.height)
@@ -949,6 +994,33 @@ struct FloatingGrip: View {
     statusLabel.frame = CGRect(
       x: statusX, y: buttonY, width: statusWidth, height: buttonHeight)
     adjustButton.frame = CGRect(x: adjustX, y: buttonY, width: adjustWidth, height: buttonHeight)
+  }
+
+  private func layoutInBand(_ band: BandLayout) {
+    let edge: CGFloat = 10
+    let gap: CGFloat = 6
+    let buttonHeight: CGFloat = min(24, max(0, bounds.height - 6))
+    let buttonY = max(0, (bounds.height - buttonHeight) / 2)
+    let buttonWidth: CGFloat = 28
+    let adjustWidth: CGFloat = 32
+    let leftRoom = max(0, band.housing.lowerBound - band.tray.lowerBound - edge * 2)
+    let rightRoom = max(0, band.tray.upperBound - band.housing.upperBound - edge * 2)
+    closeButton.isHidden = band.compact
+    statusLabel.isHidden = band.compact
+    var leftX = band.tray.lowerBound + edge
+    if !band.compact, leftRoom >= buttonWidth {
+      closeButton.frame = CGRect(x: leftX, y: buttonY, width: buttonWidth, height: buttonHeight)
+      leftX += buttonWidth + gap
+    }
+    let playbackWidth = min(buttonWidth, max(0, band.housing.lowerBound - edge - leftX))
+    playbackButton.frame = CGRect(
+      x: leftX, y: buttonY, width: playbackWidth, height: buttonHeight)
+    let adjustX = band.tray.upperBound - edge - min(adjustWidth, rightRoom)
+    adjustButton.frame = CGRect(
+      x: adjustX, y: buttonY, width: min(adjustWidth, rightRoom), height: buttonHeight)
+    let statusX = band.housing.upperBound + edge
+    statusLabel.frame = CGRect(
+      x: statusX, y: buttonY, width: max(0, adjustX - gap - statusX), height: buttonHeight)
   }
 
   private func configure(

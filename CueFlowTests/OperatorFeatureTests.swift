@@ -157,15 +157,11 @@ import Testing
     guard let directory = ProcessInfo.processInfo.environment["CUEFLOW_DOCK_SILHOUETTE_DIR"]
     else { return }
     let origin = CGPoint(x: layout.placement.frame.minX, y: layout.placement.frame.minY)
-    let states: [(String, Double, Bool)] = [
-      ("1-parked", 0, true), ("2-midway", 0.5, true), ("3-open-ready", 1, true),
-      ("4-open-playing", 1, false),
-    ]
+    let states: [(String, Double)] = [("1-parked", 0), ("2-midway", 0.5), ("3-open", 1)]
     let scale: CGFloat = 2
     let margin: CGFloat = 40
-    for (name, progress, controls) in states {
-      let metrics = try #require(
-        CameraDockGeometry.morphMetrics(for: layout, progress: progress, controlsVisible: controls))
+    for (name, progress) in states {
+      let metrics = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: progress))
       let path = FloatingRoot.attachedPath(metrics, in: bounds, frameOrigin: origin)
       let size = CGSize(width: bounds.width + margin * 2, height: bounds.height)
       let context = try #require(
@@ -907,6 +903,20 @@ import Testing
         NSPoint(x: attachedRoot.bounds.minX + 1, y: attachedRoot.bounds.minY + 1)))
     #expect(attachedRoot.reflection.alphaValue == 1)
     #expect(attachedRoot.grip.alphaValue == 1)
+    // Controls live in the camera band on either side of the housing, text only below.
+    let controls = try #require(attachedRoot.cameraDockControls)
+    let housingLocal = (frame.minX + sideWidth - attachedLayout.placement.frame.minX)
+    #expect(abs(attachedRoot.grip.frame.minY - (attachedRoot.bounds.maxY - safeTop)) < 0.5)
+    #expect(abs(attachedRoot.grip.frame.height - safeTop) < 0.5)
+    #expect(abs(clip.frame.minY - attachedRoot.bounds.minY) < 0.5)
+    #expect(!controls.closeButton.isHidden)
+    #expect(!controls.statusLabel.isHidden)
+    #expect(controls.closeButton.frame.maxX < housingLocal)
+    #expect(controls.playbackButton.frame.maxX < housingLocal)
+    #expect(controls.playbackButton.frame.minX > controls.closeButton.frame.maxX)
+    #expect(controls.statusLabel.frame.minX > housingLocal + 200)
+    #expect(controls.adjustButton.frame.minX > controls.statusLabel.frame.maxX)
+    #expect(controls.adjustButton.frame.maxX < attachedRoot.bounds.maxX)
     if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
       #expect(attachedRoot.cameraDockShapeAnimation == nil)
     } else {
@@ -914,8 +924,8 @@ import Testing
       #expect(reveal.keyPath == "path")
       #expect(reveal.duration >= CameraDockMotion.minimumShapeDuration)
       #expect(reveal.duration <= CameraDockMotion.maximumShapeDuration)
-      #expect(reveal.stiffness == CameraDockMotion.springStiffness)
-      #expect(reveal.damping == CameraDockMotion.springDamping)
+      #expect(abs(reveal.stiffness - CameraDockMotion.openSpringStiffness) < 1e-3)
+      #expect(abs(reveal.damping - CameraDockMotion.openSpringDamping) < 1e-3)
     }
     // Both morph endpoints share one element sequence, so Core Animation can interpolate.
     let origin = CGPoint(
@@ -923,7 +933,7 @@ import Testing
     let chinMetrics = try #require(
       CameraDockGeometry.morphMetrics(for: attachedLayout, progress: 0))
     let openMetrics = try #require(
-      CameraDockGeometry.morphMetrics(for: attachedLayout, progress: 1, controlsVisible: false))
+      CameraDockGeometry.morphMetrics(for: attachedLayout, progress: 1))
     #expect(
       elementCount(
         FloatingRoot.attachedPath(chinMetrics, in: attachedRoot.bounds, frameOrigin: origin))
@@ -948,7 +958,17 @@ import Testing
           - (200 + CameraDockGeometry.compactChinOverhang * 2
             + CameraDockGeometry.compactEarRadius * 2)) < 0.5)
     #expect(attachedRoot.reflection.alphaValue == 0)
+    #expect(attachedRoot.grip.alphaValue == 1)
     #expect(attachedRoot.cameraDockShapeAnimation == nil)
+    // The parked pill keeps play and adjust at its ends; close and status are hidden.
+    attachedRoot.layoutSubtreeIfNeeded()
+    #expect(controls.closeButton.isHidden)
+    #expect(controls.statusLabel.isHidden)
+    #expect(controls.playbackButton.frame.width > 0)
+    #expect(controls.playbackButton.frame.minX >= chin.minX)
+    #expect(controls.playbackButton.frame.maxX < housingLocal)
+    #expect(controls.adjustButton.frame.minX > housingLocal + 200)
+    #expect(controls.adjustButton.frame.maxX <= chin.maxX)
     #expect(
       attachedRoot.hitTest(
         NSPoint(x: attachedRoot.bounds.minX + 2, y: attachedRoot.bounds.maxY - 2)) == nil)
@@ -971,7 +991,7 @@ import Testing
     #expect(attachedRoot.cameraDockIsExpanded)
     #expect(!attachedRoot.cameraDockIsParked)
     let playing = try #require(attachedRoot.cameraDockMaskPath).boundingBoxOfPath
-    #expect(abs(playing.minY - (attachedRoot.bounds.minY + 44)) < 0.5)
+    #expect(playing.minY == attachedRoot.bounds.minY)
     #expect(playing.maxY == attachedRoot.bounds.maxY)
     #expect(attachedRoot.grip.alphaValue == 0)
     #expect(attachedRoot.reflection.alphaValue == 1)
@@ -1018,6 +1038,8 @@ import Testing
     let closeShape = try #require(attachedRoot.cameraDockShapeAnimation as? CASpringAnimation)
     #expect(closeShape.fillMode == .backwards)
     #expect(closeShape.beginTime > 0)
+    #expect(abs(closeShape.stiffness - CameraDockMotion.closeSpringStiffness) < 1e-3)
+    #expect(abs(closeShape.damping - CameraDockMotion.closeSpringDamping) < 1e-3)
     let closeFade = try #require(
       attachedRoot.reflection.layer?.animation(forKey: opacityKey) as? CABasicAnimation)
     #expect(closeFade.duration == CameraDockMotion.collapseContentDuration)
@@ -1112,7 +1134,7 @@ import Testing
     #expect(root.cameraDockIsExpanded)
     #expect(!root.cameraDockIsParked)
     let playingPath = try #require(root.cameraDockMaskPath)
-    #expect(abs(playingPath.boundingBoxOfPath.minY - (root.bounds.minY + 44)) < 0.5)
+    #expect(playingPath.boundingBoxOfPath.minY == root.bounds.minY)
     #expect(playingPath.boundingBoxOfPath.maxY == root.bounds.maxY)
 
     c.toggle()

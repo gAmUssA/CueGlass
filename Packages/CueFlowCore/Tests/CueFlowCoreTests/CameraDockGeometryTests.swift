@@ -116,14 +116,12 @@ import Testing
   let compact = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0))
   let middle = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0.5))
   let expanded = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 1))
-  let playing = try #require(
-    CameraDockGeometry.morphMetrics(for: layout, progress: 1, controlsVisible: false))
   let content = layout.placement.contentFrame
   let housing = try #require(layout.cameraHousing)
 
   let top = parameters.screenFrame.maxY
   // One surface from the display top: it covers the housing and the band around it.
-  for metrics in [compact, middle, expanded, playing] {
+  for metrics in [compact, middle, expanded] {
     #expect(metrics.tray.maxY == top)
     #expect(metrics.tray.minX <= housing.minX && metrics.tray.maxX >= housing.maxX)
     #expect(metrics.tray.minX >= content.minX && metrics.tray.maxX <= content.maxX)
@@ -143,18 +141,20 @@ import Testing
   // endpoints passes through this silhouette.
   #expect(middle.tray.width == (compact.tray.width + content.width) / 2)
   #expect(middle.tray.minY == (compact.tray.minY + content.minY) / 2)
-  #expect(middle.bottomCornerRadius == 18)
-  #expect(middle.earRadius == 13)
+  #expect(
+    middle.bottomCornerRadius
+      == (CameraDockGeometry.compactBottomCornerRadius
+        + CameraDockGeometry.expandedBottomCornerRadius) / 2)
+  #expect(
+    middle.earRadius
+      == (CameraDockGeometry.compactEarRadius + CameraDockGeometry.expandedEarRadius) / 2)
   #expect(middle.contentOpacity > 0 && middle.contentOpacity < 0.1)
-  // Open with controls: the content frame extended to the display top. Open while
-  // playing: the controls band leaves the bottom.
+  // Open: the content frame extended to the display top; the controls live in the band.
   #expect(expanded.tray.minX == content.minX && expanded.tray.width == content.width)
   #expect(expanded.tray.minY == content.minY)
   #expect(expanded.bottomCornerRadius == CameraDockGeometry.expandedBottomCornerRadius)
   #expect(expanded.earRadius == CameraDockGeometry.expandedEarRadius)
   #expect(expanded.contentOpacity == 1)
-  #expect(playing.tray.minY == content.minY + CameraDockGeometry.controlsHeight)
-  #expect(playing.tray.width == content.width)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: .nan) == nil)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 2)?.progress == 1)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: -1)?.progress == 0)
@@ -352,7 +352,7 @@ import Testing
   #expect(notched.viewportHeight == 136)
   #expect(notched.lineAdvance == 40)
   #expect(abs(notched.guideFraction - 48.0 / 136.0) < 1e-12)
-  #expect(notched.placement.contentFrame.height == 136 + CameraDockGeometry.controlsHeight)
+  #expect(notched.placement.contentFrame.height == 136)
   #expect(notched.cameraSafeAreaHeight == 32)
 
   let fallbackParameters = CameraDockScreenParameters(
@@ -544,12 +544,8 @@ import Testing
 
   #expect(layout.style == .attached)
   #expect(layout.viewportHeight == 100)
-  #expect(
-    layout.placement.frame.height
-      == layout.viewportHeight + CameraDockGeometry.controlsHeight + layout.contentTopInset)
-  #expect(
-    layout.placement.contentFrame.height
-      == layout.viewportHeight + CameraDockGeometry.controlsHeight)
+  #expect(layout.placement.frame.height == layout.viewportHeight + layout.contentTopInset)
+  #expect(layout.placement.contentFrame.height == layout.viewportHeight)
   #expect(layout.placement.anchorX == 756)
 }
 
@@ -699,25 +695,33 @@ import Testing
   #expect(CameraDockMotion.shapeDuration(settling: 0.42) == 0.42)
   #expect(CameraDockMotion.shapeDuration(settling: 3) == CameraDockMotion.maximumShapeDuration)
   #expect(CameraDockMotion.shapeDuration(settling: .nan) == CameraDockMotion.minimumShapeDuration)
-  // Sapphire pacing: the shape lands in well under half a second, the content resolves
-  // right after it, and the whole open reads in about half a second.
+  // Sapphire pacing: the shape lands in well under a second, the content resolves right
+  // after it, and the whole open reads in about half a second.
   #expect(CameraDockMotion.minimumShapeDuration >= 0.25)
-  #expect(CameraDockMotion.maximumShapeDuration <= 0.5)
+  #expect(CameraDockMotion.maximumShapeDuration <= 0.6)
   #expect(CameraDockMotion.expandContentDelay < CameraDockMotion.maximumShapeDuration)
   #expect(CameraDockMotion.expandContentDelay + CameraDockMotion.expandContentDuration <= 0.5)
   #expect(CameraDockMotion.collapseContentDuration <= CameraDockMotion.collapseShapeDelay + 0.05)
   #expect(CameraDockMotion.contentBlurRadius > 0)
   #expect(CameraDockMotion.reducedMotionContentDuration <= 0.2)
-  // Damping ratio of the published spring stays slightly under critical: settled, not floppy.
-  let ratio =
-    CameraDockMotion.springDamping
-    / (2 * (CameraDockMotion.springStiffness * CameraDockMotion.springMass).squareRoot())
-  #expect(ratio > 0.7 && ratio < 1)
-  // Estimated settling time of the published spring sits inside the duration window.
-  let omega = (CameraDockMotion.springStiffness / CameraDockMotion.springMass).squareRoot()
-  let settling = -log(0.001) / (ratio * omega)
-  #expect(settling >= CameraDockMotion.minimumShapeDuration)
-  #expect(settling <= CameraDockMotion.maximumShapeDuration)
+  // Opening overshoots a little (damping fraction ≈ 0.6); closing does not (≈ 1).
+  func ratio(_ stiffness: Double, _ damping: Double) -> Double {
+    damping / (2 * (stiffness * CameraDockMotion.springMass).squareRoot())
+  }
+  let openRatio = ratio(CameraDockMotion.openSpringStiffness, CameraDockMotion.openSpringDamping)
+  let closeRatio = ratio(
+    CameraDockMotion.closeSpringStiffness, CameraDockMotion.closeSpringDamping)
+  #expect(openRatio > 0.5 && openRatio < 0.75)
+  #expect(closeRatio > 0.9 && closeRatio < 1.05)
+  // Response times: open ≈ 0.4 s, close ≈ 0.3 s.
+  let openResponse = 2 * Double.pi / CameraDockMotion.openSpringStiffness.squareRoot()
+  let closeResponse = 2 * Double.pi / CameraDockMotion.closeSpringStiffness.squareRoot()
+  #expect(abs(openResponse - 0.4) < 0.01)
+  #expect(abs(closeResponse - 0.3) < 0.01)
+  // Whatever the clamp cuts off is invisible: residual amplitude below 2 % at the cutoff.
+  let openOmega = CameraDockMotion.openSpringStiffness.squareRoot()
+  let residual = exp(-openRatio * openOmega * CameraDockMotion.maximumShapeDuration)
+  #expect(residual < 0.02)
 }
 
 @Test func cameraDockPreferenceCatalogPersistsByDisplayUUID() throws {

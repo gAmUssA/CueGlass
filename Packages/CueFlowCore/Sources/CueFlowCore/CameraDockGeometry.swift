@@ -109,11 +109,16 @@ public struct CameraDockMorphMetrics: Equatable, Sendable {
 /// (damping ratio ≈ 0.85).
 public enum CameraDockMotion {
   public static let springMass = 1.0
-  public static let springStiffness = 450.0
-  public static let springDamping = 36.0
+  /// Opening: response 0.4 s with a damping fraction near 0.6, so the surface lands with
+  /// a hint of overshoot. Closing: response 0.3 s, critically damped, so it just settles.
+  /// (stiffness = (2π / response)², damping = 4π × fraction / response, mass 1.)
+  public static let openSpringStiffness = 247.0
+  public static let openSpringDamping = 19.0
+  public static let closeSpringStiffness = 439.0
+  public static let closeSpringDamping = 41.0
   public static let expandInitialVelocity = 0.3
   public static let minimumShapeDuration = 0.3
-  public static let maximumShapeDuration = 0.5
+  public static let maximumShapeDuration = 0.6
   /// Content starts resolving once the shape has mostly landed.
   public static let expandContentDelay = 0.16
   public static let expandContentDuration = 0.3
@@ -161,14 +166,15 @@ public enum CameraDockGeometry {
   /// Parked silhouette: a pill from the display top to a short chin under the housing,
   /// slightly wider than the housing, with fully rounded lower corners and small ears.
   public static let compactChinHeight = 14.0
-  public static let compactChinOverhang = 14.0
+  /// Wide enough for a control at each end of the parked pill.
+  public static let compactChinOverhang = 52.0
   public static let compactBottomCornerRadius = 14.0
-  public static let compactEarRadius = 8.0
+  public static let compactEarRadius = 10.0
   /// Open silhouette: the black surface runs from the display top down to the bottom of
   /// the prompt tray and covers the menu-bar band around the housing; prompt content
   /// still never enters that band. The ears widen the panel frame on both sides.
-  public static let expandedBottomCornerRadius = 22.0
-  public static let expandedEarRadius = 18.0
+  public static let expandedBottomCornerRadius = 32.0
+  public static let expandedEarRadius = 24.0
   /// Content fades in only once the tray has mostly opened.
   public static let contentFadeStartProgress = 0.45
   /// Reading emphasis inside the open tray: the line on the guide stays at full
@@ -236,10 +242,13 @@ public enum CameraDockGeometry {
       let viewportHeight = viewportHeight(
         lineAdvance: lineAdvance, lineCount: preferences.lineCount)
     else { return nil }
+    // Attached to the housing, the controls live in the camera band beside it and the
+    // tray holds text only; the detached fallback keeps its controls band below the text.
     guard
       let placement = placement(
         on: effectiveParameters, isBuiltIn: builtInTarget, width: preferences.width,
-        height: viewportHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
+        height: viewportHeight + controlsHeight, attachedHeight: viewportHeight,
+        horizontalNudge: preferences.horizontalNudge)
     else { return nil }
     let attached = placement.location == .camera
     let safeAreaHeight = attached ? cameraSafeAreaHeight(on: effectiveParameters) : 0
@@ -287,11 +296,10 @@ public enum CameraDockGeometry {
       x: screen.midX - width / 2, y: safeEdge, width: width, height: safeAreaHeight)
   }
 
-  /// The attached silhouette between the parked chin (`progress == 0`) and the open
-  /// tray (`progress == 1`). With `controlsVisible == false` the open tray ends at the
-  /// bottom of the prompt strip, so a playing Dock shows text only.
+  /// The attached silhouette between the parked pill (`progress == 0`) and the open
+  /// tray (`progress == 1`).
   public static func morphMetrics(
-    for layout: CameraDockLayout, progress: Double, controlsVisible: Bool = true
+    for layout: CameraDockLayout, progress: Double
   ) -> CameraDockMorphMetrics? {
     guard layout.style == .attached, let housing = layout.cameraHousing,
       progress.isFinite, layout.contentTopInset > 0
@@ -304,9 +312,8 @@ public enum CameraDockGeometry {
     let compactTray = CameraDockRect(
       x: housing.midX - compactWidth / 2, y: compactBottom, width: compactWidth,
       height: top - compactBottom)
-    let expandedBottom = controlsVisible ? content.minY : content.minY + controlsHeight
     let expandedTray = CameraDockRect(
-      x: content.x, y: expandedBottom, width: content.width, height: top - expandedBottom)
+      x: content.x, y: content.minY, width: content.width, height: top - content.minY)
     func interpolate(_ start: Double, _ end: Double) -> Double {
       start + (end - start) * amount
     }
@@ -371,13 +378,14 @@ public enum CameraDockGeometry {
 
   public static func placement(
     on parameters: CameraDockScreenParameters, isBuiltIn: Bool, width: Double, height: Double,
-    horizontalNudge: Double
+    attachedHeight: Double? = nil, horizontalNudge: Double
   ) -> CameraDockPlacement? {
     placement(
       screenFrame: parameters.screenFrame, visibleFrame: parameters.visibleFrame,
       safeTop: parameters.safeTop, auxiliaryTopLeftArea: parameters.auxiliaryTopLeftArea,
       auxiliaryTopRightArea: parameters.auxiliaryTopRightArea, isBuiltIn: isBuiltIn,
-      width: width, height: height, horizontalNudge: horizontalNudge)
+      width: width, height: height, attachedHeight: attachedHeight,
+      horizontalNudge: horizontalNudge)
   }
 
   public static func placement(
@@ -388,15 +396,19 @@ public enum CameraDockGeometry {
     auxiliaryTopRightArea: CameraDockRect?,
     isBuiltIn: Bool,
     width requestedWidth: Double,
-    height: Double,
+    height detachedHeight: Double,
+    attachedHeight: Double? = nil,
     horizontalNudge: Double
   ) -> CameraDockPlacement? {
     guard screenFrame.isFiniteAndPositive, visibleFrame.isFiniteAndPositive,
       visibleFrame.isContained(in: screenFrame, tolerance: 0.5), safeTop.isFinite,
-      safeTop >= 0, safeTop <= screenFrame.height, requestedWidth.isFinite, height.isFinite,
-      height > 0, horizontalNudge.isFinite
+      safeTop >= 0, safeTop <= screenFrame.height, requestedWidth.isFinite,
+      detachedHeight.isFinite, detachedHeight > 0, horizontalNudge.isFinite,
+      attachedHeight.map({ $0.isFinite && $0 > 0 }) ?? true
     else { return nil }
-    guard visibleFrame.width >= minimumWidth, visibleFrame.height >= height else { return nil }
+    guard visibleFrame.width >= minimumWidth, visibleFrame.height >= detachedHeight else {
+      return nil
+    }
 
     let width = min(maximumWidth, max(minimumWidth, requestedWidth))
     // AppKit integralizes window frames; a fractional width would leave the mask path up
@@ -437,6 +449,7 @@ public enum CameraDockGeometry {
       }
     }
 
+    let height = location == .camera ? (attachedHeight ?? detachedHeight) : detachedHeight
     let panelHeight = height + panelTopInset
     guard top.isFinite, panelHeight.isFinite, top - panelHeight >= visibleFrame.minY else {
       return nil
