@@ -1223,9 +1223,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       preservePreparationAnchor()
       pendingPlay = false
       pendingResume = wasRunning
+      let dockWasLive = cameraDock != nil
       floating?.onClose = nil
       floating?.close()
       floating = nil
+      // The Dock kept the inspector on its own display; the picker may now name another.
+      if dockWasLive { refreshCameraDockPreferencesForTarget(displays: displays) }
       session.logicalSize = display.screen.frame.size
       let next = OutputWindowController(display: display)
       output = next
@@ -1741,8 +1744,12 @@ extension OperatorWindowController {
       output?.onClose = nil
       output?.close()
       output = nil
+      let dockWasLive = cameraDock != nil
       floating?.onClose = nil
       floating?.close()
+      floating = nil
+      // The Dock kept the inspector on its own display; the picker may now name another.
+      if dockWasLive { refreshCameraDockPreferencesForTarget() }
       guard let screen = window?.screen ?? NSScreen.main else { return }
       let next = FloatingPrompterWindowController(screen: screen, controller: self)
       floating = next
@@ -2300,13 +2307,20 @@ extension OperatorWindowController {
   }
   @objc func presentOnDisplay(_ sender: NSMenuItem) {
     guard let key = sender.representedObject as? String else { return }
+    presentOnDisplay(key)
+  }
+  /// "Present on …" from the View menu: the picker follows the chosen display, then
+  /// Output opens there.
+  func presentOnDisplay(
+    _ key: String, confirm: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
+  ) {
     if output != nil {
       output?.onClose = nil
       output?.close()
       output = nil
     }
     selectDisplay(key)
-    showOutput()
+    showOutput(confirm: confirm)
   }
   @objc func floatingAction() { showFloating() }
   @objc func stopPresenting() { hideOutput() }

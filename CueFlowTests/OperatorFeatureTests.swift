@@ -2497,6 +2497,141 @@ import Testing
     #expect(c.state.cameraDockNotchIsland)
   }
 
+  /// Seeds the saved catalog with A = 520 / 4 lines / nudge 24 / island off and
+  /// B = 680 / 2 lines / nudge −10 / island on, opens the Dock on A, and hands the live
+  /// Dock to `exit`, which replaces it with another surface. Afterward an edit must land
+  /// on B while A keeps its own values.
+  private typealias LiveDockExit =
+    @MainActor (OperatorWindowController, DisplayDescriptor, DisplayDescriptor) async throws -> Void
+  private func liveDockOnAReplacedBy(
+    aUUID: String, bUUID: String, ids: (CGDirectDisplayID, CGDirectDisplayID),
+    exit: LiveDockExit
+  ) async throws {
+    let preferenceKey = "cameraDockPreferences"
+    let previousPreferences = UserDefaults.standard.data(forKey: preferenceKey)
+    defer {
+      if let previousPreferences {
+        UserDefaults.standard.set(previousPreferences, forKey: preferenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: preferenceKey)
+      }
+    }
+    var catalog = CameraDockPreferenceCatalog()
+    catalog.set(
+      CameraDockPreferences(
+        width: 520, lineCount: 4, horizontalNudge: 24, forceNotchAttachment: false),
+      forDisplayUUID: aUUID)
+    catalog.set(
+      CameraDockPreferences(
+        width: 680, lineCount: 2, horizontalNudge: -10, forceNotchAttachment: true),
+      forDisplayUUID: bUUID)
+    UserDefaults.standard.set(try JSONEncoder().encode(catalog), forKey: preferenceKey)
+
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let displayA = syntheticDisplay(
+      screen: screen, id: ids.0, uuid: aUUID, isBuiltIn: false,
+      parameters: dockParameters(for: screen))
+    let displayB = syntheticDisplay(
+      screen: screen, id: ids.1, uuid: bUUID, isBuiltIn: false,
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [displayA, displayB] }
+    c.refreshScreens([displayA, displayB])
+    c.state.selectedDisplay = displayB.selectionKey
+    c.selectDisplay(displayA.selectionKey)
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(dock.displayID == displayA.id)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(c.state.cameraDockHorizontalNudge == 24)
+    #expect(!c.state.cameraDockNotchIsland)
+
+    try await exit(c, displayA, displayB)
+    await settle(c)
+
+    #expect(c.cameraDock == nil)
+    #expect(c.state.selectedDisplay == displayB.selectionKey)
+    #expect(c.state.cameraDockWidth == 680)
+    #expect(c.state.cameraDockLineCount == 2)
+    #expect(c.state.cameraDockHorizontalNudge == -10)
+    #expect(c.state.cameraDockNotchIsland)
+
+    c.setCameraDockHorizontalNudge(31)
+    c.selectDisplay(displayA.selectionKey)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(c.state.cameraDockHorizontalNudge == 24)
+    #expect(!c.state.cameraDockNotchIsland)
+    c.selectDisplay(displayB.selectionKey)
+    #expect(c.state.cameraDockWidth == 680)
+    #expect(c.state.cameraDockLineCount == 2)
+    #expect(c.state.cameraDockHorizontalNudge == 31)
+    #expect(c.state.cameraDockNotchIsland)
+  }
+
+  @Test func switchingALiveDockToOutputReloadsSelectedDisplayPreferencesBeforeEdits()
+    async throws
+  {
+    // Display Output from the surface picker, the View menu, or the toolbar while the Dock
+    // is live on A and the picker already names B.
+    try await liveDockOnAReplacedBy(
+      aUUID: "live-dock-output-display-a", bUUID: "live-dock-output-display-b",
+      ids: (721, 722)
+    ) { c, displayA, displayB in
+      c.selectDisplay(displayB.selectionKey)
+      #expect(c.cameraDock?.displayID == displayA.id)
+      #expect(c.state.cameraDockWidth == 520)
+      c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+      c.output?.reflection.viewport.driver?.stop()
+      c.output?.reflection.viewport.driver = nil
+      #expect(c.output?.displayID == displayB.id)
+      #expect(c.floating == nil)
+    }
+  }
+
+  @Test func switchingALiveDockToFloatingReloadsSelectedDisplayPreferencesBeforeEdits()
+    async throws
+  {
+    try await liveDockOnAReplacedBy(
+      aUUID: "live-dock-floating-display-a", bUUID: "live-dock-floating-display-b",
+      ids: (731, 732)
+    ) { c, displayA, displayB in
+      c.selectDisplay(displayB.selectionKey)
+      #expect(c.cameraDock?.displayID == displayA.id)
+      #expect(c.state.cameraDockWidth == 520)
+      c.selectPresentationSurface("floating")
+      c.floating?.reflection.viewport.driver?.stop()
+      c.floating?.reflection.viewport.driver = nil
+      #expect(c.floating?.isCameraDock == false)
+      #expect(c.output == nil)
+    }
+  }
+
+  @Test func presentingALiveDockOnAnotherDisplayReloadsItsPreferencesBeforeEdits()
+    async throws
+  {
+    // "Present on B" from the View menu moves the picker to B and opens Output there.
+    try await liveDockOnAReplacedBy(
+      aUUID: "live-dock-present-display-a", bUUID: "live-dock-present-display-b",
+      ids: (741, 742)
+    ) { c, displayA, displayB in
+      #expect(c.state.selectedDisplay == displayA.selectionKey)
+      c.presentOnDisplay(displayB.selectionKey, confirm: { _ in .alertFirstButtonReturn })
+      c.output?.reflection.viewport.driver?.stop()
+      c.output?.reflection.viewport.driver = nil
+      #expect(c.output?.displayID == displayB.id)
+      #expect(c.floating == nil)
+    }
+  }
+
   @Test func cameraDockPreferenceControlsClampAndUpdatePlacement() async throws {
     let c = try await prepared()
     defer { c.close() }
