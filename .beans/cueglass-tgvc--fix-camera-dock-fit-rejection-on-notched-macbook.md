@@ -97,3 +97,5 @@ After reviewing the Sapphire demo frame by frame at the owner's request, the own
 - [ ] Owner confirms the lyrics-style layout and the motion on the notched MacBook.
 
 Not implemented: a timed line-by-line step mode; Follow Voice already glides per spoken line and is the closest existing behaviour.
+
+Owner on-device screenshot (2026-10-16 22:44) rejected the stem-and-tray shape: the menu bar showed between the housing and the tray ("wtf is this?"). The attached surface now runs from the display's top edge for the full tray width with Sapphire-style ears, covering the menu-bar band beside the housing; this supersedes ADR 0012's earlier band-avoidance rule for the surface. Content still stays below the band.
