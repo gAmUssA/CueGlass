@@ -1078,6 +1078,10 @@ import Testing
     defer { c.close() }
     let display = try #require(DisplayDescriptor.all().first)
     c.state.selectedDisplay = display.selectionKey
+    // The end position must survive the switch, so the Dock's column must not reflow the
+    // 64 pt "Cue 1xx" paragraphs. The default width on a 1024 pt CI display does; the
+    // widest Dock does not.
+    c.setCameraDockWidth(CameraDockGeometry.maximumWidth)
     c.state.countdown = 0
     var time = 0.0
     c.session.clock = { time }
