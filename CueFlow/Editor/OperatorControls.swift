@@ -266,6 +266,11 @@ struct OperatorControls: View {
           "Changing the microphone while following moves capture to it without stopping the take."
         )
         .accessibilityLabel("Follow Voice microphone")
+        if !state.voiceInputNotice.isEmpty {
+          Label(state.voiceInputNotice, systemImage: "exclamationmark.triangle")
+            .font(.caption).foregroundStyle(.orange)
+            .accessibilityLabel("Microphone notice: \(state.voiceInputNotice)")
+        }
         followVoiceControls
       } header: {
         Text("Follow Voice")

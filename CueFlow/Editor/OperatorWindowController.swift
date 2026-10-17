@@ -42,6 +42,7 @@ struct VoiceFollowPlatformCapability: Equatable {
   @Published var voiceInputDevices: [VoiceInputDeviceOption] = []
   /// Selected microphone UID; empty follows the system default input.
   @Published var voiceInputDevice = ""
+  @Published var voiceInputNotice = ""
   @Published var voiceActive = false
   @Published var voiceSuspended = false
   @Published var voiceMessage = ""
@@ -879,6 +880,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     state.voiceLocale = coordinator.selectedLocaleIdentifier
     state.voiceInputDevices = coordinator.inputDevices
     state.voiceInputDevice = coordinator.selectedInputDeviceUID ?? ""
+    state.voiceInputNotice = coordinator.inputRouteNotice ?? ""
     state.voiceActive = coordinator.isActive
     state.voiceSuspended = coordinator.isSuspended
     state.voiceMessage = voiceMessage(for: coordinator.state)

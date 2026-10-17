@@ -104,6 +104,15 @@ private struct FakeSpeechAssetError: LocalizedError {
   private(set) var preferredInputDeviceUID: String?
   private(set) var preferredDeviceAssignments = 0
   private var deviceHandler: (@MainActor () -> Void)?
+  private(set) var inputRoute: VoiceInputRoute?
+  private var routeHandler: (@MainActor (VoiceInputRoute?) -> Void)?
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {
+    routeHandler = handler
+  }
+  func simulateRoute(_ route: VoiceInputRoute?) {
+    inputRoute = route
+    routeHandler?(route)
+  }
 
   func supportedLocales() async -> [VoiceLocaleOption] { localeOptions }
   func availableInputDevices() -> [VoiceInputDeviceOption] { availableDevices }
@@ -1131,6 +1140,56 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(source.preferredInputDeviceUID == nil)
     coordinator.selectInputDevice(uid: nil)
     #expect(coordinator.selectedInputDeviceUID == nil)
+  }
+
+  @Test func theReportedRouteOverridesListMembershipAndSurfacesFallbackOrFailure() throws {
+    let (session, _, _) = try take()
+    let builtIn = VoiceInputDeviceOption(
+      uid: "built-in", name: "MacBook Pro Microphone", isDefault: true)
+    let external = VoiceInputDeviceOption(uid: "usb-1", name: "USB Microphone", isDefault: false)
+    let source = FakeVoiceCaptureSource()
+    source.availableDevices = [builtIn, external]
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    coordinator.selectInputDevice(uid: external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+    #expect(coordinator.inputRouteNotice == nil)
+
+    // The unit refused the switch: the picker keeps the choice, but the effective device is
+    // what the unit reports, and the inspector says why.
+    source.simulateRoute(
+      VoiceInputRoute(
+        deviceUID: builtIn.uid, deviceName: builtIn.name, usesSystemDefault: false,
+        preferredUnavailable: false, failure: "device is busy"))
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == builtIn.uid)
+    #expect(
+      coordinator.inputRouteNotice
+        == "Could not switch to USB Microphone: device is busy — still using MacBook Pro Microphone"
+    )
+
+    // The remembered device went away while capturing: the default was selected explicitly.
+    source.simulateDeviceChange([builtIn])
+    source.simulateRoute(
+      VoiceInputRoute(
+        deviceUID: builtIn.uid, deviceName: builtIn.name, usesSystemDefault: true,
+        preferredUnavailable: true, failure: nil))
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+    #expect(
+      coordinator.inputRouteNotice
+        == "The selected microphone is not connected — using System Default (MacBook Pro Microphone)"
+    )
+
+    // Capture closed: the notice falls back to list membership only.
+    source.simulateRoute(nil)
+    #expect(coordinator.inputRoute == nil)
+    #expect(
+      coordinator.inputRouteNotice
+        == "The selected microphone is not connected — using System Default")
+    source.simulateDeviceChange([builtIn, external])
+    #expect(coordinator.inputRouteNotice == nil)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
   }
 
   @Test func inputSelectionResolvesOnlyAttachedDevices() {
