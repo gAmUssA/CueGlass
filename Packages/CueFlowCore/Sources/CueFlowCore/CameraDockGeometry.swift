@@ -442,7 +442,7 @@ public enum CameraDockGeometry {
       detachedHeight.isFinite, detachedHeight > 0, horizontalNudge.isFinite,
       attachedHeight.map({ $0.isFinite && $0 > 0 }) ?? true
     else { return nil }
-    guard visibleFrame.width >= minimumWidth, visibleFrame.height >= detachedHeight else {
+    guard visibleFrame.width >= minimumWidth else {
       return nil
     }
 

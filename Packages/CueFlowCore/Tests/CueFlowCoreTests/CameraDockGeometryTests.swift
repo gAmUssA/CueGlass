@@ -998,3 +998,27 @@ private func legacyCameraDockCatalog(_ json: String) throws -> CameraDockPrefere
     preferences: CameraDockPreferences(width: 600, forceNotchAttachment: false), lineAdvance: 40)
   #expect(tray?.style == .detached)
 }
+
+@Test func attachedDockFitsWhenOnlyDetachedControlsWouldOverflow() throws {
+  let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 200)
+  let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 168)
+  func placement(safeTop: Double, width: Double = 1512, attachedHeight: Double = 160)
+    -> CameraDockPlacement?
+  {
+    CameraDockGeometry.placement(
+      screenFrame: screen,
+      visibleFrame: CameraDockRect(x: 0, y: 0, width: width, height: 168),
+      safeTop: safeTop, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil,
+      isBuiltIn: true, width: 600, height: 204, attachedHeight: attachedHeight,
+      horizontalNudge: 0)
+  }
+  let attached = try #require(placement(safeTop: 32))
+  #expect(attached.location == .camera)
+  #expect(attached.contentFrame.height == 160)
+  #expect(attached.contentFrame.minY == 8)
+  #expect(attached.contentFrame.isContained(in: visible))
+  #expect(attached.frame.isContained(in: screen))
+  #expect(placement(safeTop: 0) == nil)
+  #expect(placement(safeTop: 32, attachedHeight: 169) == nil)
+  #expect(placement(safeTop: 32, width: 359) == nil)
+}

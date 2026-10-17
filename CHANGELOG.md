@@ -2,6 +2,7 @@
 
 ## 0.3.0 — 2026-10-17
 
+- Validate Camera Dock fit using its resolved attached height, without reserving unused detached controls.
 - Show Load Latest failure and retry guidance alongside the pending-script notice.
 - Keep playback paused with its position retained when Camera Dock cannot restore Output.
 - Synchronize the Follow Voice audio clock with captured-buffer timestamps across microphone recovery.

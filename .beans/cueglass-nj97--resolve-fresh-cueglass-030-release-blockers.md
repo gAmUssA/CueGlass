@@ -27,3 +27,5 @@ Audio sample clock: Thread Sanitizer reproduced the original Swift access race b
 Output recovery: both missing-display and disappeared-during-reopen paths reproduced a queued resume. The regression now passes with no countdown/resume, preserved snapshot/anchor/layout, and the disconnect notice after measurement. Existing successful restoration also passes.
 
 Load Latest: the pending footer formerly suppressed the downloading/retry status. The controller regression preserves the pending flag and immutable take while the footer now exposes the same recovery message both with and without a pending revision; routine Paused remains filtered.
+
+Attached fit: the original detached-height precheck rejected a 160-point attached strip in 168 visible points because detached controls would require 204 points. The new Core regression accepts the contained attached strip and still rejects detached overflow, attached overflow, and insufficient width; all 114 Core tests pass.
