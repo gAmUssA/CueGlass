@@ -48,3 +48,11 @@ The editor's main stage always remains a live prompt preview. The display map an
 The implementation was informed by [another.notch](https://github.com/jinkun1998/another.notch) and [Sapphire](https://github.com/cshariq/Sapphire). Both use app-owned top-anchored surfaces and display safe-area geometry rather than a public Dynamic Island API. CueGlass uses an independent static panel and its own geometry; no reference code is copied.
 
 Core and native tests cover the backing/content separation, auxiliary-area inference guard, menu-bar window level, and the editor preview remaining active. Hardware validation of the visual seam, text clearance, menu-bar overlap, recording visibility, and camera gaze remains pending under M1 and M15.
+
+## Notch silhouette, hidden band, and motion refinement (2026-10-17)
+
+The attached Dock may extend a black shoulder fillet of at most 12 pt into the camera band immediately beside the housing, so the surface blends with the housing's rounded corners. That is the only use of the menu-bar band beside the housing; prompt text and controls never enter it. The tray below the safe edge has 22 pt corners when open and parks as a 14 pt chin that is 28 pt wider than the housing.
+
+The presentation viewport places a fixed fraction of its height above the reading guide. For the Dock that band is hidden: CueFlowCore computes the logical viewport height so the band plus an 8 pt margin equals the guide offset, reports the band as `hiddenViewportTop`, and the live panel clips it. The visible strip therefore starts 8 pt above the guide line and holds exactly the chosen number of lines. The session's logical size remains the full viewport; anchors, measurement, and Timed Scrolling are unchanged.
+
+State transitions animate the mask path with one slightly under-damped spring bounded to 0.5–0.8 s and fade the content after a short delay; Reduce Motion keeps a 0.15 s crossfade and no shape motion. Committing the Dock reveals it from the chin. Collapse to Notch pauses playback and parks it; hover peeks a parked Dock; Play opens it and removes the controls band from the tray while playing. Geometry changes (width, lines, nudge, display) still resize the panel without animation.
