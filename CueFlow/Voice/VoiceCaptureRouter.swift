@@ -112,6 +112,9 @@ enum VoiceCaptureRouterError: LocalizedError, Equatable {
   /// Device enumeration and the input format can lag a hot-plug by a few hundred ms.
   var formatAttempts = 5
   var formatRetryDelay: Duration = .milliseconds(150)
+  /// Startup applies at most this many requests that arrive during its format waits
+  /// before installing the tap; a later one goes through the live path once.
+  var startupReconfigurationBudget = 4
   var sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
   private let host: any VoiceAudioInputHost
@@ -134,23 +137,33 @@ enum VoiceCaptureRouterError: LocalizedError, Equatable {
   }
 
   /// Installs the one tap and starts the host. A reconfiguration requested during
-  /// preparation is applied first, so the tap uses the latest device and format.
+  /// preparation is applied first, so the tap uses the latest device and format. A
+  /// request that arrives while the format wait is suspended is applied by another pass
+  /// before the tap goes in; the pass count is bounded so a stream of requests cannot
+  /// starve startup, and a request past that bound is applied by the live path instead.
   @discardableResult
   func goLive(tap: @escaping TapFactory) async throws -> AVAudioFormat {
     guard phase == .preparing else { throw VoiceCaptureRouterError.notPreparing }
     tapFactory = tap
     var format: AVAudioFormat
-    if pendingReconfiguration || !Self.isUsable(host.inputFormat) {
-      pendingReconfiguration = false
-      applyRoute()
+    var passes = 0
+    repeat {
+      if pendingReconfiguration {
+        pendingReconfiguration = false
+        applyRoute()
+      }
       format = try await usableInputFormat()
-      guard phase == .preparing else { throw VoiceCaptureRouterError.notPreparing }
-    } else {
-      format = try await usableInputFormat()
-    }
+      passes += 1
+    } while pendingReconfiguration && passes < startupReconfigurationBudget
+    guard phase == .preparing else { throw VoiceCaptureRouterError.notPreparing }
     try installTap(format: format, using: tap)
     try host.start()
     phase = .live
+    if pendingReconfiguration {
+      pendingReconfiguration = false
+      _ = try await reconfigure()
+      format = liveFormat ?? format
+    }
     return format
   }
 
