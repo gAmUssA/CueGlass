@@ -3711,8 +3711,12 @@ import Testing
   }
 
   @Test func cameraDockExplainerDisclosesHousingAndScreenRecordingBehavior() {
+    // ADR 0012: the black backing joins the housing from the display top; only the prompt
+    // text stays outside the housing band, and the island has a plain-tray opt-out.
     #expect(
-      OperatorWindowController.cameraDockExplainer.contains("never covers the camera housing"))
+      OperatorWindowController.cameraDockExplainer.contains("anchored to the top of the display"))
+    #expect(OperatorWindowController.cameraDockExplainer.contains("below the housing band"))
+    #expect(OperatorWindowController.cameraDockExplainer.contains("plain tray"))
     #expect(OperatorWindowController.cameraDockExplainer.contains("visible in screen recordings"))
     #expect(
       OperatorWindowController.cameraDockExplainer.contains(

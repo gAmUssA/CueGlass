@@ -1566,7 +1566,7 @@ extension OperatorWindowController {
 
   static let cameraDockExplainerSeenKey = "cameraDockExplainerSeen"
   static let cameraDockExplainer =
-    "On notched displays, Camera Dock sits flush below the camera safe area and never covers the camera housing. On other displays, it sits below the visible menu bar and assumes the camera is there. The prompt may be visible in screen recordings and full-display shares. CueGlass does not access the camera or microphone for Camera Dock."
+    "Camera Dock is a black island anchored to the top of the display around the camera housing: the MacBook notch, or an emulated housing on displays without one. The prompt text stays below the housing band, with the Dock controls beside the housing. Turn the island off for a plain tray below the menu bar. The prompt may be visible in screen recordings and full-display shares. CueGlass does not access the camera or microphone for Camera Dock."
   static let cameraDockCaptureDisclosure =
     "The prompt may appear in screen recordings and full-display shares."
 

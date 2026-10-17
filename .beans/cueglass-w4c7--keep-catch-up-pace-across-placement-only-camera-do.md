@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-17T19:46:38Z
-updated_at: 2026-10-17T19:59:43Z
+updated_at: 2026-10-17T20:00:28Z
 parent: cueglass-aeqt
 ---
 
@@ -17,6 +17,6 @@ GitHub issues #6 and #7, carried from the 0.3.0 release reviews on PR #5 (Copilo
 
 - [x] Regressions in the running-take pattern of placementPreviewToggleLeavesRunningTakeVelocityAndLayoutUntouched for (a) a Display-picker change with the preview expanded, (b) closed-Dock width, lines, nudge and island edits with the preview expanded, (c) a live Dock nudge with an unchanged viewport size; each leaves velocity, position continuity, session.measuring and renderGeneration unchanged while the map or Dock placement still updates; shown failing on the unfixed source and passing after.
 - [x] Route the three placement-only paths through the shared placement-map refresh; keep render() for viewport size changes and placement failures.
-- [ ] Reword OperatorWindowController.cameraDockExplainer and the README Camera Dock line per ADR 0012; update the explainer regression.
+- [x] Reword OperatorWindowController.cameraDockExplainer and the README Camera Dock line per ADR 0012; update the explainer regression.
 - [x] Run the Core and native suites, strict swift-format, beans check, git diff --check and the universal unsigned ReleaseLocal build (Core 114, native 172, format clean, beans check success, diff check clean, universal 0.3.0/build 3 ReleaseLocal build succeeded on 2026-10-17).
 - [ ] Push fix/cueglass-030-followups and record its CI runs.
