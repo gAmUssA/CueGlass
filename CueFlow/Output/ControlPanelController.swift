@@ -9,7 +9,7 @@ import SwiftUI
   init(controller: OperatorWindowController) {
     operatorController = controller
     let panel = PresentationPanel(
-      contentRect: CGRect(x: 150, y: 150, width: 420, height: 124),
+      contentRect: CGRect(x: 150, y: 150, width: 560, height: 136),
       styleMask: [.titled, .closable, .utilityWindow, .hudWindow, .nonactivatingPanel],
       backing: .buffered, defer: false)
     super.init(window: panel)
@@ -116,25 +116,29 @@ struct PanelPace: View {
   @ObservedObject var readout: TakeReadout
   unowned let controller: OperatorWindowController
   var body: some View {
-    VStack(spacing: 4) {
-      HStack(spacing: 4) {
+    VStack(spacing: 6) {
+      HStack(spacing: 6) {
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? -state.jumpStep : -state.fineStep
-          Button("\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.borderless)
-            .focusable(false).frame(minWidth: 24, minHeight: 24)
+          Button("\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.bordered)
+            .focusable(false).frame(minWidth: 34, minHeight: 26).monospacedDigit()
         }
+        // The pace slider is the control the operator reaches for mid-take; give it the room.
         Slider(
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           in: 2...state.maximum
-        ).tint(.gray).accessibilityLabel("Reading pace")
-          .focusable(false)
+        )
+        .controlSize(.large).frame(minWidth: 260, maxWidth: .infinity)
+        .accessibilityLabel("Reading pace")
+        .focusable(false)
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? state.fineStep : state.jumpStep
-          Button("+\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.borderless)
-            .focusable(false).frame(minWidth: 24, minHeight: 24)
+          Button("+\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.bordered)
+            .focusable(false).frame(minWidth: 34, minHeight: 26).monospacedDigit()
         }
       }
-      Text(readout.pace + (readout.wpm.contains("—") ? "" : " · " + readout.wpm)).font(.caption)
+      Text(readout.pace + (readout.wpm.contains("—") ? "" : " · " + readout.wpm))
+        .font(.system(size: 12, weight: .medium)).monospacedDigit()
     }
   }
 }
