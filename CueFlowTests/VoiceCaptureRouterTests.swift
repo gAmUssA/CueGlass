@@ -14,6 +14,8 @@ import Testing
   var refusedDeviceIDs: Set<AudioDeviceID> = []
   /// Formats the host reports before a usable one, to exercise the retry loop.
   var pendingUnusableFormats = 0
+  /// A freshly selected device reports this many unusable formats first, like a hot-plug.
+  var unusableReadsAfterSelection = 0
   private(set) var selections: [AudioDeviceID] = []
   private(set) var installedFormats: [AVAudioFormat] = []
   private(set) var removedTaps = 0
@@ -44,6 +46,7 @@ import Testing
         userInfo: [NSLocalizedDescriptionKey: "device \(id) is busy"])
     }
     selectedDeviceID = id
+    pendingUnusableFormats = unusableReadsAfterSelection
   }
   func installTap(format: AVAudioFormat, block: @escaping AVAudioNodeTapBlock) {
     installedFormats.append(format)
@@ -195,6 +198,132 @@ import Testing
     #expect(host.startCount == 1)
     #expect(router.phase == .live)
     #expect(!router.pendingReconfiguration)
+  }
+
+  @Test func aSelectionDuringTheStartupFormatWaitIsAppliedBeforeTheTap() async throws {
+    // The picker request lands while goLive is suspended waiting for the built-in format.
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    host.pendingUnusableFormats = 1
+    router.sleep = { _ in
+      router.preferredUID = "usb"
+      _ = try await router.reconfigure()
+    }
+
+    let format = try await router.goLive(tap: noopTap)
+
+    #expect(host.selectedDeviceID == usbID)
+    #expect(host.selections == [usbID])
+    #expect(router.route?.deviceUID == "usb")
+    #expect(format.sampleRate == 44_100)
+    #expect(host.installedFormats.map(\.sampleRate) == [44_100])
+    #expect(host.liveTaps == 1)
+    #expect(host.startCount == 1)
+    #expect(!router.pendingReconfiguration)
+    #expect(router.phase == .live)
+  }
+
+  @Test func repeatedSelectionsAcrossStartupFormatWaitsEndOnTheLatestDevice() async throws {
+    // USB is chosen before goLive; each newly selected device needs one retry before its
+    // format is usable, and the operator changes their mind during each of those waits.
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    router.preferredUID = "usb"
+    _ = try await router.reconfigure()
+    host.unusableReadsAfterSelection = 1
+    let choices = ["built-in", "usb", "built-in"]
+    var sleeps = 0
+    router.sleep = { _ in
+      guard router.phase == .preparing, sleeps < choices.count else { return }
+      router.preferredUID = choices[sleeps]
+      sleeps += 1
+      _ = try await router.reconfigure()
+    }
+
+    let format = try await router.goLive(tap: noopTap)
+
+    #expect(sleeps == choices.count)
+    #expect(host.selections == [usbID, builtInID, usbID, builtInID])
+    #expect(host.selectedDeviceID == builtInID)
+    #expect(router.route?.deviceUID == "built-in")
+    #expect(format.sampleRate == 48_000)
+    #expect(host.installedFormats.map(\.sampleRate) == [48_000])
+    #expect(host.liveTaps == 1)
+    #expect(host.startCount == 1)
+    #expect(!router.pendingReconfiguration)
+  }
+
+  @Test func anEndlessStreamOfStartupSelectionsIsBoundedAndLandsOnTheLatest() async throws {
+    // Every startup wait brings another request. Startup stops folding them after its
+    // budget, goes live, and applies the remainder through the live path once.
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    host.unusableReadsAfterSelection = 1
+    host.pendingUnusableFormats = 1
+    var requests = 0
+    router.sleep = { _ in
+      guard router.phase == .preparing, requests < 8 else { return }
+      router.preferredUID = requests.isMultiple(of: 2) ? "usb" : "built-in"
+      requests += 1
+      _ = try await router.reconfigure()
+    }
+
+    _ = try await router.goLive(tap: noopTap)
+
+    #expect(requests == router.startupReconfigurationBudget)
+    #expect(host.selections.count == router.startupReconfigurationBudget)
+    let latest = try #require(router.preferredUID)
+    #expect(router.route?.deviceUID == latest)
+    #expect(host.selectedDeviceID == (latest == "usb" ? usbID : builtInID))
+    #expect(host.installedFormats.count == 2)
+    #expect(host.liveTaps == 1)
+    #expect(host.isRunning)
+    #expect(!router.pendingReconfiguration)
+    #expect(router.phase == .live)
+  }
+
+  @Test func closingDuringAStartupWaitAfterASelectionInstallsNoTap() async throws {
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    host.pendingUnusableFormats = 1
+    router.sleep = { _ in
+      router.preferredUID = "usb"
+      _ = try await router.reconfigure()
+      router.close()
+    }
+    await #expect(throws: VoiceCaptureRouterError.notPreparing) {
+      try await router.goLive(tap: noopTap)
+    }
+    #expect(host.liveTaps == 0)
+    #expect(host.startCount == 0)
+    #expect(!host.isRunning)
+    #expect(router.phase == .closed)
+  }
+
+  @Test func aCancelledLiveReconfigurationIsCompletedByTheNextRequest() async throws {
+    // The speech source cancels an in-flight reconfiguration when a newer request arrives
+    // and dispatches the newer one; the cancelled pass leaves no tap and the next pass
+    // ends on the latest device with one tap.
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    try await router.goLive(tap: noopTap)
+    host.unusableReadsAfterSelection = 1
+    router.sleep = { _ in throw CancellationError() }
+    router.preferredUID = "usb"
+    await #expect(throws: CancellationError.self) { try await router.reconfigure() }
+    #expect(host.liveTaps == 0)
+    #expect(!host.isRunning)
+
+    router.sleep = { _ in }
+    router.preferredUID = "built-in"
+    let applied = try await router.reconfigure()
+
+    #expect(applied)
+    #expect(host.selectedDeviceID == builtInID)
+    #expect(router.route?.deviceUID == "built-in")
+    #expect(host.liveTaps == 1)
+    #expect(host.isRunning)
+    #expect(host.installedFormats.map(\.sampleRate) == [48_000, 48_000])
   }
 
   @Test func aDeviceListChangeDuringPreparationDoesNotInstallACompetingTap() async throws {
