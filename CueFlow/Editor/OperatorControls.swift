@@ -273,6 +273,24 @@ struct OperatorControls: View {
             }
             .disabled(state.voiceLocales.isEmpty || state.voiceActive)
             .help("Choose a supported language. Selecting one does not open the microphone.")
+            Picker(
+              "Microphone",
+              selection: Binding(
+                get: {
+                  state.voiceInputDevices.contains { $0.uid == state.voiceInputDevice }
+                    ? state.voiceInputDevice : ""
+                },
+                set: { controller.selectVoiceInputDevice($0) })
+            ) {
+              Text("System Default").tag("")
+              ForEach(state.voiceInputDevices) { device in
+                Text(device.isDefault ? "\(device.name) (default)" : device.name).tag(device.uid)
+              }
+            }
+            .help(
+              "Choose which microphone Follow Voice listens to. Changing it while following moves capture to the new microphone without stopping the take."
+            )
+            .accessibilityLabel("Follow Voice microphone")
             Text(
               "English is the validated language. Other languages depend on the models available in macOS."
             )

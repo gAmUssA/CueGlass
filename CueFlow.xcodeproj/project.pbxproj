@@ -18,6 +18,7 @@
 		64D8D937E071E2C01F23BA0E /* VoiceFollowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */; };
 		6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3798F2E904FA73605AD7462F /* IntegrationTests.swift */; };
 		737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */; };
+		786CA3F6199B63A602380BCE /* AudioInputDevices.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB1DD0606F54EDCC3F9CDF1 /* AudioInputDevices.swift */; };
 		7A8073DFC3464CCFAFA156F9 /* PresentationFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E59D28065A1EC8A518D087C /* PresentationFont.swift */; };
 		7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8C3DC660FC600F99391B73D1 /* CueGlass.icon */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
@@ -72,6 +73,7 @@
 		E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
 		F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayLinkDriver.swift; sourceTree = "<group>"; };
 		F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorWindowController.swift; sourceTree = "<group>"; };
+		FBB1DD0606F54EDCC3F9CDF1 /* AudioInputDevices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioInputDevices.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +91,7 @@
 		09F27E16328920EDF4A2F8E1 /* Voice */ = {
 			isa = PBXGroup;
 			children = (
+				FBB1DD0606F54EDCC3F9CDF1 /* AudioInputDevices.swift */,
 				239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */,
 				D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */,
 			);
@@ -339,6 +342,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				521CE2ABE6FB83A509796EAE /* AppDelegate.swift in Sources */,
+				786CA3F6199B63A602380BCE /* AudioInputDevices.swift in Sources */,
 				AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */,
 				1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */,
 				737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */,

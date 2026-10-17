@@ -100,8 +100,22 @@ private struct FakeSpeechAssetError: LocalizedError {
   private var startWaiters: [CheckedContinuation<Void, Never>] = []
   private var startCompletion: CheckedContinuation<Void, Never>?
   private var output: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
+  var availableDevices: [VoiceInputDeviceOption] = []
+  private(set) var preferredInputDeviceUID: String?
+  private(set) var preferredDeviceAssignments = 0
+  private var deviceHandler: (@MainActor () -> Void)?
 
   func supportedLocales() async -> [VoiceLocaleOption] { localeOptions }
+  func availableInputDevices() -> [VoiceInputDeviceOption] { availableDevices }
+  func setPreferredInputDevice(uid: String?) {
+    preferredInputDeviceUID = uid
+    preferredDeviceAssignments += 1
+  }
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void) { deviceHandler = handler }
+  func simulateDeviceChange(_ devices: [VoiceInputDeviceOption]) {
+    availableDevices = devices
+    deviceHandler?()
+  }
   func readiness(localeIdentifier: String) async -> VoiceAssetReadiness {
     readinessCount += 1
     for waiter in readinessWaiters { waiter.resume() }
@@ -1038,9 +1052,97 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.velocity > baseline)
-    #expect(session.timeline.velocity <= baseline * 1.4)
+    // The cadence component stays within 1.4 × baseline; the catch-up glide may add to it
+    // while the display trails confirmed speech, never beyond the configured maximum.
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     #expect(session.voiceSessionActive)
     coordinator.stop()
+  }
+
+  @Test func confirmedSpeechFarAheadOfTheDisplayGlidesFasterThanTheCadenceCap() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let sourceText = text as NSString
+    let lineTable = VoiceLineTable(
+      lines: ["North wind", "carries the", "lantern home."].enumerated().map { index, line in
+        let range = sourceText.range(of: line)
+        return VoiceLine(
+          utf16Range: range.location..<(range.location + range.length), minY: Double(index) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+    let baseline = session.timeline.velocity
+    let maximum = session.lineAdvance * session.configuredMax / 60
+
+    // The presenter is already two lines ahead of a display that has not moved.
+    source.send(transcript("North wind", startingAt: 0))
+    source.send(transcript("lantern home.", startingAt: 0.6))
+    for _ in 0..<200 where session.timeline.velocity <= baseline * 1.4 {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.velocity > baseline * 1.4)
+    #expect(session.timeline.velocity <= maximum)
+    #expect(abs(session.timeline.velocity - 160 / FollowCatchUp.catchUpSeconds) < 1e-6)
+    #expect(session.timeline.voiceCeiling == 160)
+    coordinator.stop()
+  }
+
+  @Test func microphoneSelectionFollowsAttachedDevicesAndReachesTheSource() async throws {
+    let (session, _, _) = try take()
+    let builtIn = VoiceInputDeviceOption(
+      uid: "built-in", name: "MacBook Pro Microphone", isDefault: true)
+    let external = VoiceInputDeviceOption(uid: "usb-1", name: "USB Microphone", isDefault: false)
+    let source = FakeVoiceCaptureSource()
+    source.availableDevices = [builtIn, external]
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    #expect(coordinator.inputDevices == [builtIn, external])
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+
+    coordinator.selectInputDevice(uid: external.uid)
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+    #expect(source.preferredInputDeviceUID == external.uid)
+
+    // The chosen microphone goes away: capture follows the system default, the choice is kept
+    // so the device is used again when it returns.
+    source.simulateDeviceChange([builtIn])
+    #expect(coordinator.inputDevices == [builtIn])
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+    source.simulateDeviceChange([builtIn, external])
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+
+    coordinator.selectInputDevice(uid: "")
+    #expect(coordinator.selectedInputDeviceUID == nil)
+    #expect(source.preferredInputDeviceUID == nil)
+    coordinator.selectInputDevice(uid: nil)
+    #expect(coordinator.selectedInputDeviceUID == nil)
+  }
+
+  @Test func inputSelectionResolvesOnlyAttachedDevices() {
+    let devices = [
+      VoiceInputDeviceOption(uid: "a", name: "A", isDefault: true),
+      VoiceInputDeviceOption(uid: "b", name: "B", isDefault: false),
+    ]
+    #expect(VoiceInputSelection.resolve(preferredUID: "b", available: devices) == "b")
+    #expect(VoiceInputSelection.resolve(preferredUID: "missing", available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: nil, available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: "", available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: "a", available: []) == nil)
   }
 
   @Test func watermarkOnlyFinalizationFeedsConfirmedProgressToPaceEstimator() async throws {
@@ -1083,7 +1185,7 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.velocity > baseline)
-    #expect(session.timeline.velocity <= baseline * 1.4)
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     coordinator.stop()
   }
 
@@ -1164,7 +1266,7 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.voiceCeiling == 240)
-    #expect(session.timeline.velocity <= nominal * 1.4 + 0.001)
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     coordinator.stop()
   }
 

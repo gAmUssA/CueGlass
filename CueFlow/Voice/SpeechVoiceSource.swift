@@ -54,6 +54,15 @@ struct CaptureGenerationGate: Sendable {
   private var captureStartedAt = 0.0
   private var resultStreamsRemaining = 0
   private var captureGeneration = CaptureGenerationGate()
+  private var targetFormat: AVAudioFormat?
+  private var preferredInputDeviceUID: String?
+  private var deviceObserver: AudioInputDeviceObserver?
+  private var reconfiguration: Task<Void, Never>?
+  /// Device enumeration and the input format can lag a hot-plug by a few hundred ms.
+  static let inputFormatAttempts = 5
+  static let inputFormatRetryDelay = Duration.milliseconds(150)
+  /// The analyzer keeps up in real time; this only has to absorb a reconfiguration stall.
+  static let inputBufferLimit = 256
 
   func supportedLocales() async -> [VoiceLocaleOption] {
     guard SpeechTranscriber.isAvailable else { return [] }
@@ -136,6 +145,25 @@ struct CaptureGenerationGate: Sendable {
     installationRequest = nil
   }
 
+  func availableInputDevices() -> [VoiceInputDeviceOption] {
+    AudioInputDeviceCatalog.inputDevices()
+  }
+
+  /// Remembers the microphone to open. While capture is running, the engine switches to it in
+  /// place; the analyzer, transcript stream, and the take all stay where they are.
+  func setPreferredInputDevice(uid: String?) {
+    let resolved = VoiceInputSelection.resolve(
+      preferredUID: uid, available: AudioInputDeviceCatalog.inputDevices())
+    guard resolved != preferredInputDeviceUID || uid != resolved else { return }
+    preferredInputDeviceUID = resolved
+    guard let generation = captureGeneration.activeGeneration, engine != nil else { return }
+    scheduleReconfiguration(generation: generation)
+  }
+
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void) {
+    deviceObserver = AudioInputDeviceObserver(handler)
+  }
+
   func start(localeIdentifier: String) async throws -> AsyncThrowingStream<
     TranscriptEvent, any Error
   > {
@@ -170,13 +198,14 @@ struct CaptureGenerationGate: Sendable {
 
     let engine = AVAudioEngine()
     let inputNode = engine.inputNode
-    let inputFormat = inputNode.inputFormat(forBus: 0)
-    guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
-      let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
-    else { throw VoiceSourceError.microphoneFormatUnavailable }
+    applyPreferredInputDevice(to: inputNode)
+    let inputFormat = try await usableInputFormat(of: inputNode, generation: generation)
+    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+      throw VoiceSourceError.microphoneFormatUnavailable
+    }
 
     let inputPair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(
-      of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(24))
+      of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(Self.inputBufferLimit))
     let outputPair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream(
       of: TranscriptEvent.self, bufferingPolicy: .bufferingNewest(32))
     let pipe = AudioInputPipe(
@@ -186,6 +215,7 @@ struct CaptureGenerationGate: Sendable {
     }
     guard captureGeneration.activate(generation) else { throw CancellationError() }
     self.engine = engine
+    self.targetFormat = targetFormat
     self.analyzer = analyzer
     self.transcriber = module
     self.commandTranscriber = commandModule
@@ -254,12 +284,13 @@ struct CaptureGenerationGate: Sendable {
       inputNode.installTap(
         onBus: 0, bufferSize: 1024, format: inputFormat,
         block: makeSpeechAudioTapHandler(for: pipe))
+      // Plugging, unplugging, or switching a microphone changes the input's sample rate or
+      // channel count; the engine stops and posts this. Rebuild the tap on the new format
+      // and keep the analyzer and transcript stream running instead of ending the session.
       configurationObserver = NotificationCenter.default.addObserver(
         forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
       ) { [weak self] _ in
-        Task { @MainActor in
-          self?.failAudio(VoiceSourceError.audioConfigurationChanged, generation: generation)
-        }
+        Task { @MainActor in self?.scheduleReconfiguration(generation: generation) }
       }
       try ensureCurrentRequest(generation)
       try Task.checkCancellation()
@@ -279,6 +310,8 @@ struct CaptureGenerationGate: Sendable {
 
   private func stopCurrentCapture() {
     captureGeneration.deactivate()
+    reconfiguration?.cancel()
+    reconfiguration = nil
     if let engine {
       if engine.isRunning { engine.stop() }
       engine.inputNode.removeTap(onBus: 0)
@@ -300,11 +333,72 @@ struct CaptureGenerationGate: Sendable {
     commandResultsTask = nil
     if let analyzer { Task { await analyzer.cancelAndFinishNow() } }
     engine = nil
+    targetFormat = nil
     analyzer = nil
     transcriber = nil
     commandTranscriber = nil
     resultStreamsRemaining = 0
     captureStartedAt = 0
+  }
+
+  private func applyPreferredInputDevice(to inputNode: AVAudioInputNode) {
+    guard let uid = preferredInputDeviceUID,
+      let deviceID = AudioInputDeviceCatalog.deviceID(forUID: uid)
+    else { return }
+    // A device that refuses selection leaves the system default in place; capture still runs.
+    try? inputNode.auAudioUnit.setDeviceID(deviceID)
+  }
+
+  private func usableInputFormat(
+    of inputNode: AVAudioInputNode, generation: UInt64
+  ) async throws -> AVAudioFormat {
+    var attempt = 0
+    while true {
+      let format = inputNode.inputFormat(forBus: 0)
+      if format.sampleRate > 0, format.channelCount > 0 { return format }
+      attempt += 1
+      guard attempt < Self.inputFormatAttempts else {
+        throw VoiceSourceError.microphoneFormatUnavailable
+      }
+      try await Task.sleep(for: Self.inputFormatRetryDelay)
+      try ensureCurrentRequest(generation)
+    }
+  }
+
+  private func scheduleReconfiguration(generation: UInt64) {
+    guard captureGeneration.acceptsCallback(generation) else { return }
+    reconfiguration?.cancel()
+    reconfiguration = Task { @MainActor [weak self] in
+      await self?.reconfigureCapture(generation: generation)
+    }
+  }
+
+  /// Rebuilds only the audio input: same engine, same analyzer, same transcript stream. The
+  /// sample clock keeps counting, so the analyzer sees a short gap rather than a restart.
+  private func reconfigureCapture(generation: UInt64) async {
+    guard captureGeneration.acceptsCallback(generation), let engine, let pipe = inputPipe,
+      let targetFormat
+    else { return }
+    let inputNode = engine.inputNode
+    inputNode.removeTap(onBus: 0)
+    if engine.isRunning { engine.stop() }
+    do {
+      applyPreferredInputDevice(to: inputNode)
+      let inputFormat = try await usableInputFormat(of: inputNode, generation: generation)
+      guard captureGeneration.acceptsCallback(generation), !Task.isCancelled else { return }
+      guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+        throw VoiceSourceError.microphoneFormatUnavailable
+      }
+      pipe.replaceConverter(converter)
+      inputNode.installTap(
+        onBus: 0, bufferSize: 1024, format: inputFormat,
+        block: makeSpeechAudioTapHandler(for: pipe))
+      try engine.start()
+    } catch is CancellationError {
+      return
+    } catch {
+      failAudio(error, generation: generation)
+    }
   }
 
   private func ensureCurrentRequest(_ generation: UInt64) throws {
@@ -428,7 +522,8 @@ struct CaptureGenerationGate: Sendable {
 
 @available(macOS 26.0, *)
 final class AudioInputPipe: @unchecked Sendable {
-  private let converter: AVAudioConverter
+  private let lock = NSLock()
+  private var converter: AVAudioConverter
   private let targetFormat: AVAudioFormat
   private let continuation: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation
   private let onError: @Sendable (any Error) -> Void
@@ -445,7 +540,18 @@ final class AudioInputPipe: @unchecked Sendable {
     self.onError = onError
   }
 
+  /// Swaps the converter when the input device or its format changes; the output format and
+  /// the running sample clock are unchanged.
+  func replaceConverter(_ next: AVAudioConverter) {
+    lock.lock()
+    converter = next
+    lock.unlock()
+  }
+
   func append(_ input: AVAudioPCMBuffer) {
+    lock.lock()
+    let converter = self.converter
+    lock.unlock()
     let scaledCapacity =
       ceil(
         Double(input.frameLength) * targetFormat.sampleRate / input.format.sampleRate) + 64
@@ -526,7 +632,7 @@ private enum VoiceSourceError: LocalizedError {
     case .modelNotReady: "The selected speech model is not installed and ready."
     case .noCompatibleAudioFormat: "No audio format is available for this speech model."
     case .microphoneFormatUnavailable: "The microphone did not provide a usable audio format."
-    case .audioConfigurationChanged: "The audio input device changed or disconnected."
+    case .audioConfigurationChanged: "The audio input device changed and could not be reopened."
     case .bufferConversionFailed: "Microphone audio could not be prepared for transcription."
     case .inputStreamTerminated: "The microphone audio stream is no longer available."
     }

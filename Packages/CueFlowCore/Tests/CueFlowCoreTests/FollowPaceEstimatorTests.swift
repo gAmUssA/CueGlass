@@ -61,3 +61,55 @@ import Testing
     #expect(speed != nil && speed! > 40 && speed! <= 56)
   }
 }
+
+@Suite struct FollowCatchUpTests {
+  @Test func smallGapsKeepTheCadenceVelocity() {
+    #expect(
+      FollowCatchUp.velocity(distance: 30, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 50)
+    #expect(
+      FollowCatchUp.velocity(
+        distance: 30, cadence: nil, baseline: 40, maximum: 320, lineAdvance: 80)
+        == nil)
+    #expect(
+      FollowCatchUp.velocity(
+        distance: -200, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 50)
+  }
+
+  @Test func largeGapsCloseWithinTheCatchUpWindowButNeverAboveTheMaximum() throws {
+    // Two lines behind at 80 pt per line: 160 pt in 0.7 s needs about 229 pt/s.
+    let two = try #require(
+      FollowCatchUp.velocity(
+        distance: 160, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 80))
+    #expect(abs(two - 160 / FollowCatchUp.catchUpSeconds) < 1e-9)
+    #expect(two > 50)
+    // Far behind: capped at the operator's maximum.
+    #expect(
+      FollowCatchUp.velocity(
+        distance: 2000, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 320)
+    // A fast cadence above the required catch-up is kept.
+    #expect(
+      FollowCatchUp.velocity(
+        distance: 60, cadence: 300, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 300)
+  }
+
+  @Test func degenerateInputsFallBackSafely() {
+    #expect(
+      FollowCatchUp.velocity(
+        distance: .nan, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 50)
+    #expect(
+      FollowCatchUp.velocity(distance: 160, cadence: 50, baseline: 40, maximum: 320, lineAdvance: 0)
+        == 50)
+    #expect(
+      FollowCatchUp.velocity(
+        distance: 160, cadence: .nan, baseline: 40, maximum: 320, lineAdvance: 80)
+        == 160 / FollowCatchUp.catchUpSeconds)
+    #expect(
+      FollowCatchUp.velocity(distance: 160, cadence: 50, baseline: 40, maximum: 20, lineAdvance: 80)
+        == 40)
+  }
+}

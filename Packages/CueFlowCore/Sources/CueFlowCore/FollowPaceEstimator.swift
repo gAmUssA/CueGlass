@@ -68,3 +68,26 @@ public struct FollowPaceEstimator: Sendable {
     return filteredVelocity
   }
 }
+
+/// Catch-up glide. Cadence alone keeps the page moving at roughly the presenter's pace, so
+/// when confirmed speech is already well ahead of the display the guide trails for seconds.
+/// Once the gap exceeds half a line, the glide velocity rises so the guide reaches the spoken
+/// line within `catchUpSeconds`, never below the cadence or baseline and never above the
+/// operator's configured maximum. The voice ceiling still stops the page at the spoken line.
+public enum FollowCatchUp {
+  public static let catchUpSeconds = 0.7
+  public static let minimumGapLines = 0.5
+
+  public static func velocity(
+    distance: Double, cadence: Double?, baseline: Double, maximum: Double, lineAdvance: Double
+  ) -> Double? {
+    let floor = max(0.1, baseline.isFinite ? baseline : 0.1)
+    let ceiling = maximum.isFinite ? max(floor, maximum) : floor
+    let paced = cadence.flatMap { $0.isFinite ? min(ceiling, max(floor, $0)) : nil }
+    guard distance.isFinite, lineAdvance.isFinite, lineAdvance > 0,
+      distance > lineAdvance * minimumGapLines
+    else { return paced }
+    let required = distance / catchUpSeconds
+    return min(ceiling, max(paced ?? floor, required))
+  }
+}

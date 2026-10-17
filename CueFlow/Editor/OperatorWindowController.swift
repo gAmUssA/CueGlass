@@ -39,6 +39,9 @@ struct VoiceFollowPlatformCapability: Equatable {
   @Published var voiceState: VoiceFollowUIState = .hidden
   @Published var voiceLocales: [VoiceLocaleOption] = []
   @Published var voiceLocale = ""
+  @Published var voiceInputDevices: [VoiceInputDeviceOption] = []
+  /// Selected microphone UID; empty follows the system default input.
+  @Published var voiceInputDevice = ""
   @Published var voiceActive = false
   @Published var voiceSuspended = false
   @Published var voiceMessage = ""
@@ -829,11 +832,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   func openMicrophoneSettings() { voiceCoordinator?.openMicrophoneSettings() }
   func selectVoiceLocale(_ identifier: String) { voiceCoordinator?.selectLocale(identifier) }
+  func selectVoiceInputDevice(_ uid: String) {
+    voiceCoordinator?.selectInputDevice(uid: uid.isEmpty ? nil : uid)
+  }
   private func syncVoiceState() {
     guard let coordinator = voiceCoordinator else { return }
     state.voiceState = coordinator.state
     state.voiceLocales = coordinator.locales
     state.voiceLocale = coordinator.selectedLocaleIdentifier
+    state.voiceInputDevices = coordinator.inputDevices
+    state.voiceInputDevice = coordinator.selectedInputDeviceUID ?? ""
     state.voiceActive = coordinator.isActive
     state.voiceSuspended = coordinator.isSuspended
     state.voiceMessage = voiceMessage(for: coordinator.state)
