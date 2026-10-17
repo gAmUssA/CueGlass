@@ -1256,6 +1256,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       cameraDock.onClose = nil
       cameraDock.close()
       floating = nil
+      refreshCameraDockPreferencesForTarget()
       state.cameraDockReady = false
       state.cameraDockFirstUseCalloutVisible = false
       perform {
@@ -1352,6 +1353,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       cameraDock.onClose = nil
       cameraDock.close()
       floating = nil
+      refreshCameraDockPreferencesForTarget()
       session.logicalSize = restoredSize
       state.cameraDockReady = false
       state.cameraDockFirstUseCalloutVisible = false
@@ -1709,6 +1711,7 @@ extension OperatorWindowController {
         self.cameraDockReturnSurface = nil
         self.perform { try self.session.pauseSafely("Camera Dock stopped — position retained") }
         self.floating = nil
+        self.refreshCameraDockPreferencesForTarget()
         self.session.logicalSize = restoredSize
         self.state.cameraDockReady = false
         self.state.cameraDockFirstUseCalloutVisible = false
@@ -2015,6 +2018,7 @@ extension OperatorWindowController {
     cameraDock.onClose = nil
     cameraDock.close()
     floating = nil
+    refreshCameraDockPreferencesForTarget()
     session.logicalSize = restoredSize
     state.cameraDockReady = false
     state.cameraDockFirstUseCalloutVisible = false

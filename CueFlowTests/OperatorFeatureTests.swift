@@ -2424,6 +2424,79 @@ import Testing
     #expect(updatedRunningMap == c.cameraDockPlacementMap)
   }
 
+  @Test func closingLiveDockReloadsSelectedDisplayPreferencesBeforeEdits() async throws {
+    let preferenceKey = "cameraDockPreferences"
+    let previousPreferences = UserDefaults.standard.data(forKey: preferenceKey)
+    defer {
+      if let previousPreferences {
+        UserDefaults.standard.set(previousPreferences, forKey: preferenceKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: preferenceKey)
+      }
+    }
+
+    let displayAUUID = "live-dock-close-display-a"
+    let displayBUUID = "live-dock-close-display-b"
+    var catalog = CameraDockPreferenceCatalog()
+    catalog.set(
+      CameraDockPreferences(
+        width: 520, lineCount: 4, horizontalNudge: 24,
+        forceNotchAttachment: false),
+      forDisplayUUID: displayAUUID)
+    catalog.set(
+      CameraDockPreferences(
+        width: 680, lineCount: 2, horizontalNudge: -10,
+        forceNotchAttachment: true),
+      forDisplayUUID: displayBUUID)
+    UserDefaults.standard.set(try JSONEncoder().encode(catalog), forKey: preferenceKey)
+
+    let c = try await prepared()
+    defer {
+      c.stop()
+      c.close()
+    }
+    let screen = try #require(NSScreen.screens.first)
+    let displayA = syntheticDisplay(
+      screen: screen, id: 711, uuid: displayAUUID, isBuiltIn: false,
+      parameters: dockParameters(for: screen))
+    let displayB = syntheticDisplay(
+      screen: screen, id: 712, uuid: displayBUUID, isBuiltIn: false,
+      parameters: dockParameters(for: screen))
+    c.displayProvider = { [displayA, displayB] }
+    c.refreshScreens([displayA, displayB])
+    c.state.selectedDisplay = displayB.selectionKey
+    c.selectDisplay(displayA.selectionKey)
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(!c.state.cameraDockNotchIsland)
+
+    c.selectDisplay(displayB.selectionKey)
+    #expect(c.state.cameraDockWidth == 520)
+    dock.window?.close()
+    #expect(c.cameraDock == nil)
+    #expect(c.state.cameraDockWidth == 680)
+    #expect(c.state.cameraDockLineCount == 2)
+    #expect(c.state.cameraDockHorizontalNudge == -10)
+    #expect(c.state.cameraDockNotchIsland)
+
+    c.setCameraDockHorizontalNudge(31)
+    c.selectDisplay(displayA.selectionKey)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(c.state.cameraDockHorizontalNudge == 24)
+    #expect(!c.state.cameraDockNotchIsland)
+    c.selectDisplay(displayB.selectionKey)
+    #expect(c.state.cameraDockWidth == 680)
+    #expect(c.state.cameraDockLineCount == 2)
+    #expect(c.state.cameraDockHorizontalNudge == 31)
+    #expect(c.state.cameraDockNotchIsland)
+  }
+
   @Test func cameraDockPreferenceControlsClampAndUpdatePlacement() async throws {
     let c = try await prepared()
     defer { c.close() }
