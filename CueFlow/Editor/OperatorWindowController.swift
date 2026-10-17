@@ -2128,9 +2128,9 @@ extension OperatorWindowController {
       row.spacing = 6
       for (symbol, label, command) in [
         ("backward.end.fill", "Restart · Home", PlaybackCommand.restart),
-        ("chevron.up", "Previous paragraph · Page Up", .previousParagraph),
+        ("backward.fill", "Previous paragraph · Page Up", .previousParagraph),
         ("play.fill", "Play or pause · Space", .toggle),
-        ("chevron.down", "Next paragraph · Page Down", .nextParagraph),
+        ("forward.fill", "Next paragraph · Page Down", .nextParagraph),
         ("arrow.up.arrow.down", "Reverse direction · R", .reverse),
       ] {
         let button = ActionButton(symbol: symbol, label: label) { [weak self] in
