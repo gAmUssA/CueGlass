@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: normal
 created_at: 2026-10-17T05:10:50Z
-updated_at: 2026-10-17T11:39:00Z
+updated_at: 2026-10-17T14:36:21Z
 ---
 
 Continue original cueglass-tgvc correction1; related voice work cueglass-6nk0. Independent reports: /Users/vikgamov/.local/state/cueglass/release-030/reports/reviewer.md and tester.md.
@@ -31,3 +31,26 @@ At release candidate d5a262c (implementation95f761e), both independent reports r
 - [x] Demonstrate regressions before/after, run relevant/full gates, commit and push for independent final verification.
 
 Reports: /Users/vikgamov/.local/state/cueglass/release-030/final/reviewer.md and tester.md. Lead independently confirmed probes. Owner three r11 passes remain accepted; unmentioned hardware release criteria remain separate.
+
+
+
+## Correction 3 — Copilot review on PR #5 (2026-10-17)
+
+The exact candidate a8ac7c6b6121d5bf4078e9b6aec9798701856f7c passed PR CI, but Copilot review 5558087329 identified eight concrete release-blocking defects. Track these independent PR blockers as separate task cueglass-f01c; preserve cueglass-tgvc's two completed corrections and original scope unchanged. Preserve PR #5 and its 0.3.0/build3 metadata.
+
+- [x] 4302916661 — reload per-display Camera Dock preferences when the display picker changes; prevent stale values being persisted to the newly selected display.
+- [x] 4302916715 — Stop Take restores the pre-Dock Preview size while clearing the prior surface and play state.
+- [x] 4302916757 — if the saved return display is unavailable, recover to paused Preview with the saved logical size and anchor.
+- [x] 4302916781 — capture the active Output display as the Dock return target, independently from the next selected destination.
+- [x] 4302916815 — update live Dock text-panel visibility for non-layout background edits and undo without rebuilding layout.
+- [x] 4302916862 — use a shared audio-time base for silence and spoken-pause resume across microphone recovery gaps.
+- [x] 4302916901 — limit old-default width migration to legacy catalog entries; preserve current saved widths at slider stops.
+- [x] 4302916924 — allow the selected mirrored built-in display fallback and align geometry tests with ADR 0012.
+- [x] Add deterministic native/core regression tests for all eight findings, run full Core/native/format/Beans/diff gates, commit and push the correction to release/cueglass-030.
+- [ ] Obtain full independent reviewer and tester passes on the corrected full branch tip; then re-request Copilot and pass new exact-head CI before release resumes.
+
+Full Copilot artifacts: /Users/vikgamov/.local/state/cueglass/release-030/copilot-reviews.json and copilot-inline-comments.json. Release report: /Users/vikgamov/.local/state/cueglass/release-030/release-report.md. Hardware/Mac14 runtime rows remain deferred and unverified per owner scope decision.
+
+### Correction 3 implementation (2026-10-17)
+
+Display picker edits route through `selectDisplay`, which reloads the target display's Dock values first. Stop Take converts the saved return surface into a Preview return at the pre-Dock size. The Output return checks the saved display against the current display list and falls back to paused Preview at the saved size and anchor; the return target is the active Output's own display id. Non-layout style edits and their undo call the Dock controller's `updateAids`, which refreshes the text-panel decision without a relayout. The coordinator reads one captured-audio clock from the source (`capturedAudioTime`, the AudioInputPipe sample clock) for silence detection and spoken-pause resume, with host time only as a fallback. The preference catalog marks entries written by current builds and migrates only unmarked legacy entries. Display selection accepts the selected mirrored built-in display; ADR 0012 records the retained contract. Regressions: three Core tests (catalog, selection), five native OperatorFeatureTests and one VoiceFollowTests test, each shown failing on the prior source and passing after. Hardware/macOS 14 rows remain unverified.

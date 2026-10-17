@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-17T04:58:08Z
-updated_at: 2026-10-17T11:24:23Z
+updated_at: 2026-10-17T14:05:08Z
 ---
 
 Prepare the completed Claude Camera Dock, microphone continuity, and Quiet Studio work for the next release. User authorization: initiate preparation for merge and cutting next release.
@@ -26,3 +26,9 @@ Owner confirmed all three r11 checks passed: notch attachment/animation, main pr
 ## Final candidate integration
 
 Integrated all six Claude correction commits from 95f761e into the 0.3.0 release branch. Version 0.3.0/build 3 preserved. Prior findings now await independent re-verification against the full main-to-candidate range; owner acceptance remains recorded. User explicitly requested carrying this through merge and release.
+
+
+
+## PR #5 gate checkpoint — 2026-10-17
+
+PR #5 is open on release/cueglass-030 at a8ac7c6b6121d5bf4078e9b6aec9798701856f7c. Exact-head pull_request CI run 39038057328 succeeded. Copilot review 5558087329 reported eight source defects; the release lead confirmed them and blocked merge. Correction3 is tracked in cueglass-f01c. PR remains open; no merge, v0.3.0 tag, or publication yet. Preserve the owner-authorized deferral of unverified hardware/macOS14 rows; no signing or notarization.
