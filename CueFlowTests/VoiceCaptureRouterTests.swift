@@ -282,6 +282,76 @@ import Testing
     #expect(router.phase == .live)
   }
 
+  @Test func aSelectionWhileTheOpeningDeviceNeverYieldsAFormatIsAppliedBeforeGivingUp()
+    async throws
+  {
+    // The built-in microphone never reports a usable format. USB is chosen during the
+    // first retry sleep, so open must switch to it instead of failing on the built-in
+    // once the attempt budget runs out, and goLive then installs the one tap on USB.
+    let (router, host, _) = fixture(preferred: nil)
+    host.devices[builtInID] = .init(id: builtInID, sampleRate: 0)
+    var sleeps = 0
+    router.sleep = { _ in
+      sleeps += 1
+      guard sleeps == 1 else { return }
+      router.preferredUID = "usb"
+      _ = try await router.reconfigure()
+    }
+
+    let openFormat = try await router.open()
+
+    #expect(openFormat.sampleRate == 44_100)
+    #expect(sleeps == router.formatAttempts - 1)
+    #expect(host.selections == [usbID])
+    #expect(host.selectedDeviceID == usbID)
+    #expect(router.route?.deviceUID == "usb")
+    #expect(!router.pendingReconfiguration)
+    #expect(router.phase == .preparing)
+    #expect(host.liveTaps == 0)
+
+    let liveFormat = try await router.goLive(tap: noopTap)
+
+    #expect(liveFormat.sampleRate == 44_100)
+    #expect(sleeps == router.formatAttempts - 1)
+    #expect(host.selections == [usbID])
+    #expect(host.installedFormats.map(\.sampleRate) == [44_100])
+    #expect(host.liveTaps == 1)
+    #expect(host.startCount == 1)
+    #expect(!router.pendingReconfiguration)
+    #expect(router.phase == .live)
+  }
+
+  @Test func aSelectionWhileTheStartingDeviceNeverYieldsAFormatIsAppliedBeforeTheTap()
+    async throws
+  {
+    // The built-in microphone opened with a format but reports none once goLive waits on
+    // it. USB is chosen during the first retry sleep; goLive must end on USB with one tap
+    // instead of failing on the built-in after the attempt budget.
+    let (router, host, _) = fixture(preferred: nil)
+    _ = try await router.open()
+    host.devices[builtInID] = .init(id: builtInID, sampleRate: 0)
+    var sleeps = 0
+    router.sleep = { _ in
+      sleeps += 1
+      guard sleeps == 1 else { return }
+      router.preferredUID = "usb"
+      _ = try await router.reconfigure()
+    }
+
+    let format = try await router.goLive(tap: noopTap)
+
+    #expect(format.sampleRate == 44_100)
+    #expect(sleeps == router.formatAttempts - 1)
+    #expect(host.selections == [usbID])
+    #expect(host.selectedDeviceID == usbID)
+    #expect(router.route?.deviceUID == "usb")
+    #expect(host.installedFormats.map(\.sampleRate) == [44_100])
+    #expect(host.liveTaps == 1)
+    #expect(host.startCount == 1)
+    #expect(!router.pendingReconfiguration)
+    #expect(router.phase == .live)
+  }
+
   @Test func closingDuringAStartupWaitAfterASelectionInstallsNoTap() async throws {
     let (router, host, _) = fixture(preferred: nil)
     _ = try await router.open()

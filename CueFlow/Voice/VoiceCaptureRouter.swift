@@ -128,19 +128,22 @@ enum VoiceCaptureRouterError: LocalizedError, Equatable {
   }
 
   /// Applies the route and waits for a usable input format. The capture is then preparing:
-  /// device changes are recorded and applied when it goes live.
+  /// device changes are recorded and applied when it goes live, except that a device
+  /// which never yields a format gives way to a change recorded during the wait.
   func open() async throws -> AVAudioFormat {
     guard phase == .idle else { throw VoiceCaptureRouterError.notPreparing }
     phase = .preparing
     applyRoute()
-    return try await usableInputFormat()
+    var passes = 0
+    return try await startupFormat(passes: &passes)
   }
 
   /// Installs the one tap and starts the host. A reconfiguration requested during
   /// preparation is applied first, so the tap uses the latest device and format. A
   /// request that arrives while the format wait is suspended is applied by another pass
-  /// before the tap goes in; the pass count is bounded so a stream of requests cannot
-  /// starve startup, and a request past that bound is applied by the live path instead.
+  /// before the tap goes in, whether the waited-on device yields a format or never does;
+  /// the pass count is bounded so a stream of requests cannot starve startup, and a
+  /// request past that bound is applied by the live path instead.
   @discardableResult
   func goLive(tap: @escaping TapFactory) async throws -> AVAudioFormat {
     guard phase == .preparing else { throw VoiceCaptureRouterError.notPreparing }
@@ -152,8 +155,7 @@ enum VoiceCaptureRouterError: LocalizedError, Equatable {
         pendingReconfiguration = false
         applyRoute()
       }
-      format = try await usableInputFormat()
-      passes += 1
+      format = try await startupFormat(passes: &passes)
     } while pendingReconfiguration && passes < startupReconfigurationBudget
     guard phase == .preparing else { throw VoiceCaptureRouterError.notPreparing }
     try installTap(format: format, using: tap)
@@ -238,6 +240,24 @@ enum VoiceCaptureRouterError: LocalizedError, Equatable {
     guard next != route else { return }
     route = next
     onRouteChanged?(next)
+  }
+
+  /// One startup wait on the current route. A device that never yields a format fails only
+  /// after a request recorded during the wait has been applied: the wait then restarts on
+  /// the new device. Every wait counts against `passes`, so the restarts share the
+  /// caller's `startupReconfigurationBudget` rather than extending it.
+  private func startupFormat(passes: inout Int) async throws -> AVAudioFormat {
+    while true {
+      passes += 1
+      do {
+        return try await usableInputFormat()
+      } catch VoiceCaptureRouterError.microphoneFormatUnavailable
+        where pendingReconfiguration && passes < startupReconfigurationBudget
+      {
+        pendingReconfiguration = false
+        applyRoute()
+      }
+    }
   }
 
   private static func isUsable(_ format: AVAudioFormat?) -> Bool {
