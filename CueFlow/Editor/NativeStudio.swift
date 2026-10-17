@@ -94,6 +94,13 @@ struct EditorTakeBanner: View {
 struct StageFooter: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
+  var noticeStatus: String? {
+    guard
+      !["", "Ready", "Paused", "Playing", "Take prepared", "Stopped — editing enabled"]
+        .contains(state.status)
+    else { return nil }
+    return state.status
+  }
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
@@ -124,22 +131,20 @@ struct StageFooter: View {
           }.controlSize(.small)
         }.padding(8).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
       }
-      if state.pending
-        || !["", "Ready", "Paused", "Playing", "Take prepared", "Stopped — editing enabled"]
-          .contains(state.status)
-      {
+      if state.pending || noticeStatus != nil {
         // Notices are inline banners, not alerts (Quiet Studio ⑥).
         HStack(alignment: .center, spacing: 10) {
           Image(systemName: state.pending ? "info.circle" : "exclamationmark.circle")
             .foregroundStyle(.secondary)
-          if state.pending {
-            VStack(alignment: .leading, spacing: 2) {
+          VStack(alignment: .leading, spacing: 2) {
+            if state.pending {
               Text("A newer version of this script is available.").font(.system(size: 12))
               Text("The current take is unchanged until you load it.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             }
-          } else {
-            Text(state.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+            if let noticeStatus {
+              Text(noticeStatus).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
           }
           Spacer()
           if state.pending {

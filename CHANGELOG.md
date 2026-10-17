@@ -2,6 +2,7 @@
 
 ## 0.3.0 — 2026-10-17
 
+- Show Load Latest failure and retry guidance alongside the pending-script notice.
 - Keep playback paused with its position retained when Camera Dock cannot restore Output.
 - Synchronize the Follow Voice audio clock with captured-buffer timestamps across microphone recovery.
 - Add Camera Dock, a camera-adjacent prompter with a notch-attached island, animated expansion and collapse, centered reading line, and integrated controls. Displays without a notch can use an emulated island or a plain tray.

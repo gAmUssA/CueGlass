@@ -748,6 +748,31 @@ import Testing
     }
   }
 
+  @Test func pendingRevisionFooterAlsoShowsLoadLatestFailure() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let snapshot = c.session.snapshot?.id
+    c.session.pendingRevision = true
+    c.refresh()
+    c.script.cloudStatus = .notDownloaded
+    c.loadLatest()
+    #expect(c.state.pending)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.session.state == .paused)
+    let footer = StageFooter(state: c.state, controller: c)
+    #expect(
+      footer.noticeStatus
+        == "The newer script is still downloading. The current take was kept. Try Load Latest after download finishes."
+    )
+    c.state.pending = false
+    #expect(
+      footer.noticeStatus
+        == "The newer script is still downloading. The current take was kept. Try Load Latest after download finishes."
+    )
+    c.state.status = "Paused"
+    #expect(footer.noticeStatus == nil)
+  }
+
   @Test func cameraDockCommitFromEverySurfaceStagesReadyAndRestoresPlayback() async throws {
     for source in ["preview", "floating", "output"] {
       do {
