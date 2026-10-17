@@ -643,7 +643,12 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   func stop() {
     pendingVoiceRequest = nil
     voiceCoordinator?.stop()
-    cameraDockReturnSurface = nil
+    // Stop Take never revives the surface or play state the Dock replaced, but Preview
+    // must come back at the logical size it had before the Dock, not the Dock strip's.
+    cameraDockReturnSurface =
+      cameraDock == nil
+      ? nil
+      : .preview(cameraDockReturnSurface?.logicalSize ?? session.logicalSize, wasRunning: false)
     hideOutput()
     panel?.close()
     panel = nil

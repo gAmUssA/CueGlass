@@ -1806,6 +1806,62 @@ import Testing
           horizontalNudge: -12))
   }
 
+  @Test func stopTakeRestoresPreviewAtThePreDockSizeWithoutRevivingTheSurface() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    c.preview.reflection.viewport.driver?.stop()
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let previewSize = c.session.logicalSize
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.session.logicalSize != previewSize)
+
+    c.stop()
+    #expect(c.cameraDock == nil)
+    #expect(c.floating == nil)
+    #expect(c.output == nil)
+    #expect(c.session.state == .idle)
+    #expect(!c.pendingResume)
+    #expect(c.session.logicalSize == previewSize)
+    #expect(c.preview.logicalSize == previewSize)
+    #expect(!c.preview.reflection.viewport.centersText)
+    #expect(c.preview.reflection.viewport.columnWidthFractionOverride == nil)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(
+      c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
+
+    // A running Floating take replaced by the Dock: Stop Take ends it without bringing
+    // Floating back, and Preview keeps that surface's logical size.
+    c.showFloating()
+    let floating = try #require(c.floating)
+    floating.reflection.viewport.driver?.stop()
+    floating.reflection.viewport.driver = nil
+    await settle(c)
+    let floatingSize = c.session.logicalSize
+    c.state.countdown = 0
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .running)
+    c.showCameraDock()
+    c.cameraDock?.reflection.viewport.driver?.stop()
+    c.cameraDock?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.cameraDock != nil)
+
+    c.stop()
+    #expect(c.floating == nil)
+    #expect(c.cameraDock == nil)
+    #expect(c.session.state == .idle)
+    #expect(!c.pendingResume)
+    #expect(c.session.logicalSize == floatingSize)
+    #expect(c.preview.logicalSize == floatingSize)
+  }
+
   @Test func cameraDockSwitchPreservesRunningAnchorAndSnapshot() async throws {
     let c = try await prepared()
     defer { c.close() }
