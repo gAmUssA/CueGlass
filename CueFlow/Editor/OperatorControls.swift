@@ -6,12 +6,6 @@ struct OperatorControls: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
   @State private var selectedCommand = PlaybackCommand.toggle
-  @AppStorage("layoutExpanded") private var layoutExpanded = false
-  @AppStorage("colorsExpanded") private var colorsExpanded = false
-  @AppStorage("timingExpanded") private var timingExpanded = false
-  @AppStorage("keysExpanded") private var keysExpanded = false
-  @AppStorage("floatingExpanded") private var floatingExpanded = false
-  @AppStorage("cameraDockExpanded") private var cameraDockExpanded = false
   private func binding<T>(_ path: WritableKeyPath<ReadingStyle, T>) -> Binding<T> {
     Binding(
       get: { state.style[keyPath: path] },
@@ -33,313 +27,160 @@ struct OperatorControls: View {
         controller.changeStyle(style)
       })
   }
-  var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
-        InspectorSection("Text") {
-          Picker(
-            "Font",
-            selection: Binding(
-              get: {
-                state.style.fontIdentifier
-                  ?? (state.style.systemDesign == .serif ? "serif" : "system")
-              },
-              set: { value in
-                var style = state.style
-                style.fontIdentifier = ["system", "serif"].contains(value) ? nil : value
-                style.systemDesign = value == "serif" ? .serif : .default
-                controller.changeStyle(style)
-              })
-          ) {
-            Text("Studio Sans · System").tag("system")
-            Text("Manuscript · Serif").tag("serif")
-            Text("Charter").tag("Charter")
-            Text("Iowan").tag("IowanOldStyle-Roman")
-            Text("Avenir").tag("AvenirNext-DemiBold")
-            if let name = state.style.fontIdentifier,
-              !["Charter", "IowanOldStyle-Roman", "AvenirNext-DemiBold"].contains(name)
-            {
-              Text(name).tag(name)
-            }
-          }.disabled(state.style.mode == .preserveSource)
-          Button("Other Fonts…") { controller.otherFonts() }.disabled(
-            state.style.mode == .preserveSource)
-          Picker("Weight", selection: binding(\.fontWeight)) {
-            ForEach(ReadingStyle.Weight.allCases, id: \.self) {
-              Text($0.rawValue.capitalized).tag($0)
-            }
-          }.disabled(state.style.mode == .preserveSource)
-          if state.style.mode == .preserveSource {
-            Text("Source fonts and emphasis are retained; Size scales the source.").font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          HStack {
-            Text("Size")
-            Spacer()
-            TextField("Size", value: binding(\.fontSize), format: .number).labelsHidden().frame(
-              width: 54)
-            Text("pt").foregroundStyle(.secondary)
-          }.frame(height: 28)
-          valueSlider("Line height", path: \.lineHeightMultiplier, range: 1...2)
-        }
-        InspectorSection("Reading Guide") {
-          Picker(
-            "Style",
-            selection: Binding(
-              get: {
-                state.style.showsReadingGuide ? state.style.readingGuideStyle.rawValue : "off"
-              },
-              set: { value in
-                var style = state.style
-                style.showsReadingGuide = value != "off"
-                if let guide = ReadingStyle.GuideStyle(rawValue: value) {
-                  style.readingGuideStyle = guide
-                }
-                controller.changeStyle(style)
-              })
-          ) {
-            Text("Line").tag(ReadingStyle.GuideStyle.line.rawValue)
-            Text("Triangle").tag(ReadingStyle.GuideStyle.triangle.rawValue)
-            Text("Both").tag(ReadingStyle.GuideStyle.triangleAndLine.rawValue)
-            Text("Off").tag("off")
-          }.pickerStyle(.segmented).labelsHidden().frame(height: 28)
-          valueSlider("Position", path: \.readingGuideFraction, range: 0...1)
-          valueSlider("Guide opacity", path: \.readingGuideOpacity, range: 0...1)
-          valueSlider("Edge fade", path: \.edgeFadeFraction, range: 0...0.3)
-        }
-        InspectorSection("Output") {
-          Picker(
-            "Surface",
-            selection: Binding(
-              get: { controller.selectedPresentationSurface },
-              set: { controller.selectPresentationSurface($0) })
-          ) {
-            Text("Preview").tag("preview")
-            Text("Display Output").tag("output")
-            Text("Floating").tag("floating")
-            Text(controller.cameraDockMenuTitle).tag("cameraDock")
-          }
-          Picker("Display", selection: $state.selectedDisplay) {
-            if state.displays.isEmpty {
-              Text("No display connected").tag(state.selectedDisplay)
-            }
-            ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key)
-            }
-          }.disabled(state.displays.isEmpty)
-          if controller.selectedPresentationSurface == "cameraDock" {
-            if state.cameraDockFirstUseCalloutVisible {
-              VStack(alignment: .leading, spacing: 8) {
-                Text("Camera Dock is ready")
-                  .font(.subheadline.weight(.semibold))
-                Text(OperatorWindowController.cameraDockExplainer)
-                  .font(.caption)
-                  .fixedSize(horizontal: false, vertical: true)
-                Button("Got it") { controller.acknowledgeCameraDockExplainer() }
-                  .buttonStyle(.borderless)
-              }
-              .padding(10)
-              .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-              .accessibilityElement(children: .contain)
-              .accessibilityLabel("Camera Dock first-use information")
-            }
-            Text(OperatorWindowController.cameraDockCaptureDisclosure)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          if controller.cameraDock == nil {
-            Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(
-              of: state.horizontal
-            ) {
-              controller.reflect()
-            }
-            Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
-              controller.reflect()
-            }
-            Toggle("Preview as output", isOn: $state.calibrated).onChange(
-              of: state.calibrated
-            ) {
-              controller.reflect()
-            }
-            Button("Calibration Pattern…") { controller.calibration() }
-          }
-          DisclosureGroup("Camera Dock Placement", isExpanded: $cameraDockExpanded) {
-            if let map = controller.cameraDockPlacementMap {
-              CameraDockPlacementMapPreview(map: map)
-                .aspectRatio(map.displayAspectRatio, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .accessibilityLabel(Text(map.caption))
-            } else {
-              Text("Choose a display to preview Camera Dock placement.")
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            Slider(
-              value: Binding(
-                get: { state.cameraDockWidth },
-                set: { controller.setCameraDockWidth($0) }),
-              in: 360...760, step: 20
-            )
-            .accessibilityLabel("Camera Dock width")
-            Text("Width · \(Int(state.cameraDockWidth.rounded())) pt").font(.caption)
-            Stepper(
-              "Visible lines · \(state.cameraDockLineCount)",
-              value: Binding(
-                get: { state.cameraDockLineCount },
-                set: { controller.setCameraDockLineCount($0) }),
-              in: 2...5)
-            Slider(
-              value: Binding(
-                get: { state.cameraDockHorizontalNudge },
-                set: { controller.setCameraDockHorizontalNudge($0) }),
-              in: -120...120, step: 8
-            )
-            .accessibilityLabel("Camera Dock horizontal nudge")
-            Text("Horizontal nudge · \(Int(state.cameraDockHorizontalNudge.rounded())) pt")
-              .font(.caption)
-            Toggle(
-              "Notch island on displays without a notch",
-              isOn: Binding(
-                get: { state.cameraDockNotchIsland },
-                set: { controller.setCameraDockNotchIsland($0) })
-            )
-            .accessibilityLabel("Notch island on displays without a notch")
-            Button("Reset Placement") { controller.resetCameraDockPreferences() }
-          }
-          .onAppear { controller.setCameraDockPlacementPreviewExpanded(cameraDockExpanded) }
-          .onChange(of: cameraDockExpanded) { _, expanded in
-            controller.setCameraDockPlacementPreviewExpanded(expanded)
-          }
-          DisclosureGroup("Floating Window", isExpanded: $floatingExpanded) {
-            Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {
-              controller.updateFloatingOptions()
-              controller.saveOperatorPreferences()
-            }.accessibilityLabel("Whole floating window opacity")
-            Text("Whole window: \(Int(state.floatingOpacity*100))%").font(.caption)
-            Toggle("Over full-screen apps", isOn: $state.overFullScreen).onChange(
-              of: state.overFullScreen
-            ) {
-              controller.updateFloatingOptions()
-              controller.saveOperatorPreferences()
-            }
-            Toggle("Click-through while playing", isOn: $state.clickThrough).onChange(
-              of: state.clickThrough
-            ) {
-              controller.refresh()
-              controller.saveOperatorPreferences()
-            }
-            if !state.contrastWarning.isEmpty { Text(state.contrastWarning).font(.caption) }
-          }
+  @AppStorage("inspectorTab") private var inspectorTab = InspectorTab.text.rawValue
+  private enum InspectorTab: String, CaseIterable {
+    case text, playback, output
+    var title: String {
+      switch self {
+      case .text: "Text"
+      case .playback: "Playback"
+      case .output: "Output"
+      }
+    }
+  }
+  private var tab: InspectorTab { InspectorTab(rawValue: inspectorTab) ?? .text }
+  private var preservesSource: Bool { state.style.mode == .preserveSource }
+  private var englishVoice: Bool {
+    Locale(identifier: state.voiceLocale).language.languageCode?.identifier == "en"
+  }
 
+  var body: some View {
+    VStack(spacing: 0) {
+      Picker("Inspector", selection: $inspectorTab) {
+        ForEach(InspectorTab.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+      }
+      .pickerStyle(.segmented).labelsHidden()
+      .padding(.horizontal, 14).padding(.vertical, 8)
+      .accessibilityLabel("Inspector section")
+      Divider()
+      Form {
+        switch tab {
+        case .text: textTab
+        case .playback: playbackTab
+        case .output: outputTab
         }
-        DisclosureGroup("Layout", isExpanded: $layoutExpanded) {
-          Picker("Typography", selection: binding(\.mode)) {
-            Text("Normalized").tag(ReadingStyle.Mode.normalized)
-            Text("Preserve Source").tag(ReadingStyle.Mode.preserveSource)
-          }
-          valueSlider("Column width", path: \.columnWidthFraction, range: 0.25...1)
-          valueSlider("Side margins", path: \.sideMarginFraction, range: 0...0.25)
-          valueSlider("Paragraph spacing", path: \.paragraphSpacing, range: 0...200)
+      }
+      .formStyle(.grouped)
+      .scrollContentBackground(.hidden)
+    }
+    .environment(\.colorScheme, state.darkAppearance ? .dark : .light)
+    .font(.system(size: 13)).controlSize(.small)
+    .onChange(of: state.countdown) { controller.saveOperatorPreferences() }
+    .onChange(of: state.hideControls) { controller.saveOperatorPreferences() }
+  }
+
+  // MARK: Text
+
+  @ViewBuilder private var textTab: some View {
+    Section("Font") {
+      Picker(
+        "Family",
+        selection: Binding(
+          get: {
+            state.style.fontIdentifier
+              ?? (state.style.systemDesign == .serif ? "serif" : "system")
+          },
+          set: { value in
+            var style = state.style
+            style.fontIdentifier = ["system", "serif"].contains(value) ? nil : value
+            style.systemDesign = value == "serif" ? .serif : .default
+            controller.changeStyle(style)
+          })
+      ) {
+        Text("Studio Sans · System").tag("system")
+        Text("Manuscript · Serif").tag("serif")
+        Text("Charter").tag("Charter")
+        Text("Iowan").tag("IowanOldStyle-Roman")
+        Text("Avenir").tag("AvenirNext-DemiBold")
+        if let name = state.style.fontIdentifier,
+          !["Charter", "IowanOldStyle-Roman", "AvenirNext-DemiBold"].contains(name)
+        {
+          Text(name).tag(name)
         }
-        DisclosureGroup("Colors", isExpanded: $colorsExpanded) {
-          ColorPicker("Text", selection: color(\.foregroundRGBA))
-          ColorPicker("Background", selection: color(\.backgroundRGBA))
-          valueSlider("Text panel opacity", path: \.textPanelOpacity, range: 0...1)
-          if !state.contrastWarning.isEmpty {
-            Text(state.contrastWarning).font(.caption).foregroundStyle(.secondary)
-          }
+      }
+      .disabled(preservesSource)
+      Picker("Weight", selection: binding(\.fontWeight)) {
+        ForEach(ReadingStyle.Weight.allCases, id: \.self) {
+          Text($0.rawValue.capitalized).tag($0)
         }
-        DisclosureGroup("Timing", isExpanded: $timingExpanded) {
-          Picker("Start countdown", selection: $state.countdown) {
-            Text("Off").tag(0)
-            ForEach([3, 5, 10], id: \.self) { Text("\($0) seconds").tag($0) }
-          }
-          TextField("Finish in seconds", value: $state.duration, format: .number)
-          Button("Enable Timed Scrolling") {
-            controller.enableTimedScrolling(seconds: state.duration)
-          }
-          Toggle("Hide controls while playing", isOn: $state.hideControls)
+      }
+      .disabled(preservesSource)
+      LabeledContent("Size") {
+        HStack(spacing: 4) {
+          TextField("Size", value: binding(\.fontSize), format: .number).labelsHidden()
+            .frame(width: 54).multilineTextAlignment(.trailing)
+          Text("pt").foregroundStyle(.secondary)
         }
-        if state.voiceAvailable {
-          InspectorSection("Follow Voice") {
-            Picker(
-              "Language",
-              selection: Binding(
-                get: { state.voiceLocale },
-                set: { controller.selectVoiceLocale($0) })
-            ) {
-              ForEach(state.voiceLocales) { locale in
-                Text(locale.displayName).tag(locale.identifier)
-              }
-            }
-            .disabled(state.voiceLocales.isEmpty || state.voiceActive)
-            .help("Choose a supported language. Selecting one does not open the microphone.")
-            Picker(
-              "Microphone",
-              selection: Binding(
-                get: {
-                  state.voiceInputDevices.contains { $0.uid == state.voiceInputDevice }
-                    ? state.voiceInputDevice : ""
-                },
-                set: { controller.selectVoiceInputDevice($0) })
-            ) {
-              Text("System Default").tag("")
-              ForEach(state.voiceInputDevices) { device in
-                Text(device.isDefault ? "\(device.name) (default)" : device.name).tag(device.uid)
-              }
-            }
-            .help(
-              "Choose which microphone Follow Voice listens to. Changing it while following moves capture to the new microphone without stopping the take."
-            )
-            .accessibilityLabel("Follow Voice microphone")
-            Text(
-              "English is the validated language. Other languages depend on the models available in macOS."
-            )
-            .font(.caption).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
-            Text(
-              "Speech is analyzed on this Mac. CueGlass does not record or save audio or transcript text."
-            )
-            .font(.caption).foregroundStyle(.secondary).fixedSize(
-              horizontal: false, vertical: true)
-            Text("Scroll glide eases faster when confirmed speech moves through the script faster.")
-              .font(.caption).foregroundStyle(.secondary).fixedSize(
-                horizontal: false, vertical: true)
-            if Locale(identifier: state.voiceLocale).language.languageCode?.identifier == "en" {
-              Text(
-                "Say “CueGlass” or “Prompter”, then “pause”, “resume”, “stop” or “stop take”."
-              )
-              .font(.caption).foregroundStyle(.secondary).fixedSize(
-                horizontal: false, vertical: true)
-              Text("CueGlass confirms commands after speech settles.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(
-                  horizontal: false, vertical: true)
-            } else {
-              Text("Spoken transport commands currently require English.")
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            followVoiceControls
-          }
+      }
+      valueSlider("Line height", path: \.lineHeightMultiplier, range: 1...2)
+      LabeledContent("Typography") {
+        Picker("Typography", selection: binding(\.mode)) {
+          Text("Normalized").tag(ReadingStyle.Mode.normalized)
+          Text("Preserve Source").tag(ReadingStyle.Mode.preserveSource)
         }
-        DisclosureGroup("Controls & Keys", isExpanded: $keysExpanded) {
-          Text("App must be frontmost, or the clicker must target CueGlass. No global monitoring.")
-            .font(.caption)
-          Picker("Command", selection: $selectedCommand) {
-            ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-          }
-          Text(
-            CommandRouter.map.bindings.filter { $0.command == selectedCommand }.map {
-              $0.chord.label
+        .labelsHidden()
+        .help(
+          "Normalized applies the font above to the whole script. Preserve Source keeps the script's own fonts and emphasis; Size scales them."
+        )
+      }
+      HStack {
+        Spacer()
+        Button("Other Fonts…") { controller.otherFonts() }.disabled(preservesSource)
+      }
+    }
+    Section("Layout") {
+      valueSlider("Column width", path: \.columnWidthFraction, range: 0.25...1)
+      valueSlider("Side margins", path: \.sideMarginFraction, range: 0...0.25)
+      valueSlider("Paragraph spacing", path: \.paragraphSpacing, range: 0...200)
+    }
+    Section {
+      ColorPicker("Text", selection: color(\.foregroundRGBA))
+      ColorPicker("Background", selection: color(\.backgroundRGBA))
+      valueSlider("Panel opacity", path: \.textPanelOpacity, range: 0...1)
+    } header: {
+      Text("Colors")
+    } footer: {
+      if !state.contrastWarning.isEmpty {
+        Label(state.contrastWarning, systemImage: "exclamationmark.triangle")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+    Section("Reading Guide") {
+      Picker(
+        "Guide",
+        selection: Binding(
+          get: {
+            state.style.showsReadingGuide ? state.style.readingGuideStyle.rawValue : "off"
+          },
+          set: { value in
+            var style = state.style
+            if value == "off" {
+              style.showsReadingGuide = false
+            } else if let next = ReadingStyle.GuideStyle(rawValue: value) {
+              style.showsReadingGuide = true
+              style.readingGuideStyle = next
             }
-            .joined(separator: " · ")
-          ).font(.caption)
-          Button("Record Shortcut…") { controller.recordShortcut(selectedCommand) }
-          Button("Reset Defaults") {
-            CommandRouter.map = CommandMap()
-            controller.perform {
-              try CommandRouter.save()
-              controller.refresh()
-              state.status = "Default shortcuts restored"
-            }
-          }
+            controller.changeStyle(style)
+          })
+      ) {
+        Text("Line").tag(ReadingStyle.GuideStyle.line.rawValue)
+        Text("Triangle").tag(ReadingStyle.GuideStyle.triangle.rawValue)
+        Text("Both").tag(ReadingStyle.GuideStyle.triangleAndLine.rawValue)
+        Text("Off").tag("off")
+      }
+      .pickerStyle(.segmented)
+      valueSlider("Position", path: \.readingGuideFraction, range: 0...1)
+      valueSlider("Guide opacity", path: \.readingGuideOpacity, range: 0...1)
+      valueSlider("Edge fade", path: \.edgeFadeFraction, range: 0...0.3)
+    }
+  }
+
+  // MARK: Playback
+
+  @ViewBuilder private var playbackTab: some View {
+    Section("Pace") {
+      LabeledContent("Maximum") {
+        HStack(spacing: 8) {
           Slider(value: $state.maximum, in: 10...240, step: 1).onChange(of: state.maximum) {
             controller.session.suspendVoiceForManualControl("Maximum pace change")
             controller.session.configuredMax = state.maximum
@@ -351,18 +192,276 @@ struct OperatorControls: View {
             }
             controller.saveOperatorPreferences()
           }.accessibilityLabel("Maximum lines per minute")
-          Text("Maximum \(Int(state.maximum)) lpm").font(.caption)
-          Stepper("Fine step \(Int(state.fineStep)) lpm", value: $state.fineStep, in: 1...10)
-            .onChange(of: state.fineStep) { controller.saveOperatorPreferences() }
-          Stepper("Jump step \(Int(state.jumpStep)) lpm", value: $state.jumpStep, in: 1...60)
-            .onChange(of: state.jumpStep) { controller.saveOperatorPreferences() }
+          Text("\(Int(state.maximum)) lpm").foregroundStyle(.secondary).monospacedDigit()
+            .frame(width: 52, alignment: .trailing)
         }
-      }.padding(14)
-    }.environment(\.colorScheme, state.darkAppearance ? .dark : .light).font(.system(size: 13))
-      .controlSize(.small).tint(.gray).onChange(of: state.countdown) {
-        controller.saveOperatorPreferences()
-      }.onChange(of: state.hideControls) { controller.saveOperatorPreferences() }
+      }
+      .help("Upper bound for the pace slider, arrow keys, and Follow Voice.")
+      Stepper("Fine step: \(Int(state.fineStep)) lpm", value: $state.fineStep, in: 1...10)
+        .onChange(of: state.fineStep) { controller.saveOperatorPreferences() }
+        .help("Pace change for ↑ and ↓.")
+      Stepper("Jump step: \(Int(state.jumpStep)) lpm", value: $state.jumpStep, in: 1...60)
+        .onChange(of: state.jumpStep) { controller.saveOperatorPreferences() }
+        .help("Pace change for ⌥↑ and ⌥↓.")
+      Picker("Countdown", selection: $state.countdown) {
+        Text("Off").tag(0)
+        ForEach([3, 5, 10], id: \.self) { Text("\($0) seconds").tag($0) }
+      }
+    }
+    Section {
+      LabeledContent("Finish in") {
+        HStack(spacing: 4) {
+          TextField("Seconds", value: $state.duration, format: .number).labelsHidden()
+            .frame(width: 64).multilineTextAlignment(.trailing)
+          Text("s").foregroundStyle(.secondary)
+        }
+      }
+      HStack {
+        Spacer()
+        Button("Enable Timed Scrolling") {
+          controller.enableTimedScrolling(seconds: state.duration)
+        }
+      }
+    } header: {
+      Text("Timed Scrolling")
+    } footer: {
+      Text(
+        "Fixes the pace so the take ends on time. Manual pace changes and Follow Voice turn it off."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    }
+    if state.voiceAvailable {
+      Section {
+        Picker(
+          "Language",
+          selection: Binding(
+            get: { state.voiceLocale },
+            set: { controller.selectVoiceLocale($0) })
+        ) {
+          ForEach(state.voiceLocales) { locale in
+            Text(locale.displayName).tag(locale.identifier)
+          }
+        }
+        .disabled(state.voiceLocales.isEmpty || state.voiceActive)
+        .help(
+          "English is validated. Other languages depend on the models macOS offers. Selecting one does not open the microphone."
+        )
+        Picker(
+          "Microphone",
+          selection: Binding(
+            get: {
+              state.voiceInputDevices.contains { $0.uid == state.voiceInputDevice }
+                ? state.voiceInputDevice : ""
+            },
+            set: { controller.selectVoiceInputDevice($0) })
+        ) {
+          Text("System Default").tag("")
+          ForEach(state.voiceInputDevices) { device in
+            Text(device.isDefault ? "\(device.name) (default)" : device.name).tag(device.uid)
+          }
+        }
+        .help(
+          "Changing the microphone while following moves capture to it without stopping the take."
+        )
+        .accessibilityLabel("Follow Voice microphone")
+        followVoiceControls
+      } header: {
+        Text("Follow Voice")
+      } footer: {
+        Text(
+          englishVoice
+            ? "Say “CueGlass” or “Prompter”, then “pause”, “resume”, “stop” or “stop take”."
+            : "Spoken commands require English."
+        )
+        .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+    Section {
+      Toggle("Hide controls while playing", isOn: $state.hideControls)
+      Picker("Command", selection: $selectedCommand) {
+        ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+      }
+      LabeledContent("Shortcut") {
+        Text(
+          CommandRouter.map.bindings.filter { $0.command == selectedCommand }.map {
+            $0.chord.label
+          }
+          .joined(separator: " · ")
+        )
+        .foregroundStyle(.secondary)
+      }
+      HStack {
+        Spacer()
+        Button("Reset Defaults") {
+          CommandRouter.map = CommandMap()
+          controller.perform {
+            try CommandRouter.save()
+            controller.refresh()
+            state.status = "Default shortcuts restored"
+          }
+        }
+        Button("Record Shortcut…") { controller.recordShortcut(selectedCommand) }
+      }
+    } header: {
+      Text("Controls")
+    } footer: {
+      Text(
+        "Shortcuts work while CueGlass is frontmost or a clicker targets it. Nothing is monitored globally."
+      )
+      .font(.caption).foregroundStyle(.secondary)
+    }
   }
+
+  // MARK: Output
+
+  @ViewBuilder private var outputTab: some View {
+    Section {
+      Picker(
+        "Surface",
+        selection: Binding(
+          get: { controller.selectedPresentationSurface },
+          set: { controller.selectPresentationSurface($0) })
+      ) {
+        Text("Preview").tag("preview")
+        Text("Display Output").tag("output")
+        Text("Floating").tag("floating")
+        Text(controller.cameraDockMenuTitle).tag("cameraDock")
+      }
+      Picker("Display", selection: $state.selectedDisplay) {
+        if state.displays.isEmpty {
+          Text("No display connected").tag(state.selectedDisplay)
+        }
+        ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key) }
+      }
+      .disabled(state.displays.isEmpty)
+      if controller.cameraDock == nil {
+        Toggle("Reflect horizontally", isOn: $state.horizontal).onChange(of: state.horizontal) {
+          controller.reflect()
+        }
+        Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
+          controller.reflect()
+        }
+        Toggle("Preview as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
+          controller.reflect()
+        }
+        HStack {
+          Spacer()
+          Button("Calibration Pattern…") { controller.calibration() }
+        }
+      }
+    } header: {
+      Text("Presentation")
+    } footer: {
+      if controller.selectedPresentationSurface == "cameraDock" {
+        Text(OperatorWindowController.cameraDockCaptureDisclosure)
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+    Section {
+      if controller.selectedPresentationSurface == "cameraDock",
+        state.cameraDockFirstUseCalloutVisible
+      {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Camera Dock is ready").font(.subheadline.weight(.semibold))
+          Text(OperatorWindowController.cameraDockExplainer)
+            .font(.caption).fixedSize(horizontal: false, vertical: true)
+          Button("Got it") { controller.acknowledgeCameraDockExplainer() }
+            .buttonStyle(.borderless)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Camera Dock first-use information")
+      }
+      if let map = controller.cameraDockPlacementMap {
+        CameraDockPlacementMapPreview(map: map)
+          .aspectRatio(map.displayAspectRatio, contentMode: .fit)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+          .accessibilityLabel(Text(map.caption))
+          .help(map.caption)
+      } else {
+        Text("Choose a display to preview Camera Dock placement.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      LabeledContent("Width") {
+        HStack(spacing: 8) {
+          Slider(
+            value: Binding(
+              get: { state.cameraDockWidth },
+              set: { controller.setCameraDockWidth($0) }),
+            in: 360...760, step: 20
+          )
+          .accessibilityLabel("Camera Dock width")
+          Text("\(Int(state.cameraDockWidth.rounded())) pt").foregroundStyle(.secondary)
+            .monospacedDigit().frame(width: 52, alignment: .trailing)
+        }
+      }
+      Stepper(
+        "Visible lines: \(state.cameraDockLineCount)",
+        value: Binding(
+          get: { state.cameraDockLineCount },
+          set: { controller.setCameraDockLineCount($0) }),
+        in: 2...5)
+      LabeledContent("Nudge") {
+        HStack(spacing: 8) {
+          Slider(
+            value: Binding(
+              get: { state.cameraDockHorizontalNudge },
+              set: { controller.setCameraDockHorizontalNudge($0) }),
+            in: -120...120, step: 8
+          )
+          .accessibilityLabel("Camera Dock horizontal nudge")
+          Text("\(Int(state.cameraDockHorizontalNudge.rounded())) pt").foregroundStyle(.secondary)
+            .monospacedDigit().frame(width: 52, alignment: .trailing)
+        }
+      }
+      Toggle(
+        "Notch island on displays without a notch",
+        isOn: Binding(
+          get: { state.cameraDockNotchIsland },
+          set: { controller.setCameraDockNotchIsland($0) })
+      )
+      .accessibilityLabel("Notch island on displays without a notch")
+      HStack {
+        Spacer()
+        Button("Reset Placement") { controller.resetCameraDockPreferences() }
+      }
+    } header: {
+      Text("Camera Dock")
+    }
+    .onAppear { controller.setCameraDockPlacementPreviewExpanded(true) }
+    .onDisappear { controller.setCameraDockPlacementPreviewExpanded(false) }
+    Section {
+      LabeledContent("Opacity") {
+        HStack(spacing: 8) {
+          Slider(value: $state.floatingOpacity, in: 0.3...1).onChange(of: state.floatingOpacity) {
+            controller.updateFloatingOptions()
+            controller.saveOperatorPreferences()
+          }.accessibilityLabel("Whole floating window opacity")
+          Text("\(Int(state.floatingOpacity * 100))%").foregroundStyle(.secondary)
+            .monospacedDigit().frame(width: 52, alignment: .trailing)
+        }
+      }
+      Toggle("Over full-screen apps", isOn: $state.overFullScreen).onChange(
+        of: state.overFullScreen
+      ) {
+        controller.updateFloatingOptions()
+        controller.saveOperatorPreferences()
+      }
+      Toggle("Click-through while playing", isOn: $state.clickThrough).onChange(
+        of: state.clickThrough
+      ) {
+        controller.refresh()
+        controller.saveOperatorPreferences()
+      }
+    } header: {
+      Text("Floating Window")
+    } footer: {
+      if !state.contrastWarning.isEmpty {
+        Label(state.contrastWarning, systemImage: "exclamationmark.triangle")
+          .font(.caption).foregroundStyle(.secondary)
+      }
+    }
+  }
+
   private func sliderValue(_ path: WritableKeyPath<ReadingStyle, Double>) -> String {
     let value = state.style[keyPath: path]
     if path == \.lineHeightMultiplier { return String(format: "%.2f×", value) }
@@ -372,12 +471,13 @@ struct OperatorControls: View {
   private func valueSlider(
     _ label: String, path: WritableKeyPath<ReadingStyle, Double>, range: ClosedRange<Double>
   ) -> some View {
-    HStack(spacing: 8) {
-      Text(label).frame(width: 88, alignment: .leading)
-      Slider(value: binding(path), in: range).accessibilityLabel(label)
-      Text(sliderValue(path))
-        .foregroundStyle(.secondary).monospacedDigit()
-    }.frame(height: 28)
+    LabeledContent(label) {
+      HStack(spacing: 8) {
+        Slider(value: binding(path), in: range).accessibilityLabel(label)
+        Text(sliderValue(path)).foregroundStyle(.secondary).monospacedDigit()
+          .frame(width: 52, alignment: .trailing)
+      }
+    }
   }
   @ViewBuilder private var followVoiceControls: some View {
     if let voiceStatus {
@@ -472,23 +572,6 @@ struct OperatorControls: View {
     case .commandPaused: ("Paused · command ready", "pause.circle.fill", .orange)
     case .suspended: ("Paused", "pause.circle.fill", Color(nsColor: .secondaryLabelColor))
     case .failed: ("Needs attention", "exclamationmark.triangle.fill", .red)
-    }
-  }
-}
-
-private struct InspectorSection<Content: View>: View {
-  let title: String
-  let content: Content
-  init(_ title: String, @ViewBuilder content: () -> Content) {
-    self.title = title
-    self.content = content()
-  }
-  var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text(title.uppercased()).font(.system(size: 10, weight: .semibold))
-        .tracking(0.8).foregroundStyle(Color.primary.opacity(0.78))
-      content
-      Divider().padding(.top, 4)
     }
   }
 }
