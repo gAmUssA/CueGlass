@@ -873,14 +873,19 @@ import Testing
       == CameraDockPreferences.defaults(screenWidth: 1512))
 }
 
-@Test func cameraDockPreferenceCatalogMigratesOnlyThePreviousDefaultWidth() {
-  var catalog = CameraDockPreferenceCatalog()
-  catalog.set(
-    CameraDockPreferences(width: 665.28, lineCount: 2, horizontalNudge: 8),
-    forDisplayUUID: "legacy-default")
-  catalog.set(
-    CameraDockPreferences(width: 600, lineCount: 4, horizontalNudge: -16),
-    forDisplayUUID: "custom-width")
+/// A catalog as a build before the 0.38 default wrote it: entries only, no marker.
+private func legacyCameraDockCatalog(_ json: String) throws -> CameraDockPreferenceCatalog {
+  try JSONDecoder().decode(CameraDockPreferenceCatalog.self, from: Data(json.utf8))
+}
+
+@Test func cameraDockPreferenceCatalogMigratesOnlyThePreviousDefaultWidth() throws {
+  let catalog = try legacyCameraDockCatalog(
+    """
+    {"values":{
+      "legacy-default":{"width":665.28,"lineCount":2,"horizontalNudge":8},
+      "custom-width":{"width":600,"lineCount":4,"horizontalNudge":-16}
+    }}
+    """)
 
   let migrated = catalog.preference(forDisplayUUID: "legacy-default", screenWidth: 1512)
   #expect(abs(migrated.width - 574.56) < 1e-9)
@@ -889,6 +894,61 @@ import Testing
   #expect(
     catalog.preference(forDisplayUUID: "custom-width", screenWidth: 1512)
       == CameraDockPreferences(width: 600, lineCount: 4, horizontalNudge: -16))
+}
+
+@Test func cameraDockPreferenceCatalogKeepsWidthsSavedByTheCurrentBuild() throws {
+  var catalog = CameraDockPreferenceCatalog()
+  // Slider stops that fall within the migration tolerance of the old 44 % default.
+  let chosen: [(uuid: String, width: Double, screenWidth: Double)] = [
+    ("laptop-1728", 760, 1728), ("laptop-1710", 760, 1710), ("laptop-1512", 660, 1512),
+    ("laptop-1470", 640, 1470), ("laptop-1440", 640, 1440),
+  ]
+  for entry in chosen {
+    catalog.set(
+      CameraDockPreferences(width: entry.width, lineCount: 4, horizontalNudge: 12),
+      forDisplayUUID: entry.uuid)
+  }
+  let restored = try JSONDecoder().decode(
+    CameraDockPreferenceCatalog.self, from: JSONEncoder().encode(catalog))
+
+  for entry in chosen {
+    let expected = CameraDockPreferences(width: entry.width, lineCount: 4, horizontalNudge: 12)
+    #expect(
+      catalog.preference(forDisplayUUID: entry.uuid, screenWidth: entry.screenWidth) == expected,
+      "\(entry.uuid) was rewritten before saving")
+    #expect(
+      restored.preference(forDisplayUUID: entry.uuid, screenWidth: entry.screenWidth)
+        == expected, "\(entry.uuid) was rewritten after reopening")
+  }
+}
+
+@Test func cameraDockPreferenceCatalogMigratesLegacyEntriesBesideCurrentOnes() throws {
+  var catalog = try legacyCameraDockCatalog(
+    """
+    {"values":{
+      "legacy-1728":{"width":760.32,"lineCount":3,"horizontalNudge":0},
+      "legacy-1512":{"width":665.28,"lineCount":2,"horizontalNudge":8}
+    }}
+    """)
+  // The current build edits one legacy entry and adds a new display; the untouched legacy
+  // entry still migrates after the catalog is saved and reopened.
+  catalog.set(CameraDockPreferences(width: 760, lineCount: 3), forDisplayUUID: "legacy-1728")
+  catalog.set(CameraDockPreferences(width: 660, lineCount: 5), forDisplayUUID: "desk-1512")
+  let restored = try JSONDecoder().decode(
+    CameraDockPreferenceCatalog.self, from: JSONEncoder().encode(catalog))
+
+  for subject in [catalog, restored] {
+    #expect(
+      subject.preference(forDisplayUUID: "legacy-1728", screenWidth: 1728)
+        == CameraDockPreferences(width: 760, lineCount: 3))
+    #expect(
+      subject.preference(forDisplayUUID: "desk-1512", screenWidth: 1512)
+        == CameraDockPreferences(width: 660, lineCount: 5))
+    let migrated = subject.preference(forDisplayUUID: "legacy-1512", screenWidth: 1512)
+    #expect(abs(migrated.width - 574.56) < 1e-9)
+    #expect(migrated.lineCount == 2)
+    #expect(migrated.horizontalNudge == 8)
+  }
 }
 
 @Test func cameraDockDisplaySelectionUsesBuiltInUnlessMirrored() {

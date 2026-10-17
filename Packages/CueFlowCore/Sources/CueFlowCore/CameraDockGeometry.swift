@@ -594,8 +594,23 @@ public struct CameraDockPreferences: Codable, Equatable, Sendable {
 
 public struct CameraDockPreferenceCatalog: Codable, Equatable, Sendable {
   private var values: [String: CameraDockPreferences] = [:]
+  /// Display UUIDs whose entry was written by a build that already used the current default
+  /// width. An entry decoded without this marker was saved by an earlier build, and only
+  /// those entries are candidates for the old-default migration in `preference(for:)`;
+  /// a width chosen in the current build survives even when it lands on the old default.
+  private var currentDefaultEntries: Set<String> = []
+
+  private enum CodingKeys: String, CodingKey { case values, currentDefaultEntries }
 
   public init() {}
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    values =
+      try container.decodeIfPresent([String: CameraDockPreferences].self, forKey: .values) ?? [:]
+    currentDefaultEntries =
+      try container.decodeIfPresent(Set<String>.self, forKey: .currentDefaultEntries) ?? []
+  }
 
   public func preference(forDisplayUUID uuid: String, screenWidth: Double)
     -> CameraDockPreferences
@@ -604,6 +619,7 @@ public struct CameraDockPreferenceCatalog: Codable, Equatable, Sendable {
       return .defaults(screenWidth: screenWidth)
     }
     let normalized = value.normalized()
+    guard !currentDefaultEntries.contains(uuid) else { return normalized }
     let oldDefault = min(
       CameraDockGeometry.maximumWidth,
       max(
@@ -620,6 +636,7 @@ public struct CameraDockPreferenceCatalog: Codable, Equatable, Sendable {
   public mutating func set(_ preference: CameraDockPreferences, forDisplayUUID uuid: String) {
     guard !uuid.isEmpty else { return }
     values[uuid] = preference.normalized()
+    currentDefaultEntries.insert(uuid)
   }
 }
 
