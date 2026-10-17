@@ -698,10 +698,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         replacingEditor = true
         script.setStyle(style)
         replacingEditor = false
-        for viewport in [
-          preview.reflection.viewport, output?.reflection.viewport, floating?.reflection.viewport,
-        ] { viewport?.updateAids(style) }
-        updatePresentationBackground(style)
+        updateAidsWithoutRelayout(style)
         refresh()
         return
       }
@@ -721,6 +718,14 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
         state.status = "Font unavailable — using the system font"
       }
     }
+  }
+  /// Colour and guide edits recolour every live surface in place. The Dock decides whether
+  /// its text panel shows from the background, so it refreshes that decision here too.
+  private func updateAidsWithoutRelayout(_ style: ReadingStyle) {
+    preview.reflection.viewport.updateAids(style)
+    output?.reflection.viewport.updateAids(style)
+    floating?.updateAids(style)
+    updatePresentationBackground(style)
   }
   private func styleAffectsLayout(from old: ReadingStyle, to style: ReadingStyle) -> Bool {
     old.mode != style.mode || old.fontIdentifier != style.fontIdentifier
@@ -756,10 +761,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     if affectsLayout {
       render()
     } else {
-      for viewport in [
-        preview.reflection.viewport, output?.reflection.viewport, floating?.reflection.viewport,
-      ] { viewport?.updateAids(style) }
-      updatePresentationBackground(style)
+      updateAidsWithoutRelayout(style)
     }
     script.notice = PresentationFont.notice(style) ?? ""
     refresh()

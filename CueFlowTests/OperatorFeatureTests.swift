@@ -1958,6 +1958,48 @@ import Testing
     #expect(c.state.selectedDisplay == a.selectionKey)
   }
 
+  @Test func cameraDockTextPanelFollowsNonLayoutBackgroundEditsAndUndo() async throws {
+    let c = try await prepared(20)
+    defer { c.close() }
+    let display = try #require(DisplayDescriptor.all().first)
+    c.state.selectedDisplay = display.selectionKey
+    let undo = try #require(c.editor.undoManager)
+    undo.removeAllActions()
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    let viewport = dock.reflection.viewport
+    let layout = try #require(dock.dockLayout)
+    let dark = c.state.style
+    #expect(FloatingPrompterWindowController.hidesTextPanel(for: dark))
+    #expect(viewport.panelBackground.isHidden)
+    var light = dark
+    light.backgroundRGBA = [0.96, 0.96, 0.94, 1]
+    light.foregroundRGBA = [0.1, 0.1, 0.1, 1]
+    #expect(!FloatingPrompterWindowController.hidesTextPanel(for: light))
+
+    c.changeStyle(light)
+    #expect(c.state.style == light)
+    #expect(!viewport.panelBackground.isHidden, "light background left the Dock panel hidden")
+    #expect(dock.dockLayout == layout, "a colour edit rebuilt the Dock layout")
+    #expect(c.session.message != "Paused for layout change")
+
+    undo.undo()
+    await settle(c)
+    #expect(c.state.style == dark)
+    #expect(viewport.panelBackground.isHidden, "undo to the dark background left the panel showing")
+    #expect(dock.dockLayout == layout)
+
+    undo.redo()
+    await settle(c)
+    #expect(c.state.style == light)
+    #expect(
+      !viewport.panelBackground.isHidden, "redo to the light background left the panel hidden")
+    #expect(dock.dockLayout == layout)
+  }
+
   @Test func cameraDockSwitchPreservesRunningAnchorAndSnapshot() async throws {
     let c = try await prepared()
     defer { c.close() }

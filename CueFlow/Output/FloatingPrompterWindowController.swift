@@ -173,6 +173,14 @@ enum PrompterPlacement: Equatable {
     reflection.viewport.panelBackground.isHidden = Self.hidesTextPanel(for: style)
   }
 
+  /// A style edit that keeps the layout (background colour, its undo) recolours the aids
+  /// in place; the Dock's text-panel decision depends on that background, so it is
+  /// refreshed here without rebuilding the layout.
+  func updateAids(_ style: ReadingStyle) {
+    reflection.viewport.updateAids(style)
+    applyCameraDockTextPanelVisibility(style: style)
+  }
+
   override func showWindow(_ sender: Any?) {
     super.showWindow(sender)
     root?.revealCameraDock()
