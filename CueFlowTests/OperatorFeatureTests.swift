@@ -1085,6 +1085,82 @@ import Testing
     #expect(detachedPath.boundingBoxOfPath == detachedRoot.bounds)
   }
 
+  /// Synthetic notched display with a 212 pt housing, like the owner's MacBook fixture.
+  private func notchedDisplay(
+    _ c: OperatorWindowController, id: CGDirectDisplayID, uuid: String
+  ) throws -> (DisplayDescriptor, housing: CameraDockRect) {
+    let screen = try #require(NSScreen.screens.first)
+    let frame = screen.frame
+    let safeTop = 32.0
+    let safeEdge = frame.maxY - safeTop
+    let sideWidth = ((frame.width - 212) / 2).rounded(.down)
+    let parameters = dockParameters(
+      for: screen, safeTop: safeTop, topInset: safeTop,
+      left: CameraDockRect(x: frame.minX, y: safeEdge, width: sideWidth, height: safeTop),
+      right: CameraDockRect(
+        x: frame.minX + sideWidth + 212, y: safeEdge, width: frame.width - sideWidth - 212,
+        height: safeTop))
+    let display = syntheticDisplay(
+      screen: screen, id: id, uuid: uuid, isBuiltIn: true, parameters: parameters)
+    c.displayProvider = { [display] }
+    return (
+      display, CameraDockRect(x: frame.minX + sideWidth, y: safeEdge, width: 212, height: safeTop)
+    )
+  }
+
+  private func commandEvent(_ phrase: String, startingAt start: Double) -> TranscriptEvent {
+    let words = phrase.split(whereSeparator: \.isWhitespace).enumerated().map { index, word in
+      let wordStart = start + Double(index) * 0.25
+      return RecognizedWord(
+        text: String(word), start: wordStart, end: wordStart + 0.2, confidence: 0.9)
+    }
+    return TranscriptEvent(
+      isFinal: true, rangeStart: start, rangeEnd: words.last?.end ?? start,
+      availableAt: words.last?.end ?? start, words: words)
+  }
+
+  @Test func calibratedPreviewFollowsTheLiveCameraDockReflectionAndGuide() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    _ = try notchedDisplay(c, id: 9032, uuid: "preview-agreement-display")
+    c.state.horizontal = true
+    c.state.calibrated = true
+    c.reflect()
+    #expect(c.preview.reflection.horizontal)
+    #expect(!c.preview.reflection.viewport.guide.isHidden)
+    #expect(c.previewCaption.stringValue.hasSuffix("shown mirrored"))
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    c.reflect()
+    // The live Dock never mirrors and hides the guide; the calibrated preview agrees.
+    #expect(!dock.reflection.horizontal)
+    #expect(dock.reflection.viewport.guide.isHidden)
+    #expect(c.preview.reflection.horizontal == dock.reflection.horizontal)
+    #expect(c.preview.reflection.viewport.guide.isHidden == dock.reflection.viewport.guide.isHidden)
+    #expect(c.previewCaption.stringValue.hasSuffix("shown unmirrored"))
+    #expect(c.state.horizontal)
+
+    c.stopPresenting()
+    await settle(c)
+    #expect(c.cameraDock == nil)
+    #expect(c.preview.reflection.horizontal)
+    #expect(!c.preview.reflection.viewport.guide.isHidden)
+    #expect(c.previewCaption.stringValue.hasSuffix("shown mirrored"))
+
+    // Without calibration the preview never mirrors and keeps its guide, Dock or not.
+    c.state.calibrated = false
+    c.reflect()
+    #expect(!c.preview.reflection.horizontal)
+    c.showCameraDock()
+    await settle(c)
+    c.reflect()
+    #expect(!c.preview.reflection.viewport.guide.isHidden)
+  }
+
   @Test func explicitCameraDockCollapsePausesWithoutMovingAndPlaybackReexpands() async throws {
     let c = try await prepared()
     defer { c.close() }
