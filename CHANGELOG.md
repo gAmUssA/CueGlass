@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-17
 
-- Add an opt-in Camera Dock presentation surface with safe-area placement, top-center fallback, per-display placement controls, and shared playback-session behavior. Physical and runtime acceptance remains open (ADR 0012).
+- Add Camera Dock, a camera-adjacent prompter with a notch-attached island, animated expansion and collapse, centered reading line, and integrated controls. Displays without a notch can use an emulated island or a plain tray.
+- Add per-display placement controls and a matching operator preview while preserving the shared playback session and Reduce Motion support.
+- Add a microphone picker and capture recovery across audio-device changes for Follow Voice, with quicker bounded catch-up to confirmed speech.
+- Reorganize the inspector into Text, Playback, and Output tabs and refine the Quiet Studio toolbar, editor notices, preview captions, timers, and Controls panel.
+- Keep macOS 14 as the minimum system version; Follow Voice requires macOS 26 or later. GitHub binaries remain unsigned and unnotarized.
 
 ## 0.2.0 — 2026-10-15
 
