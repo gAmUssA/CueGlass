@@ -283,7 +283,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var inspectorWidthConstraint: NSLayoutConstraint?
   weak var playToolbarButton: NSButton?
   var previewAspectConstraint: NSLayoutConstraint?
-  let previewCaption = NSTextField(labelWithString: "OUTPUT PREVIEW · 1280 × 720")
+  let previewCaption = NSTextField(labelWithString: "Output preview · Local 1280 × 720")
+  lazy var editorBanner = NSHostingView(rootView: EditorTakeBanner(controller: self))
   var stageView = StudioSurface()
   var transportChrome = NSView()
   var takeBar: NSView?
@@ -403,7 +404,24 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     scroll.hasVerticalScroller = true
     scroll.borderType = .noBorder
     scroll.documentView = editor
-    editorController.view = scroll
+    // The locked-take notice sits over the page it locks (Quiet Studio ①/④), not in the stage.
+    editorBanner.isHidden = true
+    editorBanner.setContentHuggingPriority(.required, for: .vertical)
+    editorBanner.setContentCompressionResistancePriority(.required, for: .vertical)
+    // The banner never drives the pane's minimum width; it truncates instead.
+    editorBanner.setContentCompressionResistancePriority(
+      NSLayoutConstraint.Priority(1), for: .horizontal)
+    let editorColumn = NSStackView(views: [editorBanner, scroll])
+    editorColumn.orientation = .vertical
+    editorColumn.spacing = 0
+    editorColumn.alignment = .width
+    editorColumn.translatesAutoresizingMaskIntoConstraints = false
+    editorBanner.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      editorBanner.leadingAnchor.constraint(equalTo: editorColumn.leadingAnchor),
+      editorBanner.trailingAnchor.constraint(equalTo: editorColumn.trailingAnchor),
+    ])
+    editorController.view = editorColumn
     let editorItem = NSSplitViewItem(viewController: editorController)
     editorItem.minimumThickness = 320
     editorItem.holdingPriority = NSLayoutConstraint.Priority(480)
@@ -424,6 +442,10 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     preview.layer?.masksToBounds = true
     transportChrome = footer
     previewCaption.font = .systemFont(ofSize: 11, weight: .medium)
+    // The caption truncates before it widens the stage.
+    previewCaption.lineBreakMode = .byTruncatingTail
+    previewCaption.maximumNumberOfLines = 1
+    previewCaption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     previewCaption.textColor = .secondaryLabelColor
     previewCaption.appearance = NSAppearance(named: .darkAqua)
     let aspect = preview.heightAnchor.constraint(
@@ -1010,6 +1032,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     floating?.root?.updateCameraDockControls()
     editor.isEditable = !state.active
     editor.showsTake = state.active
+    editorBanner.isHidden = !state.active
     editor.needsDisplay = true
     for button in [playToolbarButton, panel?.playButton].compactMap({ $0 }) {
       button.image = NSImage(
@@ -1033,22 +1056,23 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       state.maximum,
       session.state == .idle ? script.model.preferredSpeedLinesPerMinute : session.preferredLPM)
     window?.subtitle = state.cloud
-    if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier.rawValue == "present" })
-      as? NSMenuToolbarItem
-    {
+    if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier.rawValue == "present" }) {
+      let live = output != nil || cameraDock != nil || floating != nil
       item.label =
         output != nil
-        ? "Presenting · Output"
+        ? "Presenting · \(output?.window?.screen?.localizedName ?? "Output")"
         : cameraDock != nil
           ? "Presenting · Camera Dock"
           : floating != nil ? "Presenting · Floating" : "Present"
-      item.menu = presentationMenu()
       if let button = item.view as? NSPopUpButton {
         let menu = presentationMenu()
         let title = NSMenuItem(title: item.label, action: nil, keyEquivalent: "")
         title.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
         menu.insertItem(title, at: 0)
         button.menu = menu
+        button.synchronizeTitleAndSelectedItem()
+        // The output-mode chip takes the accent while live; the text carries the state too.
+        button.contentTintColor = live ? .controlAccentColor : nil
       }
     }
     let toolbarButtons =
@@ -1096,9 +1120,16 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
 
   private func updatePreviewCaption() {
-    previewCaption.stringValue =
-      "\(output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName ?? "LOCAL PREVIEW") · \(Int(session.logicalSize.width)) × \(Int(session.logicalSize.height))"
-      + (state.calibrated && (state.horizontal || state.vertical) ? " · MIRRORED" : "")
+    previewCaption.stringValue = Self.previewCaption(
+      screen: output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName,
+      size: session.logicalSize,
+      mirrored: state.calibrated && (state.horizontal || state.vertical))
+  }
+  /// The stage caption follows the Quiet Studio board: what the stage shows, which display,
+  /// the exact logical size, and whether the operator sees it mirrored.
+  static func previewCaption(screen: String?, size: CGSize, mirrored: Bool) -> String {
+    "Output preview · \(screen ?? "Local") \(Int(size.width)) × \(Int(size.height))"
+      + " · exact output layout, scaled · shown \(mirrored ? "mirrored" : "unmirrored")"
   }
   func loadLatest() {
     perform {
@@ -1940,12 +1971,18 @@ extension OperatorWindowController {
     }
     readout.elapsed = stamp(session.elapsedSeconds)
     readout.remaining = session.remainingSeconds.map { stamp($0) } ?? "—"
+    // One pill vocabulary across the take bar and the Controls panel (Quiet Studio ⑩).
     readout.status =
       session.measuring
       ? "Measuring…"
       : session.state == .countingDown
         ? "Starting · \(session.countdownDigit ?? 0)"
-        : session.state == .running ? "Playing" : session.state == .idle ? "Ready" : "Paused"
+        : session.state == .running
+          ? "Playing"
+          : session.state == .idle
+            ? (script.source.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              ? "Empty" : "Ready")
+            : session.message.hasPrefix("End of script") ? "End of script" : "Paused"
     let lpm = session.state == .idle ? state.speed : session.effectiveLPM
     readout.pace =
       String(format: "%.0f lpm", lpm)
@@ -2128,9 +2165,9 @@ extension OperatorWindowController {
       row.spacing = 6
       for (symbol, label, command) in [
         ("backward.end.fill", "Restart · Home", PlaybackCommand.restart),
-        ("backward.fill", "Previous paragraph · Page Up", .previousParagraph),
+        ("chevron.up", "Previous paragraph · Page Up", .previousParagraph),
         ("play.fill", "Play or pause · Space", .toggle),
-        ("forward.fill", "Next paragraph · Page Down", .nextParagraph),
+        ("chevron.down", "Next paragraph · Page Down", .nextParagraph),
         ("arrow.up.arrow.down", "Reverse direction · R", .reverse),
       ] {
         let button = ActionButton(symbol: symbol, label: label) { [weak self] in
@@ -2153,10 +2190,11 @@ extension OperatorWindowController {
       return item
     }
     if id.rawValue == "present" {
-      let item = NSMenuToolbarItem(itemIdentifier: id)
+      // A plain item keeps the custom pull-down; NSMenuToolbarItem drops a custom view, so the
+      // live "Presenting · …" chip would never reach the screen.
+      let item = NSToolbarItem(itemIdentifier: id)
       item.label = "Present"
       item.image = NSImage(systemSymbolName: "display", accessibilityDescription: "Present")
-      item.menu = presentationMenu()
       let button = NSPopUpButton(frame: .zero, pullsDown: true)
       let menu = presentationMenu()
       let title = NSMenuItem(title: "Present", action: nil, keyEquivalent: "")

@@ -1276,14 +1276,14 @@ import Testing
     #expect(c.preview.placementMapView.map == nil)
     #expect(
       c.previewCaption.stringValue
-        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+        == OperatorWindowController.previewCaption(screen: nil, size: previewSize, mirrored: false))
     #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
     c.refresh()
     #expect(c.state.status == "Camera Dock display disconnected — position retained")
     #expect(c.preview.placementMapView.isHidden)
     #expect(
       c.previewCaption.stringValue
-        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+        == OperatorWindowController.previewCaption(screen: nil, size: previewSize, mirrored: false))
   }
 
   @Test func cameraDockForcedPanelCloseRecomputesExpandedPreviewMap() async throws {
@@ -1315,7 +1315,7 @@ import Testing
     #expect(c.state.status == "Camera Dock stopped — position retained")
     #expect(c.preview.placementMapView.isHidden)
     #expect(c.preview.placementMapView.map?.caption == expandedMap.caption)
-    #expect(c.previewCaption.stringValue.contains("LOCAL PREVIEW"))
+    #expect(c.previewCaption.stringValue.contains("Output preview · Local "))
     #expect(
       abs(
         Double(c.previewAspectConstraint?.multiplier ?? 0) - previewSize.height / previewSize.width)
@@ -1665,7 +1665,7 @@ import Testing
     #expect(c.preview.placementMapView.map == nil)
     #expect(
       c.previewCaption.stringValue
-        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+        == OperatorWindowController.previewCaption(screen: nil, size: previewSize, mirrored: false))
     #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
     c.refresh()
     #expect(
@@ -1711,7 +1711,7 @@ import Testing
     #expect(c.preview.placementMapView.map == nil)
     #expect(
       c.previewCaption.stringValue
-        == "LOCAL PREVIEW · \(Int(previewSize.width)) × \(Int(previewSize.height))")
+        == OperatorWindowController.previewCaption(screen: nil, size: previewSize, mirrored: false))
     #expect(c.previewAspectConstraint?.multiplier == previewSize.height / previewSize.width)
     c.refresh()
     #expect(
