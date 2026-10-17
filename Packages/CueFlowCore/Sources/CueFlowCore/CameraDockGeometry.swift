@@ -86,6 +86,9 @@ public struct CameraDockLayout: Equatable, Sendable {
   public let isBuiltInDisplay: Bool
   public let style: CameraDockVisualStyle
   public let cameraSafeAreaHeight: Double
+  /// `true` when the display reports no camera housing and the island is drawn around
+  /// an estimated one, the way Sapphire does on displays without a notch.
+  public let isEmulatedHousing: Bool
 }
 
 /// The attached Camera Dock silhouette at one point of the compact-to-expanded morph.
@@ -160,6 +163,14 @@ public enum CameraDockGeometry {
   public static let minimumHorizontalNudge = -120.0
   public static let maximumHorizontalNudge = 120.0
   public static let estimatedNotchSafeAreaHeight = 37.0
+  /// Emulated housing on displays without a notch, scaled from a 1728 pt reference
+  /// width (185 × 32 pt there), so the island reads the same on any display.
+  public static let emulatedHousingReferenceWidth = 1728.0
+  public static func emulatedHousingSize(screenWidth: Double) -> (width: Double, height: Double) {
+    guard screenWidth.isFinite, screenWidth > 0 else { return (160, 28) }
+    let scale = screenWidth / emulatedHousingReferenceWidth
+    return (min(260, max(140, 185 * scale)), min(38, max(26, 32 * scale)))
+  }
   /// Margin kept above the first line and below the last line of the strip.
   public static let viewportVerticalPadding = 8.0
 
@@ -223,21 +234,26 @@ public enum CameraDockGeometry {
   ) -> CameraDockLayout? {
     let preferences = preferences.normalized()
     let builtInTarget = isBuiltIn && !isMirrored
-    let reportedSafeTop = cameraSafeAreaHeight(on: parameters)
+    let hardwareSafeTop = builtInTarget ? cameraSafeAreaHeight(on: parameters) : 0
+    let islandEnabled = preferences.notchIslandEnabled
+    // A display that reports no housing gets an emulated one when the island is enabled;
+    // the plain tray below the menu bar remains the explicit opt-out.
+    let emulated = islandEnabled && hardwareSafeTop <= 0
+    let menuBarHeight = max(0, parameters.screenFrame.maxY - parameters.visibleFrame.maxY)
     let effectiveSafeTop: Double
-    if builtInTarget, preferences.forceNotchAttachment == true {
-      effectiveSafeTop = max(reportedSafeTop, estimatedNotchSafeAreaHeight)
-    } else if builtInTarget, preferences.forceNotchAttachment == false {
+    if !islandEnabled {
       effectiveSafeTop = 0
+    } else if emulated {
+      effectiveSafeTop = max(
+        menuBarHeight, emulatedHousingSize(screenWidth: parameters.screenFrame.width).height)
     } else {
-      effectiveSafeTop = reportedSafeTop
+      effectiveSafeTop = hardwareSafeTop
     }
-    let disablesNotchInference = builtInTarget && preferences.forceNotchAttachment == false
     let effectiveParameters = CameraDockScreenParameters(
       screenFrame: parameters.screenFrame, visibleFrame: parameters.visibleFrame,
       safeTop: effectiveSafeTop,
-      auxiliaryTopLeftArea: disablesNotchInference ? nil : parameters.auxiliaryTopLeftArea,
-      auxiliaryTopRightArea: disablesNotchInference ? nil : parameters.auxiliaryTopRightArea)
+      auxiliaryTopLeftArea: islandEnabled && !emulated ? parameters.auxiliaryTopLeftArea : nil,
+      auxiliaryTopRightArea: islandEnabled && !emulated ? parameters.auxiliaryTopRightArea : nil)
     guard
       let viewportHeight = viewportHeight(
         lineAdvance: lineAdvance, lineCount: preferences.lineCount)
@@ -246,13 +262,12 @@ public enum CameraDockGeometry {
     // tray holds text only; the detached fallback keeps its controls band below the text.
     guard
       let placement = placement(
-        on: effectiveParameters, isBuiltIn: builtInTarget, width: preferences.width,
+        on: effectiveParameters, isBuiltIn: islandEnabled, width: preferences.width,
         height: viewportHeight + controlsHeight, attachedHeight: viewportHeight,
         horizontalNudge: preferences.horizontalNudge)
     else { return nil }
     let attached = placement.location == .camera
     let safeAreaHeight = attached ? cameraSafeAreaHeight(on: effectiveParameters) : 0
-    let menuBarHeight = max(0, parameters.screenFrame.maxY - parameters.visibleFrame.maxY)
     let contentTopInset = attached ? max(safeAreaHeight, menuBarHeight) : 0
     return CameraDockLayout(
       screenParameters: effectiveParameters, placement: placement,
@@ -263,7 +278,7 @@ public enum CameraDockGeometry {
       guideFraction: guideFraction(viewportHeight: viewportHeight, lineAdvance: lineAdvance),
       lineCount: preferences.lineCount, isBuiltInDisplay: builtInTarget,
       style: placement.location == .camera ? .attached : .detached,
-      cameraSafeAreaHeight: safeAreaHeight)
+      cameraSafeAreaHeight: safeAreaHeight, isEmulatedHousing: attached && emulated)
   }
 
   public static func cameraSafeAreaHeight(on parameters: CameraDockScreenParameters) -> Double {
@@ -291,7 +306,7 @@ public enum CameraDockGeometry {
       return CameraDockRect(
         x: left.maxX, y: safeEdge, width: right.minX - left.maxX, height: safeAreaHeight)
     }
-    let width = min(screen.width * 0.2, max(36, safeAreaHeight * 4.5))
+    let width = min(screen.width * 0.2, emulatedHousingSize(screenWidth: screen.width).width)
     return CameraDockRect(
       x: screen.midX - width / 2, y: safeEdge, width: width, height: safeAreaHeight)
   }
@@ -363,7 +378,7 @@ public enum CameraDockGeometry {
     let type = layout.isBuiltInDisplay ? "Built-in" : "External"
     let placement =
       layout.style == .attached
-      ? "notch integrated"
+      ? (layout.isEmulatedHousing ? "notch island · camera position assumed" : "notch integrated")
       : "top of display · camera position assumed"
     var caption = "CAMERA DOCK · \(type) \(display) · \(placement) · \(layout.lineCount) lines"
     if cameraMayBeElsewhere {
@@ -515,9 +530,12 @@ public struct CameraDockPreferences: Codable, Equatable, Sendable {
   public var width: Double
   public var lineCount: Int
   public var horizontalNudge: Double
-  /// `true` opts into a centered notch attachment when screen geometry is missing.
-  /// `nil` follows system geometry; `false` explicitly disables notch attachment.
+  /// `false` opts out of the notch island and uses the plain tray below the menu bar.
+  /// `nil` and `true` both draw the island, around the hardware housing when the display
+  /// reports one and around an emulated housing otherwise. (The name is kept for stored
+  /// preferences written by earlier builds.)
   public var forceNotchAttachment: Bool?
+  public var notchIslandEnabled: Bool { forceNotchAttachment != false }
 
   public init(
     width: Double, lineCount: Int = 3, horizontalNudge: Double = 0,
@@ -603,8 +621,10 @@ public enum CameraDockDisplaySelection {
     return displays.first(where: { $0.id == selectedID && !$0.isBuiltIn })?.id
   }
 
-  public static func menuTitle(isBuiltIn: Bool, isMirrored: Bool, safeTop: Double) -> String {
-    isBuiltIn && !isMirrored && safeTop.isFinite && safeTop > 0
+  public static func menuTitle(
+    isBuiltIn: Bool, isMirrored: Bool, safeTop: Double, islandEnabled: Bool = true
+  ) -> String {
+    islandEnabled || (isBuiltIn && !isMirrored && safeTop.isFinite && safeTop > 0)
       ? "Camera Dock" : "Camera Dock (top of display)"
   }
 }

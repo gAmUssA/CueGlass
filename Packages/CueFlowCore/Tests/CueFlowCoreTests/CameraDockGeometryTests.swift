@@ -94,13 +94,28 @@ import Testing
   let map = try #require(
     CameraDockGeometry.placementMap(for: layout, displayName: "Built-in Retina Display"))
 
+  // No hardware housing: the island is drawn around an emulated one sized from the
+  // display width, at least as tall as the menu bar, centred, and labelled honestly.
+  let estimated = CameraDockGeometry.emulatedHousingSize(screenWidth: 1512)
   #expect(layout.style == .attached)
-  #expect(layout.cameraSafeAreaHeight == CameraDockGeometry.estimatedNotchSafeAreaHeight)
+  #expect(layout.isEmulatedHousing)
+  #expect(layout.cameraSafeAreaHeight == max(32, estimated.height))
   #expect(layout.placement.frame.maxY == parameters.screenFrame.maxY)
-  #expect(housing.width == layout.cameraSafeAreaHeight * 4.5)
+  #expect(abs(housing.width - estimated.width) < 1e-9)
   #expect(housing.midX == parameters.screenFrame.midX)
   #expect(map.cameraHousing != nil)
-  #expect(map.caption.contains("notch integrated"))
+  #expect(map.caption.contains("notch island · camera position assumed"))
+  #expect(!map.caption.contains("notch integrated"))
+}
+
+@Test func cameraDockEmulatedHousingScalesWithDisplayWidthWithinBounds() {
+  let small = CameraDockGeometry.emulatedHousingSize(screenWidth: 1024)
+  let reference = CameraDockGeometry.emulatedHousingSize(screenWidth: 1728)
+  let large = CameraDockGeometry.emulatedHousingSize(screenWidth: 5120)
+  #expect(small.width == 140 && small.height == 26)
+  #expect(abs(reference.width - 185) < 1e-9 && abs(reference.height - 32) < 1e-9)
+  #expect(large.width == 260 && large.height == 38)
+  #expect(CameraDockGeometry.emulatedHousingSize(screenWidth: .nan).width == 160)
 }
 
 @Test func cameraDockMorphMetricsKeepAContinuousStemAndInterpolateTheTray() throws {
@@ -186,8 +201,10 @@ import Testing
   let layout = try #require(
     CameraDockGeometry.layout(
       on: parameters, isBuiltIn: false,
-      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40))
+      preferences: CameraDockPreferences(width: 600, lineCount: 2, forceNotchAttachment: false),
+      lineAdvance: 40))
   #expect(layout.style == .detached)
+  #expect(!layout.isEmulatedHousing)
   #expect(layout.viewportHeight == 96)
   #expect(layout.placement.contentFrame.height == 96 + CameraDockGeometry.controlsHeight)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 1) == nil)
@@ -226,16 +243,20 @@ import Testing
 
   #expect(CameraDockGeometry.cameraSafeAreaHeight(on: singleSide) == 0)
   #expect(CameraDockGeometry.cameraSafeAreaHeight(on: misalignedPair) == 0)
-  #expect(
-    CameraDockGeometry.layout(
-      on: singleSide, isBuiltIn: true,
-      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40)?.style
-      == .detached)
-  #expect(
-    CameraDockGeometry.layout(
-      on: misalignedPair, isBuiltIn: true,
-      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40)?.style
-      == .detached)
+  // Bad metadata never implies a hardware notch; the island falls back to emulation,
+  // and the explicit opt-out gives the plain tray.
+  for parameters in [singleSide, misalignedPair] {
+    let island = CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40)
+    #expect(island?.style == .attached)
+    #expect(island?.isEmulatedHousing == true)
+    let tray = CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2, forceNotchAttachment: false),
+      lineAdvance: 40)
+    #expect(tray?.style == .detached)
+  }
 }
 
 @Test func cameraDockFallbackSelectionAndLabelUseSelectedExternalDisplay() {
@@ -248,14 +269,21 @@ import Testing
   #expect(selected == "external")
   #expect(CameraDockDisplaySelection.preferred(in: candidates, selectedID: "mirror") == nil)
   #expect(CameraDockDisplaySelection.preferred(in: candidates, selectedID: "missing") == nil)
+  // The island is the default everywhere; only the explicit opt-out is labelled.
   #expect(
     CameraDockDisplaySelection.menuTitle(isBuiltIn: false, isMirrored: false, safeTop: 0)
-      == "Camera Dock (top of display)")
-  #expect(
-    CameraDockDisplaySelection.menuTitle(isBuiltIn: true, isMirrored: false, safeTop: 32)
       == "Camera Dock")
   #expect(
-    CameraDockDisplaySelection.menuTitle(isBuiltIn: true, isMirrored: true, safeTop: 32)
+    CameraDockDisplaySelection.menuTitle(
+      isBuiltIn: false, isMirrored: false, safeTop: 0, islandEnabled: false)
+      == "Camera Dock (top of display)")
+  #expect(
+    CameraDockDisplaySelection.menuTitle(
+      isBuiltIn: true, isMirrored: false, safeTop: 32, islandEnabled: false)
+      == "Camera Dock")
+  #expect(
+    CameraDockDisplaySelection.menuTitle(
+      isBuiltIn: true, isMirrored: true, safeTop: 32, islandEnabled: false)
       == "Camera Dock (top of display)")
 }
 
@@ -358,11 +386,18 @@ import Testing
   let fallbackParameters = CameraDockScreenParameters(
     screenFrame: screen, visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950),
     safeTop: 0, auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+  let plainTray = CameraDockPreferences(width: 665.28, lineCount: 3, forceNotchAttachment: false)
   let builtInFallback = try #require(
+    CameraDockGeometry.layout(
+      on: fallbackParameters, isBuiltIn: true, preferences: plainTray, lineAdvance: 40))
+  let externalFallback = try #require(
+    CameraDockGeometry.layout(
+      on: fallbackParameters, isBuiltIn: false, preferences: plainTray, lineAdvance: 40))
+  let builtInIsland = try #require(
     CameraDockGeometry.layout(
       on: fallbackParameters, isBuiltIn: true,
       preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
-  let externalFallback = try #require(
+  let externalIsland = try #require(
     CameraDockGeometry.layout(
       on: fallbackParameters, isBuiltIn: false,
       preferences: CameraDockPreferences(width: 665.28, lineCount: 3), lineAdvance: 40))
@@ -371,6 +406,15 @@ import Testing
   #expect(externalFallback.style == .detached)
   #expect(builtInFallback.placement.frame.maxY == 944)
   #expect(externalFallback.placement.frame.maxY == 944)
+  // By default a display without a notch gets the emulated island instead.
+  for island in [builtInIsland, externalIsland] {
+    #expect(island.style == .attached)
+    #expect(island.isEmulatedHousing)
+    #expect(island.placement.frame.maxY == 982)
+    #expect(island.contentTopInset == 32)
+    #expect(island.placement.contentFrame.maxY == 950)
+  }
+  #expect(!notched.isEmulatedHousing)
 }
 
 @Test func cameraDockPlacementMapUsesLiveDockFrameAndNotchedDisplayDetails() throws {
@@ -420,15 +464,27 @@ import Testing
     CameraDockGeometry.placementMap(
       for: externalLayout, displayName: "Studio Display", cameraMayBeElsewhere: true))
 
-  #expect(builtInMap.cameraHousing == nil)
-  #expect(externalMap.cameraHousing == nil)
+  #expect(builtInMap.cameraHousing != nil)
+  #expect(externalMap.cameraHousing != nil)
   #expect(
     builtInMap.caption
-      == "CAMERA DOCK · Built-in Retina Display · top of display · camera position assumed · 3 lines"
+      == "CAMERA DOCK · Built-in Retina Display · notch island · camera position assumed · 3 lines"
   )
   #expect(
     externalMap.caption
-      == "CAMERA DOCK · External Studio Display · top of display · camera position assumed · 3 lines · Your camera may be on another display"
+      == "CAMERA DOCK · External Studio Display · notch island · camera position assumed · 3 lines · Your camera may be on another display"
+  )
+  // The opt-out keeps the earlier plain-tray captions.
+  let plainTray = CameraDockPreferences(width: 665.28, lineCount: 3, forceNotchAttachment: false)
+  let trayLayout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true, preferences: plainTray, lineAdvance: 40))
+  let trayMap = try #require(
+    CameraDockGeometry.placementMap(for: trayLayout, displayName: "Retina Display"))
+  #expect(trayMap.cameraHousing == nil)
+  #expect(
+    trayMap.caption
+      == "CAMERA DOCK · Built-in Retina Display · top of display · camera position assumed · 3 lines"
   )
 }
 
@@ -445,9 +501,11 @@ import Testing
   let map = try #require(
     CameraDockGeometry.placementMap(for: layout, displayName: "Retina Display"))
 
+  let estimatedWidth = CameraDockGeometry.emulatedHousingSize(screenWidth: 1512).width
   #expect(layout.style == .attached)
+  #expect(!layout.isEmulatedHousing)
   #expect(map.cameraHousing != nil)
-  #expect(map.cameraHousing?.x == (1512.0 / 2 - 72) / 1512)
+  #expect(abs((map.cameraHousing?.x ?? -1) - (1512.0 / 2 - estimatedWidth / 2) / 1512) < 1e-12)
   #expect(map.caption.contains("notch integrated"))
 }
 

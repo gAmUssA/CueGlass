@@ -1059,6 +1059,9 @@ import Testing
       screen: screen, id: 9002, uuid: "detached-test-display", parameters: externalParameters)
     c.displayProvider = { [external] }
     c.state.selectedDisplay = external.selectionKey
+    // The plain tray is the explicit opt-out; by default this display would get the island.
+    c.setCameraDockNotchIsland(false)
+    #expect(!c.state.cameraDockNotchIsland)
     c.showCameraDock()
     let detachedDock = try #require(c.cameraDock)
     let detachedWindow = try #require(detachedDock.window)
@@ -1371,13 +1374,24 @@ import Testing
     c.state.selectedDisplay = external.selectionKey
     c.refreshScreens(connected)
     #expect(c.cameraDockTarget(in: connected)?.id == external.id)
+    // By default the external display gets the emulated island; opting out labels the
+    // top-of-display fallback honestly, before and after the Dock opens.
+    #expect(c.cameraDockMenuTitle == "Camera Dock")
+    c.setCameraDockNotchIsland(false)
     #expect(c.cameraDockMenuTitle == "Camera Dock (top of display)")
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
     dock.reflection.viewport.driver?.stop()
     dock.reflection.viewport.driver = nil
     #expect(dock.displayID == external.id)
+    #expect(dock.dockStyle == .detached)
     #expect(c.cameraDockMenuTitle == "Camera Dock (top of display)")
+    #expect(c.cameraDockPlacementMap?.caption.contains("top of display") == true)
+    c.setCameraDockNotchIsland(true)
+    #expect(c.cameraDock?.dockStyle == .attached)
+    #expect(c.cameraDock?.dockLayout?.isEmulatedHousing == true)
+    #expect(c.cameraDockMenuTitle == "Camera Dock")
+    #expect(c.cameraDockPlacementMap?.caption.contains("notch island") == true)
   }
 
   @Test func cameraDockLeavesExactlyOneSurfaceActiveAcrossAllSurfaceTypes() async throws {
@@ -1518,6 +1532,8 @@ import Testing
     c.displayProvider = { connected }
     c.refreshScreens(connected)
     c.state.selectedDisplay = original.selectionKey
+    // The plain tray follows the visible frame directly, which is what this test measures.
+    c.setCameraDockNotchIsland(false)
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
     dock.reflection.viewport.driver?.stop()
@@ -1747,7 +1763,8 @@ import Testing
 
     c.setCameraDockHorizontalNudge(24)
     let nudgeMap = try #require(c.preview.placementMapView.map)
-    #expect(nudgeMap.dock.x != lineMap.dock.x)
+    // Attached, the frame keeps the housing-centred span and the content moves inside it.
+    #expect(nudgeMap.content.x != lineMap.content.x)
     #expect(nudgeMap == c.cameraDockPlacementMap)
 
     c.resetCameraDockPreferences()
@@ -1785,12 +1802,12 @@ import Testing
     #expect(resizedMap.dock.width != pausedMap.dock.width)
     #expect(resizedMap == c.cameraDockPlacementMap)
 
-    let pausedFrameAfterResize = window.frame
+    let pausedOffsetAfterResize = dock.dockContentOffsetX
     c.setCameraDockHorizontalNudge(24)
     let updatedPausedMap = try #require(c.preview.placementMapView.map)
     #expect(c.session.state == .paused)
-    #expect(window.frame.minX != pausedFrameAfterResize.minX)
-    #expect(updatedPausedMap.dock.x != resizedMap.dock.x)
+    #expect(dock.dockContentOffsetX != pausedOffsetAfterResize)
+    #expect(updatedPausedMap.content.x != resizedMap.content.x)
     #expect(
       abs(updatedPausedMap.dock.x - (window.frame.minX - screen.frame.minX) / screen.frame.width)
         < 1e-9)
@@ -1801,14 +1818,14 @@ import Testing
     try c.session.toggle(c.script)
     await settle(c)
     #expect(c.session.state == .running)
-    let runningFrame = window.frame
+    let runningOffset = dock.dockContentOffsetX
     let runningMap = try #require(c.preview.placementMapView.map)
 
     c.setCameraDockHorizontalNudge(48)
     let updatedRunningMap = try #require(c.preview.placementMapView.map)
     #expect(c.session.state == .running)
-    #expect(window.frame.minX != runningFrame.minX)
-    #expect(updatedRunningMap.dock.x != runningMap.dock.x)
+    #expect(dock.dockContentOffsetX != runningOffset)
+    #expect(updatedRunningMap.content.x != runningMap.content.x)
     #expect(
       abs(
         updatedRunningMap.dock.x - (window.frame.minX - screen.frame.minX) / screen.frame.width)

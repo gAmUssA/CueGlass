@@ -45,6 +45,7 @@ struct VoiceFollowPlatformCapability: Equatable {
   @Published var cameraDockWidth = 360.0
   @Published var cameraDockLineCount = CameraDockGeometry.defaultLineCount
   @Published var cameraDockHorizontalNudge = 0.0
+  @Published var cameraDockNotchIsland = true
   @Published var cameraDockReady = false
   @Published var cameraDockFirstUseCalloutVisible = false
   @Published var cameraDockPlacementPreviewExpanded = false
@@ -1583,6 +1584,7 @@ extension OperatorWindowController {
       state.cameraDockWidth = preferences.width
       state.cameraDockLineCount = preferences.lineCount
       state.cameraDockHorizontalNudge = preferences.horizontalNudge
+      state.cameraDockNotchIsland = preferences.notchIslandEnabled
 
       let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
       let previous: CameraDockReturnSurface =
@@ -1784,7 +1786,8 @@ extension OperatorWindowController {
     return CameraDockDisplaySelection.menuTitle(
       isBuiltIn: display.isBuiltIn && !display.isMirrored,
       isMirrored: display.isMirrored,
-      safeTop: CameraDockGeometry.cameraSafeAreaHeight(on: display.cameraDockParameters))
+      safeTop: CameraDockGeometry.cameraSafeAreaHeight(on: display.cameraDockParameters),
+      islandEnabled: cameraDockPreferences(for: display).notchIslandEnabled)
   }
 
   func cameraDockTarget(in displays: [DisplayDescriptor]) -> DisplayDescriptor? {
@@ -1820,7 +1823,10 @@ extension OperatorWindowController {
     state.cameraDockWidth = preference.width
     state.cameraDockLineCount = preference.lineCount
     state.cameraDockHorizontalNudge = preference.horizontalNudge
+    state.cameraDockNotchIsland = preference.notchIslandEnabled
   }
+
+  private var cameraDockIslandPreference: Bool? { state.cameraDockNotchIsland ? nil : false }
 
   private func persistCameraDockPreferences(
     _ preference: CameraDockPreferences, for display: DisplayDescriptor
@@ -1839,6 +1845,7 @@ extension OperatorWindowController {
     state.cameraDockWidth = normalized.width
     state.cameraDockLineCount = normalized.lineCount
     state.cameraDockHorizontalNudge = normalized.horizontalNudge
+    state.cameraDockNotchIsland = normalized.notchIslandEnabled
     let displays = displayProvider()
     let display =
       cameraDock.flatMap { dock in displays.first { $0.id == dock.displayID } }
@@ -1863,21 +1870,33 @@ extension OperatorWindowController {
     setCameraDockPreference(
       CameraDockPreferences(
         width: width, lineCount: state.cameraDockLineCount,
-        horizontalNudge: state.cameraDockHorizontalNudge))
+        horizontalNudge: state.cameraDockHorizontalNudge,
+        forceNotchAttachment: cameraDockIslandPreference))
+  }
+
+  /// Draws the island around an emulated housing on displays without a notch, or the
+  /// plain tray below the menu bar when off. Displays with a notch always attach.
+  func setCameraDockNotchIsland(_ enabled: Bool) {
+    setCameraDockPreference(
+      CameraDockPreferences(
+        width: state.cameraDockWidth, lineCount: state.cameraDockLineCount,
+        horizontalNudge: state.cameraDockHorizontalNudge,
+        forceNotchAttachment: enabled ? nil : false))
   }
 
   func setCameraDockLineCount(_ lineCount: Int) {
     setCameraDockPreference(
       CameraDockPreferences(
         width: state.cameraDockWidth, lineCount: lineCount,
-        horizontalNudge: state.cameraDockHorizontalNudge))
+        horizontalNudge: state.cameraDockHorizontalNudge,
+        forceNotchAttachment: cameraDockIslandPreference))
   }
 
   func setCameraDockHorizontalNudge(_ nudge: Double) {
     setCameraDockPreference(
       CameraDockPreferences(
         width: state.cameraDockWidth, lineCount: state.cameraDockLineCount,
-        horizontalNudge: nudge))
+        horizontalNudge: nudge, forceNotchAttachment: cameraDockIslandPreference))
   }
 
   func resetCameraDockPreferences() {

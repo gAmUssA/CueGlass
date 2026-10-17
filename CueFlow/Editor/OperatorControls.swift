@@ -196,6 +196,13 @@ struct OperatorControls: View {
             .accessibilityLabel("Camera Dock horizontal nudge")
             Text("Horizontal nudge · \(Int(state.cameraDockHorizontalNudge.rounded())) pt")
               .font(.caption)
+            Toggle(
+              "Notch island on displays without a notch",
+              isOn: Binding(
+                get: { state.cameraDockNotchIsland },
+                set: { controller.setCameraDockNotchIsland($0) })
+            )
+            .accessibilityLabel("Notch island on displays without a notch")
             Button("Reset Placement") { controller.resetCameraDockPreferences() }
           }
           .onAppear { controller.setCameraDockPlacementPreviewExpanded(cameraDockExpanded) }
