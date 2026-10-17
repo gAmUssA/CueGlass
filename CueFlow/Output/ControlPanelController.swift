@@ -9,7 +9,7 @@ import SwiftUI
   init(controller: OperatorWindowController) {
     operatorController = controller
     let panel = PresentationPanel(
-      contentRect: CGRect(x: 150, y: 150, width: 560, height: 136),
+      contentRect: CGRect(x: 150, y: 150, width: 600, height: 116),
       styleMask: [.titled, .closable, .utilityWindow, .hudWindow, .nonactivatingPanel],
       backing: .buffered, defer: false)
     super.init(window: panel)
@@ -38,9 +38,9 @@ import SwiftUI
     row.spacing = 5
     for (symbol, label, command) in [
       ("backward.end.fill", "Restart · Home", PlaybackCommand.restart),
-      ("backward.fill", "Previous paragraph · Page Up", .previousParagraph),
+      ("chevron.up", "Previous paragraph · Page Up", .previousParagraph),
       ("play.fill", "Play or pause · Space", .toggle),
-      ("forward.fill", "Next paragraph · Page Down", .nextParagraph),
+      ("chevron.down", "Next paragraph · Page Down", .nextParagraph),
       ("arrow.up.arrow.down", "Reverse direction · R", .reverse),
     ] {
       let button = ActionButton(symbol: symbol, label: label) { [weak controller] in
@@ -107,7 +107,7 @@ struct PanelTimer: View {
   var body: some View {
     VStack {
       Text(readout.elapsed).monospacedDigit().font(.system(size: 15, weight: .semibold))
-      Text(readout.remaining + " left").font(.caption2)
+      Text((readout.remaining == "—" ? "—" : "−" + readout.remaining) + " left").font(.caption2)
     }.frame(minWidth: 76)
   }
 }
@@ -116,29 +116,34 @@ struct PanelPace: View {
   @ObservedObject var readout: TakeReadout
   unowned let controller: OperatorWindowController
   var body: some View {
-    VStack(spacing: 6) {
+    HStack(spacing: 6) {
       HStack(spacing: 6) {
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? -state.jumpStep : -state.fineStep
           Button("\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.bordered)
-            .focusable(false).frame(minWidth: 34, minHeight: 26).monospacedDigit()
+            .focusable(false).frame(minWidth: 30, minHeight: 26).monospacedDigit()
         }
         // The pace slider is the control the operator reaches for mid-take; give it the room.
         Slider(
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           in: 2...state.maximum
         )
-        .controlSize(.large).frame(minWidth: 260, maxWidth: .infinity)
+        .controlSize(.large).frame(minWidth: 200, maxWidth: .infinity)
         .accessibilityLabel("Reading pace")
         .focusable(false)
         ForEach([0, 1], id: \.self) { index in
           let step = index == 0 ? state.fineStep : state.jumpStep
           Button("+\(Int(step))") { controller.adjustSpeed(step) }.buttonStyle(.bordered)
-            .focusable(false).frame(minWidth: 34, minHeight: 26).monospacedDigit()
+            .focusable(false).frame(minWidth: 30, minHeight: 26).monospacedDigit()
         }
       }
-      Text(readout.pace + (readout.wpm.contains("—") ? "" : " · " + readout.wpm))
-        .font(.system(size: 12, weight: .medium)).monospacedDigit()
+      // Pace reads inline at the end of the slider row (Quiet Studio ⑧).
+      HStack(alignment: .firstTextBaseline, spacing: 3) {
+        Text(readout.pace.replacingOccurrences(of: " lpm", with: ""))
+          .font(.system(size: 17, weight: .semibold))
+        Text("lpm" + (readout.wpm.contains("—") ? "" : " " + readout.wpm))
+          .font(.system(size: 11)).foregroundStyle(.secondary)
+      }.monospacedDigit().fixedSize()
     }
   }
 }
