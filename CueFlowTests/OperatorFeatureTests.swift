@@ -1862,6 +1862,102 @@ import Testing
     #expect(c.preview.logicalSize == floatingSize)
   }
 
+  @Test func cameraDockExitWithoutTheReturnOutputDisplayRestoresPausedPreview() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    c.preview.reflection.viewport.driver?.stop()
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let stage = syntheticDisplay(
+      screen: screen, id: 801, uuid: "return-stage", parameters: parameters)
+    let dockDisplay = syntheticDisplay(
+      screen: screen, id: 802, uuid: "dock-display", parameters: parameters)
+    var connected = [stage, dockDisplay]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.selectDisplay(stage.selectionKey)
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    let output = try #require(c.output)
+    output.reflection.viewport.driver?.stop()
+    output.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(output.displayID == stage.id)
+    let outputSize = c.session.logicalSize
+    c.seek(c.session.paragraphPositions[40])
+    let anchor = try #require(c.authoritative.captureAnchor())
+    let snapshot = try #require(c.session.snapshot?.id)
+
+    c.selectDisplay(dockDisplay.selectionKey)
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(dock.displayID == dockDisplay.id)
+    #expect(c.output == nil)
+
+    // The return display disconnects while the Dock stays on its own display.
+    connected = [dockDisplay]
+    c.screensChanged()
+    #expect(c.cameraDock === dock)
+
+    c.stopPresenting()
+    await settle(c)
+    #expect(c.cameraDock == nil)
+    #expect(c.output == nil)
+    #expect(c.floating == nil)
+    #expect(c.selectedPresentationSurface == "preview")
+    #expect(c.session.state == .paused)
+    #expect(c.session.snapshot?.id == snapshot)
+    #expect(c.session.logicalSize == outputSize)
+    #expect(c.preview.logicalSize == outputSize)
+    #expect(!c.preview.reflection.viewport.centersText)
+    #expect(c.preview.reflection.viewport.columnWidthFractionOverride == nil)
+    #expect(c.preview.placementMapView.map == nil)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
+    #expect(c.state.status.contains("Output display disconnected"))
+  }
+
+  @Test func cameraDockReturnsOutputToItsOwnDisplayNotTheNextPickedOne() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    c.preview.reflection.viewport.driver?.stop()
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let a = syntheticDisplay(screen: screen, id: 901, uuid: "output-a", parameters: parameters)
+    let b = syntheticDisplay(screen: screen, id: 902, uuid: "output-b", parameters: parameters)
+    let connected = [a, b]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.selectDisplay(a.selectionKey)
+    c.showOutput(confirm: { _ in .alertFirstButtonReturn })
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.output?.displayID == a.id)
+
+    // The picker names B before the Dock opens; Output has not moved.
+    c.selectDisplay(b.selectionKey)
+    #expect(c.output?.displayID == a.id)
+    #expect(c.state.selectedDisplay == b.selectionKey)
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(dock.displayID == b.id)
+    #expect(c.output == nil)
+
+    c.stopPresenting()
+    c.output?.reflection.viewport.driver?.stop()
+    c.output?.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(c.cameraDock == nil)
+    #expect(c.selectedPresentationSurface == "output")
+    #expect(c.output?.displayID == a.id)
+    #expect(c.state.selectedDisplay == a.selectionKey)
+  }
+
   @Test func cameraDockSwitchPreservesRunningAnchorAndSnapshot() async throws {
     let c = try await prepared()
     defer { c.close() }

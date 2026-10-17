@@ -1193,7 +1193,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       hideOutput()
       return
     }
-    let displays = DisplayDescriptor.all()
+    let displays = displayProvider()
     guard
       let display = displays.first(where: {
         $0.selectionKey == state.selectedDisplay
@@ -1265,9 +1265,21 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       switch destination {
       case .floating(_, _):
         showFloating()
-      case .output(let displayKey, _, _):
-        state.selectedDisplay = displayKey
+      case .output(let displayKey, let size, _):
+        // The return display was closed with Output when the Dock opened, so display loss
+        // no longer tracked it. If it is gone, Preview takes the saved size and anchor.
+        let message = "Output display disconnected — position retained"
+        guard displayProvider().contains(where: { $0.selectionKey == displayKey }) else {
+          returnToPreview(size: size)
+          setPersistentStatus(message)
+          return
+        }
+        selectDisplay(displayKey)
         showOutput(confirm: { _ in .alertFirstButtonReturn })
+        if output == nil {
+          returnToPreview(size: size)
+          setPersistentStatus(message)
+        }
       case .preview(let size, _):
         returnToPreview(size: size)
       }
@@ -1653,12 +1665,16 @@ extension OperatorWindowController {
       state.cameraDockNotchIsland = preferences.notchIslandEnabled
 
       let running = !session.voiceSessionActive && (session.state == .running || pendingResume)
+      // Return to the display Output is on. The picker may already name the next
+      // destination, which Output has not moved to and the operator has not confirmed.
       let previous: CameraDockReturnSurface =
-        output != nil
-        ? .output(state.selectedDisplay, session.logicalSize, wasRunning: running)
-        : floating != nil
-          ? .floating(session.logicalSize, wasRunning: running)
-          : .preview(session.logicalSize, wasRunning: running)
+        if let output {
+          .output(String(output.displayID), session.logicalSize, wasRunning: running)
+        } else if floating != nil {
+          .floating(session.logicalSize, wasRunning: running)
+        } else {
+          .preview(session.logicalSize, wasRunning: running)
+        }
       try session.pause()
       preservePreparationAnchor()
       pendingPlay = false
