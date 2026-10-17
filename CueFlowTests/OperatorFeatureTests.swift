@@ -1759,6 +1759,53 @@ import Testing
     #expect(c.authoritative.captureAnchor()?.utf16Offset == outputAnchor.utf16Offset)
   }
 
+  @Test func displayPickerChangeReloadsCameraDockPreferencesBeforeEdits() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let parameters = dockParameters(for: screen)
+    let a = syntheticDisplay(screen: screen, id: 701, uuid: "picker-a", parameters: parameters)
+    let b = syntheticDisplay(screen: screen, id: 702, uuid: "picker-b", parameters: parameters)
+    let connected = [a, b]
+    c.displayProvider = { connected }
+    c.refreshScreens(connected)
+    c.selectDisplay(a.selectionKey)
+    c.setCameraDockWidth(520)
+    c.setCameraDockLineCount(4)
+    c.setCameraDockHorizontalNudge(24)
+    let defaultWidth = CameraDockGeometry.defaultWidth(screenWidth: Double(screen.frame.width))
+
+    // Choosing B in the picker shows B's own (default) values, not A's.
+    c.selectDisplay(b.selectionKey)
+    #expect(c.cameraDockTarget(in: connected)?.id == b.id)
+    #expect(c.state.cameraDockWidth == defaultWidth)
+    #expect(c.state.cameraDockLineCount == CameraDockGeometry.defaultLineCount)
+    #expect(c.state.cameraDockHorizontalNudge == 0)
+
+    // An edit on B persists B's values; A keeps its own.
+    c.setCameraDockHorizontalNudge(-12)
+    c.selectDisplay(a.selectionKey)
+    #expect(c.state.cameraDockWidth == 520)
+    #expect(c.state.cameraDockLineCount == 4)
+    #expect(c.state.cameraDockHorizontalNudge == 24)
+    c.selectDisplay(b.selectionKey)
+    #expect(c.state.cameraDockWidth == defaultWidth)
+    #expect(c.state.cameraDockLineCount == CameraDockGeometry.defaultLineCount)
+    #expect(c.state.cameraDockHorizontalNudge == -12)
+
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    dock.reflection.viewport.driver?.stop()
+    dock.reflection.viewport.driver = nil
+    await settle(c)
+    #expect(dock.displayID == b.id)
+    #expect(
+      dock.dockPreferences
+        == CameraDockPreferences(
+          width: defaultWidth, lineCount: CameraDockGeometry.defaultLineCount,
+          horizontalNudge: -12))
+  }
+
   @Test func cameraDockSwitchPreservesRunningAnchorAndSnapshot() async throws {
     let c = try await prepared()
     defer { c.close() }

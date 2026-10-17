@@ -334,7 +334,11 @@ struct OperatorControls: View {
         Text("Floating").tag("floating")
         Text(controller.cameraDockMenuTitle).tag("cameraDock")
       }
-      Picker("Display", selection: $state.selectedDisplay) {
+      Picker(
+        "Display",
+        selection: Binding(
+          get: { state.selectedDisplay }, set: { controller.selectDisplay($0) })
+      ) {
         if !state.displays.contains(state.selectedDisplay) {
           // A selection that is not attached still needs a visible title.
           Text(

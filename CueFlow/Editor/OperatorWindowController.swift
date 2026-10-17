@@ -1863,6 +1863,16 @@ extension OperatorWindowController {
     return displays.first { $0.selectionKey == id }
   }
 
+  /// The Display picker. The Camera Dock inspector values follow the new target at once,
+  /// so an edit made on the newly chosen display persists that display's own width and
+  /// line count rather than the previous display's.
+  func selectDisplay(_ key: String) {
+    guard state.selectedDisplay != key else { return }
+    state.selectedDisplay = key
+    refreshCameraDockPreferencesForTarget()
+    if state.cameraDockPlacementPreviewExpanded { render() }
+  }
+
   private func cameraDockPreferences(for display: DisplayDescriptor) -> CameraDockPreferences {
     cameraDockPreferenceCatalog.preference(
       forDisplayUUID: display.preference.uuid ?? display.preference.name,
@@ -2266,7 +2276,7 @@ extension OperatorWindowController {
       output?.close()
       output = nil
     }
-    state.selectedDisplay = key
+    selectDisplay(key)
     showOutput()
   }
   @objc func floatingAction() { showFloating() }
