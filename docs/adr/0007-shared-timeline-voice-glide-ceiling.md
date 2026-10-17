@@ -23,3 +23,10 @@ Silence, low confidence, mismatches and loss of lock hold the shared timeline at
 # Consequences
 
 Preview, fullscreen output and floating output continue sampling one timeline. Recognition revisions do not become per-frame seeks, and manual navigation remains authoritative until explicit resume. A layout remeasure invalidates the line table and requires a fresh measured table before following can start. The glide ceiling is transient session state and is never saved in the document. Deterministic tests cover UTF-16 lookup, line-table replacement, bounded movement, manual priority, epochs, silence and reacquisition. Live microphone, human-speech quality and macOS 26 permission/model flows remain separate manual acceptance gates.
+
+## Catch-up glide and microphone continuity refinement (2026-10-17)
+
+The owner reported sluggish following and dropped microphones with an external microphone attached. Two refinements, both inside the existing contracts:
+
+- Catch-up glide. When confirmed speech places the reading line more than half a line ahead of the display, the glide velocity rises so the guide reaches that line within 0.7 s, never below the cadence or the operator's baseline and never above the configured maximum. Volatile wording still cannot raise the speed, and the voice ceiling still stops the page at the spoken line. `FollowCatchUp` in CueFlowCore carries the arithmetic.
+- Microphone continuity. An audio configuration change (a microphone plugged, unplugged, or switched, or a sample-rate change) no longer ends the session. The capture source rebuilds only the input tap on the new format while the analyzer, the transcript stream, and the take continue; a device that cannot be reopened after a few retries still ends capture with the existing failure path. The operator can pick a specific microphone in the Follow Voice inspector; the choice is remembered by device UID and falls back to the system default while that device is absent. Changing it while following moves capture in place.
