@@ -54,12 +54,17 @@ enum VoiceFollowUIState: Equatable {
   func availableInputDevices() -> [VoiceInputDeviceOption]
   func setPreferredInputDevice(uid: String?)
   func observeInputDevices(_ handler: @escaping @MainActor () -> Void)
+  /// The device actually capturing, read back from the input unit; nil while closed.
+  var inputRoute: VoiceInputRoute? { get }
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void)
 }
 
 extension VoiceCaptureSource {
   func availableInputDevices() -> [VoiceInputDeviceOption] { [] }
   func setPreferredInputDevice(uid: String?) {}
   func observeInputDevices(_ handler: @escaping @MainActor () -> Void) {}
+  var inputRoute: VoiceInputRoute? { nil }
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {}
 }
 
 @MainActor protocol MicrophonePermissionChecking: AnyObject {
@@ -200,6 +205,8 @@ private actor VoiceAlignmentWorker {
   private(set) var inputDevices: [VoiceInputDeviceOption] = [] { didSet { onChange?() } }
   /// Remembered microphone UID; `nil` follows the system default input.
   private(set) var selectedInputDeviceUID: String? { didSet { onChange?() } }
+  /// What the capture source reports it is actually using; nil while capture is closed.
+  private(set) var inputRoute: VoiceInputRoute? { didSet { onChange?() } }
   private(set) var installationProgress = 0.0
   var onChange: (() -> Void)?
   private var epoch: UInt64 = 0
@@ -242,6 +249,7 @@ private actor VoiceAlignmentWorker {
     inputDevices = source.availableInputDevices()
     source.setPreferredInputDevice(uid: selectedInputDeviceUID)
     source.observeInputDevices { [weak self] in self?.refreshInputDevices() }
+    source.observeInputRoute { [weak self] route in self?.inputRoute = route }
     session.onVoiceStartIntentInvalidated = { [weak self] reason, _ in
       self?.cancelPendingActivation(reason: reason)
     }
@@ -253,10 +261,28 @@ private actor VoiceAlignmentWorker {
 
   static let inputDeviceDefaultsKey = "voiceInputDeviceUID"
 
-  /// The microphone capture will actually use: the remembered device when attached, else the
-  /// system default.
+  /// The microphone in use. While capture is open this is the device the input unit
+  /// reports; otherwise the remembered device when attached, else the system default.
   var effectiveInputDeviceUID: String? {
-    VoiceInputSelection.resolve(preferredUID: selectedInputDeviceUID, available: inputDevices)
+    if let inputRoute {
+      return inputRoute.usesSystemDefault && inputRoute.failure == nil ? nil : inputRoute.deviceUID
+    }
+    return VoiceInputSelection.resolve(
+      preferredUID: selectedInputDeviceUID, available: inputDevices)
+  }
+
+  /// Why the microphone in use differs from the remembered choice, for the inspector.
+  var inputRouteNotice: String? {
+    let preferredName = selectedInputDeviceUID.flatMap { uid in
+      inputDevices.first { $0.uid == uid }?.name
+    }
+    if let inputRoute {
+      return inputRoute.notice(preferredName: preferredName)
+    }
+    guard let selectedInputDeviceUID,
+      !inputDevices.contains(where: { $0.uid == selectedInputDeviceUID })
+    else { return nil }
+    return "\(preferredName ?? "The selected microphone") is not connected — using System Default"
   }
 
   func refreshInputDevices() {

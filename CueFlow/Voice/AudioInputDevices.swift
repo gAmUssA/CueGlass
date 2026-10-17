@@ -37,6 +37,11 @@ enum AudioInputDeviceCatalog {
     allDeviceIDs().first { string(for: kAudioDevicePropertyDeviceUID, of: $0) == uid }
   }
 
+  static func uid(forDeviceID id: AudioDeviceID) -> String? {
+    guard id != kAudioObjectUnknown else { return nil }
+    return string(for: kAudioDevicePropertyDeviceUID, of: id)
+  }
+
   static func defaultInputDeviceID() -> AudioDeviceID? {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDefaultInputDevice,
