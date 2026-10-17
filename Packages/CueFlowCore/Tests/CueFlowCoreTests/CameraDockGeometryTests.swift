@@ -267,7 +267,9 @@ import Testing
   let selected = CameraDockDisplaySelection.preferred(in: candidates, selectedID: "external")
 
   #expect(selected == "external")
-  #expect(CameraDockDisplaySelection.preferred(in: candidates, selectedID: "mirror") == nil)
+  // ADR 0012: with no unmirrored built-in display, the selected display is the target,
+  // the mirrored built-in one included.
+  #expect(CameraDockDisplaySelection.preferred(in: candidates, selectedID: "mirror") == "mirror")
   #expect(CameraDockDisplaySelection.preferred(in: candidates, selectedID: "missing") == nil)
   // The island is the default everywhere; only the explicit opt-out is labelled.
   #expect(
@@ -964,4 +966,35 @@ private func legacyCameraDockCatalog(_ json: String) throws -> CameraDockPrefere
         displays[0],
         CameraDockDisplayCandidate(id: "built-in", isBuiltIn: true, isMirrored: false),
       ], selectedID: "external") == "built-in")
+}
+
+@Test func cameraDockDisplaySelectionFallsBackToTheSelectedMirroredBuiltIn() {
+  let mirrored = CameraDockDisplayCandidate(id: "built-in", isBuiltIn: true, isMirrored: true)
+  let external = CameraDockDisplayCandidate(id: "external", isBuiltIn: false, isMirrored: false)
+
+  // A closed-lid mirror set whose only candidate is the built-in display still has a target.
+  #expect(
+    CameraDockDisplaySelection.preferred(in: [mirrored], selectedID: "built-in") == "built-in")
+  #expect(
+    CameraDockDisplaySelection.preferred(in: [external, mirrored], selectedID: "built-in")
+      == "built-in")
+  #expect(
+    CameraDockDisplaySelection.preferred(in: [external, mirrored], selectedID: "external")
+      == "external")
+  // The selected mirrored built-in display has no usable hardware housing: the island is
+  // emulated, and the opt-out tray stays detached.
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1728, height: 1117),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1728, height: 1080), safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 1085, width: 700, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 1028, y: 1085, width: 700, height: 32))
+  let island = CameraDockGeometry.layout(
+    on: parameters, isBuiltIn: true, isMirrored: true,
+    preferences: CameraDockPreferences(width: 600), lineAdvance: 40)
+  #expect(island?.style == .attached)
+  #expect(island?.isEmulatedHousing == true)
+  let tray = CameraDockGeometry.layout(
+    on: parameters, isBuiltIn: true, isMirrored: true,
+    preferences: CameraDockPreferences(width: 600, forceNotchAttachment: false), lineAdvance: 40)
+  #expect(tray?.style == .detached)
 }

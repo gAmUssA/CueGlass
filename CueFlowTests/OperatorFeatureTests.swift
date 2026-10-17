@@ -1650,7 +1650,9 @@ import Testing
     c.displayProvider = { connected }
     c.refreshScreens(connected)
     c.state.selectedDisplay = mirror.selectionKey
-    #expect(c.cameraDockTarget(in: connected) == nil)
+    // ADR 0012: with no unmirrored built-in display the selected display is the target,
+    // the mirrored built-in one included; its island is emulated like any other display.
+    #expect(c.cameraDockTarget(in: connected)?.id == mirror.id)
     #expect(c.cameraDockMenuTitle == "Camera Dock")
 
     c.state.selectedDisplay = external.selectionKey

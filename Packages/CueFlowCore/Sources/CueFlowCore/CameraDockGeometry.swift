@@ -659,7 +659,10 @@ public enum CameraDockDisplaySelection {
     if let builtIn = displays.first(where: { $0.isBuiltIn && !$0.isMirrored }) {
       return builtIn.id
     }
-    return displays.first(where: { $0.id == selectedID && !$0.isBuiltIn })?.id
+    // No unmirrored built-in display: the selected display is the target, even when it is
+    // the mirrored built-in one. `layout` treats a mirrored target as having no hardware
+    // housing, so the island is emulated there like on any other display.
+    return displays.first(where: { $0.id == selectedID })?.id
   }
 
   public static func menuTitle(
