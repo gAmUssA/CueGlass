@@ -108,6 +108,7 @@ struct OperatorControls: View {
       LabeledContent("Size") {
         HStack(spacing: 4) {
           TextField("Size", value: binding(\.fontSize), format: .number).labelsHidden()
+            .textFieldStyle(.roundedBorder)
             .frame(width: 54).multilineTextAlignment(.trailing)
           Text("pt").foregroundStyle(.secondary)
         }
@@ -212,6 +213,7 @@ struct OperatorControls: View {
       LabeledContent("Finish in") {
         HStack(spacing: 4) {
           TextField("Seconds", value: $state.duration, format: .number).labelsHidden()
+            .textFieldStyle(.roundedBorder)
             .frame(width: 64).multilineTextAlignment(.trailing)
           Text("s").foregroundStyle(.secondary)
         }
@@ -328,8 +330,14 @@ struct OperatorControls: View {
         Text(controller.cameraDockMenuTitle).tag("cameraDock")
       }
       Picker("Display", selection: $state.selectedDisplay) {
-        if state.displays.isEmpty {
-          Text("No display connected").tag(state.selectedDisplay)
+        if !state.displays.contains(state.selectedDisplay) {
+          // A selection that is not attached still needs a visible title.
+          Text(
+            state.displays.isEmpty
+              ? "No display connected"
+              : state.selectedDisplay == "disconnected" ? "Disconnected" : "Choose a display"
+          )
+          .tag(state.selectedDisplay)
         }
         ForEach(state.displays, id: \.self) { key in Text(controller.displayName(key)).tag(key) }
       }

@@ -1022,8 +1022,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
           separator: " · ")
     }
     refreshStatus()
-    state.cloud =
-      containerID.isEmpty ? "iCloud not configured in this build" : script.cloudStatus.rawValue
+    // The window subtitle is operator-facing: a local-only build is simply "On This Mac".
+    state.cloud = containerID.isEmpty ? "On This Mac" : script.cloudStatus.rawValue
     preview.reflection.viewport.driver?.authoritative = output == nil && floating == nil
     preview.reflection.viewport.driver?.update()
     output?.reflection.viewport.driver?.update()
