@@ -227,7 +227,9 @@ enum PrompterPlacement: Equatable {
     if priorSize != viewportSize {
       operatorController?.cameraDockResized(to: viewportSize)
     } else {
-      operatorController?.render()
+      // The panel has already moved; the playback layout is unchanged, so only the editor's
+      // placement map needs to follow. A render here would re-measure a running take.
+      operatorController?.updatePlacementMapPreview()
     }
     return true
   }

@@ -1566,7 +1566,7 @@ extension OperatorWindowController {
 
   static let cameraDockExplainerSeenKey = "cameraDockExplainerSeen"
   static let cameraDockExplainer =
-    "On notched displays, Camera Dock sits flush below the camera safe area and never covers the camera housing. On other displays, it sits below the visible menu bar and assumes the camera is there. The prompt may be visible in screen recordings and full-display shares. CueGlass does not access the camera or microphone for Camera Dock."
+    "Camera Dock is a black island anchored to the top of the display around the camera housing: the MacBook notch, or an emulated housing on displays without one. The prompt text stays below the housing band, with the Dock controls beside the housing. Turn the island off for a plain tray below the menu bar. The prompt may be visible in screen recordings and full-display shares. CueGlass does not access the camera or microphone for Camera Dock."
   static let cameraDockCaptureDisclosure =
     "The prompt may appear in screen recordings and full-display shares."
 
@@ -1642,7 +1642,11 @@ extension OperatorWindowController {
     updatePlacementMapPreview()
   }
 
-  private func updatePlacementMapPreview() {
+  /// Placement-only changes (the Display picker, a closed-Dock preference edit, a live Dock
+  /// nudge that keeps its viewport size) refresh this map and nothing else. `render()` is
+  /// reserved for a real playback layout change: it re-measures, and the measurement
+  /// callback's `session.updateLayout` resets a running take's velocity to the nominal pace.
+  func updatePlacementMapPreview() {
     preview.placementMapView.map =
       cameraDock != nil || state.cameraDockPlacementPreviewExpanded
       ? cameraDockPlacementMap : nil
@@ -1912,7 +1916,7 @@ extension OperatorWindowController {
     guard state.selectedDisplay != key else { return }
     state.selectedDisplay = key
     refreshCameraDockPreferencesForTarget()
-    if state.cameraDockPlacementPreviewExpanded { render() }
+    updatePlacementMapPreview()
   }
 
   private func cameraDockPreferences(for display: DisplayDescriptor) -> CameraDockPreferences {
@@ -1974,8 +1978,8 @@ extension OperatorWindowController {
         render()
         return
       }
-    } else if state.cameraDockPlacementPreviewExpanded {
-      render()
+    } else {
+      updatePlacementMapPreview()
     }
   }
 

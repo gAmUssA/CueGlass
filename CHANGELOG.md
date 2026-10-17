@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Keep a running take's Follow Voice catch-up pace when the Display picker, a closed Camera Dock's placement controls, or a live Dock nudge changes only the placement.
+- Describe the notch-integrated island, the prompt below the housing band, and the plain-tray opt-out in the Camera Dock first-use explainer and the README.
+
 ## 0.3.0 — 2026-10-17
 
 - Validate Camera Dock fit using its resolved attached height, without reserving unused detached controls.

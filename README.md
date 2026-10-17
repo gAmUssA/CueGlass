@@ -7,7 +7,7 @@ CueGlass is a native macOS teleprompter for talks, presentations, and recordings
 - Open and edit plain-text, RTF, and CueGlass documents.
 - Set your reading pace in lines per minute and adjust typography without replacing the document’s original formatting.
 - Present full-screen on a selected display or use a floating prompter window.
-- Opt into a compact Camera Dock below a Mac's camera safe area, with a top-center fallback on other displays.
+- Opt into a compact Camera Dock: a black island anchored to the top of the display around the camera housing (the MacBook notch, or an emulated housing on other displays), with the prompt below the housing band and a plain-tray opt-out.
 - Use a reading guide, optional mirrored text, countdowns, timed scrolling, and keyboard or clicker controls.
 
 ## Try CueGlass

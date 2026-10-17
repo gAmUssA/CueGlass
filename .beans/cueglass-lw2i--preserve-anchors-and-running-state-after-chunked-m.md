@@ -1,11 +1,11 @@
 ---
 # cueglass-lw2i
 title: Preserve anchors and running state after chunked measurement
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-10-13T23:11:38Z
-updated_at: 2026-10-14T03:54:48Z
+updated_at: 2026-10-17T19:58:52Z
 parent: cueglass-aeqt
 ---
 
@@ -18,7 +18,7 @@ Independent broad review r4 at4eef1df establishes two mandatory-contract failure
 - [x] Record bounded diagnosis under original task/base/count
 - [x] Correct anchor and resume intent while preserving cancellation, source, snapshot, LPM and single clock
 - [x] Add meaningful long-script asynchronous regressions and pass normal full suite
-- [ ] Independent final-tip whole-branch verification, including native checks when GUI available
+- [x] Independent final-tip whole-branch verification, including native checks when GUI available. At 03d8df798f0e74121274e3e4d5a7990103b0099c: R6 (scoped R5-1/Q4 recheck passes independently), R7 (full whole-branch textual review PASS), T5 (Mode C full verification: R5-1 and the Q4 geometry residual RESOLVED) and T6 (GUI completion on the unlocked session); reports /Users/vikgamov/.local/state/cueglass/r6.md, r7.md, t5.md, t6.md. Shipped in PR #3 (merge 16c81eb) and every release since v0.1.0.
 
 Fix6 implementation: completion-time anchor restoration for all five callers; retained original anchor across superseding measurement; distinct resume/start intent; navigation cancellation; Stop clears measuring; final-geometry Timed re-solve preserves remaining playing time. Native matrix added. Intermediate fixed tip passed 29 native tests, core14, ReleaseLocal, formatting and Beans; three discriminating counterfactuals failed as expected. Final added Timed/Restart regression fails (30 tests, two assertions): remaining-time rebasing loses original Restart budget. Scope decision required before delivery; no fix6 commit or push. Independent acceptance remains open.
 
@@ -65,3 +65,7 @@ J3 diagnosis delivered and recorded as cueglass-owner-invariants-plan:plan, rest
 Applied the assessed Q4 cfR candidate under cueglass-owner-invariants-plan:plan, with only the two known computed-setter formatting wraps. Session pause transitions withdraw deferred starts; render pins both bounded passes and re-prepares when viewport authority changes. Appended six native tests without changing any inherited37 definition. Regressions-first normal scheme on ef3 fails52 issues (exit65); cfI-only clears intent failures but fails9 geometry issues (exit65); exact final cfR passes43 tests. Coverage includes both passes for floating/output pause actions, preserving navigation, close/end/paragraph anchor, Timed600/10/590/message and second-document claim. Independent final-tip acceptance remains unchecked; no PR/merge. Full evidence: /Users/vikgamov/.local/state/cueglass/d10.md.
 
 Fix9 final local gates: full normal DebugLocal scheme43/43; unchanged q4-probe700 intent/0 failures and368 GEO/0 failures; Core14/14; ReleaseLocal BUILD SUCCEEDED; strict swift-format zero diagnostics; beans check and diff check pass. Production bytes equal assessed cfR with only known setter wrapping. Independent reviewer/tester acceptance remains open.
+
+## Summary of Changes
+
+Completion-time anchor restoration, distinct resume/start intent, owner-held deferred starts, two bounded measurement passes with generation guards and viewport-identity re-preparation shipped with the MVP (PR #3, merge 16c81eb) and are exercised by the native suite on every release through v0.3.0 (172 native tests at this Bean's closing tip; v0.3.0 publish run 39061330997). Independent whole-branch verification at 03d8df7 (R6, R7, T5, T6) recorded the R5-1 and Q4 findings as resolved. Hardware smoothness and the 60-minute soak remain in cueglass-feeg and cueglass-c1kt.

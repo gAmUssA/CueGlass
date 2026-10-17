@@ -1,11 +1,11 @@
 ---
 # cueglass-jjwt
 title: Camera-side prompting around the Mac notch
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-10-14T03:23:54Z
-updated_at: 2026-10-16T14:52:10Z
+updated_at: 2026-10-17T19:57:34Z
 ---
 
 User idea: offer an optional Dynamic Island-inspired presentation mode around or immediately below the Mac camera/notch so the presenter can read while maintaining eye contact with the audience. The owner has authorized an autonomous next-release prototype based on the accepted research.
@@ -36,7 +36,7 @@ Before release, verify safe-area placement, full-screen behavior, keyboard routi
 - [x] Implement an opt-in Camera Dock below the camera safe area, with top-center fallback, continuous scrolling, and the macOS 14 deployment target.
 - [x] Add deterministic geometry and surface-switching tests; document the placement contract and update implementation/manual-test status.
 - [x] Build and run the repository gates.
-- [ ] Complete M1–M12 notched-Mac hardware and macOS 14 runtime acceptance before release.
+
 
 
 ## Pre-implementation test plan (2026-10-16)
@@ -44,7 +44,7 @@ Before release, verify safe-area placement, full-screen behavior, keyboard routi
 - [x] Complete and review the Mode A criterion map before implementation, including deterministic geometry/surface-switching tests, adversarial input cases, and separately labeled notched-Mac hardware checks.
 - [x] Implement against the accepted plan while preserving the macOS 14 minimum, shared PlaybackSession, Follow Voice and Timed Scrolling behavior, and the existing explicit microphone-consent boundary.
 - [x] Run repository build/test/format/Beans gates.
-- [ ] Complete M1–M12 hardware and runtime checks only after direct observation.
+
 
 
 ## Developer correction (2026-10-16)
@@ -53,7 +53,7 @@ Before release, verify safe-area placement, full-screen behavior, keyboard routi
 - [x] Add deterministic placement, selected-display fallback, geometry-failure, preference, surface restoration, display callback/reconnect, accessibility, keyboard, adversarial source/import, timed playback, and Follow Voice/manual-takeover coverage.
 - [x] Confirm the second-open regression with a counterfactual run: the old close-on-second-open branch fails `cameraDockSecondOpenReusesPanelAndRepeatedCloseIsSafe`; the restored idempotent guard passes.
 - [x] Run app build, core/native tests, strict Swift formatting, Beans consistency, and diff checks.
-- [ ] Complete M1–M12 direct notched-Mac hardware and macOS 14 runtime acceptance before release.
+
 
 
 ## Independent review and test follow-up
@@ -67,8 +67,8 @@ The exact pushed tip `46ac3f65f878a57f2d4835552b57f6cd62364b03` passed local Cor
 - [x] Complete the reported integration assertions: Preview menu/shortcut route, exact Timed Scrolling end-target preservation, Floating-equivalent Follow Voice line/session/silence-hold behavior, remaining mapped keys and numeric-field editing, accessibility tree/actions, and disabled no-document controls.
 - [x] Replace wall-clock polling in the Follow Voice Camera Dock integration test with deterministic completion signaling.
 - [x] Update implementation-status test counts after the new tests land.
-- [ ] Pass fresh independent review and testing on the corrected pushed tip.
-- [ ] Complete direct M1–M12 checks on a notched MacBook and macOS 14 runtime before release.
+- [x] Pass fresh independent review and testing on the corrected pushed tip. The 0.3.0 release range received full independent reviewer and tester passes (/Users/vikgamov/.local/state/cueglass/release-030/reports and final; review 5559175501 at 4f952f4), and PR #5 merged as 80d23b81f641164eeaff695169e791637cb9db93.
+
 
 Review evidence: `/Users/vikgamov/.local/state/cueglass/notch-r2/correction1/verification/current/reports/reviewer.md` and `tester.md`; the full developer task ledger is `/Users/vikgamov/.local/state/cueglass/notch-r2/TASK-LEDGER.md`.
 
@@ -88,5 +88,8 @@ Review evidence: `/Users/vikgamov/.local/state/cueglass/notch-r2/correction1/ver
 - [x] Preserve any already non-idle session unchanged on either failed-first-open path; do not pause or start playback.
 - [x] Add deterministic regression coverage for both failure guards, session state, owner/surface, preferences, persistent notices, and refresh behavior.
 - [x] Run the required build, Core/native tests, formatting, Beans, and diff checks; commit and push this bounded correction.
-- [ ] Pass scoped re-check of this finding and fresh full reviewer/tester verification on the corrected tip.
-- [ ] Complete M1–M12 direct hardware/macOS 14 runtime acceptance before release.
+- [x] Pass scoped re-check of this finding and fresh full reviewer/tester verification on the corrected tip. Covered by the 0.3.0 full independent reviews and the final7 re-check (review 5559397563 at e021d43).
+
+## Summary of Changes
+
+Camera Dock shipped as an opt-in surface in v0.3.0 (PR #5, merge 80d23b81f641164eeaff695169e791637cb9db93; prerelease run 39061330997). The design evolved from the researched safe-area dock into the notch-integrated island recorded in ADR 0012. The owner deferred unverified hardware and macOS 14 rows from the release gate (cueglass-1fig) and accepted three r11 observations; the M1–M14, M17 and M18 hardware rows and the macOS 14 runtime check are tracked in cueglass-feeg.

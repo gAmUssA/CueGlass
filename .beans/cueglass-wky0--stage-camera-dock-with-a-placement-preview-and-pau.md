@@ -1,11 +1,11 @@
 ---
 # cueglass-wky0
 title: Stage Camera Dock with a placement preview and paused Ready state
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-10-16T13:52:06Z
-updated_at: 2026-10-16T17:30:38Z
+updated_at: 2026-10-17T19:57:04Z
 blocked_by:
     - cueglass-c3a1
 ---
@@ -54,3 +54,7 @@ Complete the accepted Staged Camera Dock flow on feat/cueglass-camera-dock: plac
 - Core 89 and native 130 tests pass locally. Strict Swift formatting, Beans, diff checks, and a clean unsigned DebugLocal arm64 build targeting macOS 14 pass.
 - Pushed commit `7c5073083c98b03305e10c13c0beae46dff037a1` on `feat/cueglass-camera-dock`; exact-tip GitHub Actions run [38939210624](https://github.com/gAmUssA/CueGlass/actions/runs/38939210624) passed Core/native tests, formatting, universal unsigned build, and package verification.
 - M1–M14 remain pending for direct owner observation. This parent remains in-progress and blocked by `cueglass-c3a1`.
+
+## Released — 2026-10-17
+
+The staged Camera Dock flow, its placement preview and the corrections tracked in child Beans cueglass-17dc, cueglass-chrp and cueglass-tgvc shipped in PR #5 (merge 80d23b81f641164eeaff695169e791637cb9db93) and the v0.3.0 prerelease (run 39061330997). The blocking Bean cueglass-c3a1 is completed. Physical M1–M14 checks beyond the owner's accepted r11 observations are tracked in cueglass-feeg.
