@@ -203,7 +203,7 @@ struct OperatorControls: View {
         .help("Pace change for ↑ and ↓.")
       Stepper("Jump step: \(Int(state.jumpStep)) lpm", value: $state.jumpStep, in: 1...60)
         .onChange(of: state.jumpStep) { controller.saveOperatorPreferences() }
-        .help("Pace change for ⌥↑ and ⌥↓.")
+        .help("Pace change for ⇧↑ and ⇧↓.")
       Picker("Countdown", selection: $state.countdown) {
         Text("Off").tag(0)
         ForEach([3, 5, 10], id: \.self) { Text("\($0) seconds").tag($0) }
