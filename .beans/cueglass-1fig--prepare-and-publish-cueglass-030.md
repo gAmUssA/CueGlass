@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-17T04:58:08Z
-updated_at: 2026-10-17T14:05:08Z
+updated_at: 2026-10-17T15:10:50Z
 ---
 
 Prepare the completed Claude Camera Dock, microphone continuity, and Quiet Studio work for the next release. User authorization: initiate preparation for merge and cutting next release.
@@ -32,3 +32,9 @@ Integrated all six Claude correction commits from 95f761e into the 0.3.0 release
 ## PR #5 gate checkpoint — 2026-10-17
 
 PR #5 is open on release/cueglass-030 at a8ac7c6b6121d5bf4078e9b6aec9798701856f7c. Exact-head pull_request CI run 39038057328 succeeded. Copilot review 5558087329 reported eight source defects; the release lead confirmed them and blocked merge. Correction3 is tracked in cueglass-f01c. PR remains open; no merge, v0.3.0 tag, or publication yet. Preserve the owner-authorized deferral of unverified hardware/macOS14 rows; no signing or notarization.
+
+## Four-finding follow-up — 2026-10-17
+
+Bean cueglass-nj97 implements the assigned four corrections from Copilot review 5558332476 on candidate a059bce903e9f02d2a7eae2eff0849dd400e87e3, in fix/cueglass-030-followup. The audio counter now shares its reader lock, failed Output recovery cancels deferred resume, pending Load Latest failures remain visible, and attached Dock fit uses resolved height. Each has regression coverage; the original source failed the focused regressions (the audio race under Thread Sanitizer).
+
+Local gates pass: 114 Core tests, 162 native tests through both xcodebuild and the direct runner, focused Thread Sanitizer, strict formatting, Beans integrity, diff whitespace, universal unsigned ReleaseLocal build and ZIP/checksum validation. Built metadata remains 0.3.0/build 3, minimum macOS 14.0. This branch awaits independent tester/reviewer verification before integration; it does not supersede release acceptance or mark any pending hardware row complete. No merge, tag or publication occurs in this assignment.

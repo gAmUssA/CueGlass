@@ -5,7 +5,7 @@ status: in-progress
 type: bug
 priority: high
 created_at: 2026-10-17T14:56:08Z
-updated_at: 2026-10-17T15:10:22Z
+updated_at: 2026-10-17T15:10:50Z
 parent: cueglass-aeqt
 ---
 
@@ -17,7 +17,7 @@ Resolve four source-correctness issues found by Copilot on PR #5 at a059bce903e9
 - [x] Reproduce and fix both failed Output recovery paths with regression coverage.
 - [x] Reproduce and fix pending-revision error presentation with regression coverage.
 - [x] Reproduce and fix attached Dock height validation with regression coverage.
-- [ ] Run configured gates, update release tracking, and commit correction series.
+- [x] Run configured gates, update release tracking, and commit correction series.
 - [ ] Push the correction branch and record handoff evidence.
 
 ## Verification evidence
