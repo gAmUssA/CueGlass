@@ -513,9 +513,9 @@ enum PrompterPlacement: Equatable {
         x: layout.placement.frame.minX, y: layout.placement.frame.minY))
   }
   /// One element sequence for every morph state, so Core Animation can interpolate the
-  /// path. Counter-clockwise from the tray's lower-left corner: rounded bottom, rounded
-  /// upper-right, concave right shoulder into the stem, square stem top (it bleeds into
-  /// the housing), concave left shoulder, rounded upper-left.
+  /// path. Counter-clockwise from the lower-left corner: rounded bottom corners, straight
+  /// sides, and at the top edge two concave ears that flare outward along the display's
+  /// top edge, so the surface reads as part of the housing rather than a box below it.
   static func attachedPath(
     _ metrics: CameraDockMorphMetrics, in bounds: CGRect, frameOrigin: CGPoint
   ) -> CGPath {
@@ -524,35 +524,24 @@ enum PrompterPlacement: Equatable {
         x: bounds.minX + rect.minX - frameOrigin.x, y: bounds.minY + rect.minY - frameOrigin.y,
         width: rect.width, height: rect.height)
     }
-    let stem = local(metrics.stem)
     let tray = local(metrics.tray)
     let bottom = min(metrics.bottomCornerRadius, tray.width / 2, tray.height / 2)
-    let sideRoom = max(0, (tray.width - stem.width) / 2)
-    let shoulder = min(metrics.shoulderRadius, sideRoom, stem.height)
-    let top = min(metrics.topCornerRadius, max(0, sideRoom - shoulder), tray.height / 2)
+    let ear = min(
+      metrics.earRadius, max(0, tray.minX - bounds.minX), max(0, bounds.maxX - tray.maxX),
+      max(0, tray.height - bottom))
     let path = CGMutablePath()
     path.move(to: CGPoint(x: tray.minX + bottom, y: tray.minY))
     path.addLine(to: CGPoint(x: tray.maxX - bottom, y: tray.minY))
     path.addQuadCurve(
       to: CGPoint(x: tray.maxX, y: tray.minY + bottom),
       control: CGPoint(x: tray.maxX, y: tray.minY))
-    path.addLine(to: CGPoint(x: tray.maxX, y: tray.maxY - top))
+    path.addLine(to: CGPoint(x: tray.maxX, y: tray.maxY - ear))
     path.addQuadCurve(
-      to: CGPoint(x: tray.maxX - top, y: tray.maxY),
+      to: CGPoint(x: tray.maxX + ear, y: tray.maxY),
       control: CGPoint(x: tray.maxX, y: tray.maxY))
-    path.addLine(to: CGPoint(x: stem.maxX + shoulder, y: tray.maxY))
+    path.addLine(to: CGPoint(x: tray.minX - ear, y: tray.maxY))
     path.addQuadCurve(
-      to: CGPoint(x: stem.maxX, y: tray.maxY + shoulder),
-      control: CGPoint(x: stem.maxX, y: tray.maxY))
-    path.addLine(to: CGPoint(x: stem.maxX, y: stem.maxY))
-    path.addLine(to: CGPoint(x: stem.minX, y: stem.maxY))
-    path.addLine(to: CGPoint(x: stem.minX, y: tray.maxY + shoulder))
-    path.addQuadCurve(
-      to: CGPoint(x: stem.minX - shoulder, y: tray.maxY),
-      control: CGPoint(x: stem.minX, y: tray.maxY))
-    path.addLine(to: CGPoint(x: tray.minX + top, y: tray.maxY))
-    path.addQuadCurve(
-      to: CGPoint(x: tray.minX, y: tray.maxY - top),
+      to: CGPoint(x: tray.minX, y: tray.maxY - ear),
       control: CGPoint(x: tray.minX, y: tray.maxY))
     path.addLine(to: CGPoint(x: tray.minX, y: tray.minY + bottom))
     path.addQuadCurve(

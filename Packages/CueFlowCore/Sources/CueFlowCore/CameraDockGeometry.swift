@@ -89,17 +89,16 @@ public struct CameraDockLayout: Equatable, Sendable {
 }
 
 /// The attached Camera Dock silhouette at one point of the compact-to-expanded morph.
-/// `stem` fills the camera housing band; `tray` hangs below the safe edge. Both corner
-/// radii and the concave shoulder fillets interpolate with `progress`, so paths built
+/// `tray` is one black surface whose top edge is the display's top edge, so it covers the
+/// housing and the menu-bar band around it; its lower corners are rounded and its upper
+/// corners flare outward along the top edge (`earRadius`), the way the Sapphire panel
+/// meets the screen edge. Every quantity interpolates with `progress`, so paths built
 /// from any two metrics share one element sequence and animate cleanly.
 public struct CameraDockMorphMetrics: Equatable, Sendable {
   public let progress: Double
-  public let stem: CameraDockRect
   public let tray: CameraDockRect
-  public let outline: CameraDockRect
-  public let topCornerRadius: Double
   public let bottomCornerRadius: Double
-  public let shoulderRadius: Double
+  public let earRadius: Double
   public let contentOpacity: Double
 }
 
@@ -159,18 +158,17 @@ public enum CameraDockGeometry {
   /// Margin kept above the first line and below the last line of the strip.
   public static let viewportVerticalPadding = 8.0
 
-  /// Compact (parked) silhouette: a short chin under the housing with fully rounded
-  /// lower corners and small shoulder fillets.
+  /// Parked silhouette: a pill from the display top to a short chin under the housing,
+  /// slightly wider than the housing, with fully rounded lower corners and small ears.
   public static let compactChinHeight = 14.0
   public static let compactChinOverhang = 14.0
   public static let compactBottomCornerRadius = 14.0
-  public static let compactShoulderRadius = 8.0
-  /// Expanded silhouette: a rounded tray hanging from the housing. The shoulders rise
-  /// into the camera band beside the housing so the black surface blends with the
-  /// housing's rounded corners; prompt content never enters that band.
-  public static let expandedTopCornerRadius = 22.0
+  public static let compactEarRadius = 8.0
+  /// Open silhouette: the black surface runs from the display top down to the bottom of
+  /// the prompt tray and covers the menu-bar band around the housing; prompt content
+  /// still never enters that band. The ears widen the panel frame on both sides.
   public static let expandedBottomCornerRadius = 22.0
-  public static let expandedShoulderRadius = 12.0
+  public static let expandedEarRadius = 18.0
   /// Content fades in only once the tray has mostly opened.
   public static let contentFadeStartProgress = 0.45
   /// Reading emphasis inside the open tray: the line on the guide stays at full
@@ -299,19 +297,16 @@ public enum CameraDockGeometry {
       progress.isFinite, layout.contentTopInset > 0
     else { return nil }
     let amount = min(1, max(0, progress))
-    let screen = layout.screenParameters.screenFrame
-    let stem = CameraDockRect(
-      x: housing.x, y: screen.maxY - layout.contentTopInset,
-      width: housing.width, height: layout.contentTopInset)
+    let top = layout.screenParameters.screenFrame.maxY
     let content = layout.placement.contentFrame
     let compactWidth = min(content.width, housing.width + compactChinOverhang * 2)
+    let compactBottom = top - layout.contentTopInset - compactChinHeight
     let compactTray = CameraDockRect(
-      x: housing.midX - compactWidth / 2,
-      y: stem.minY - compactChinHeight, width: compactWidth, height: compactChinHeight)
-    let expandedHeight = controlsVisible ? content.height : content.height - controlsHeight
+      x: housing.midX - compactWidth / 2, y: compactBottom, width: compactWidth,
+      height: top - compactBottom)
+    let expandedBottom = controlsVisible ? content.minY : content.minY + controlsHeight
     let expandedTray = CameraDockRect(
-      x: content.x, y: content.maxY - expandedHeight, width: content.width,
-      height: expandedHeight)
+      x: content.x, y: expandedBottom, width: content.width, height: top - expandedBottom)
     func interpolate(_ start: Double, _ end: Double) -> Double {
       start + (end - start) * amount
     }
@@ -320,18 +315,12 @@ public enum CameraDockGeometry {
       y: interpolate(compactTray.y, expandedTray.y),
       width: interpolate(compactTray.width, expandedTray.width),
       height: interpolate(compactTray.height, expandedTray.height))
-    let outline = CameraDockRect(
-      x: min(stem.minX, tray.minX), y: min(stem.minY, tray.minY),
-      width: max(stem.maxX, tray.maxX) - min(stem.minX, tray.minX),
-      height: max(stem.maxY, tray.maxY) - min(stem.minY, tray.minY))
     let opacity = min(
       1, max(0, (amount - contentFadeStartProgress) / (1 - contentFadeStartProgress)))
     return CameraDockMorphMetrics(
-      progress: amount, stem: stem, tray: tray, outline: outline,
-      topCornerRadius: interpolate(0, expandedTopCornerRadius),
+      progress: amount, tray: tray,
       bottomCornerRadius: interpolate(compactBottomCornerRadius, expandedBottomCornerRadius),
-      shoulderRadius: interpolate(compactShoulderRadius, expandedShoulderRadius),
-      contentOpacity: opacity)
+      earRadius: interpolate(compactEarRadius, expandedEarRadius), contentOpacity: opacity)
   }
 
   public static func placementMap(
@@ -460,9 +449,11 @@ public enum CameraDockGeometry {
     let frameX: Double
     let frameWidth: Double
     if location == .camera {
+      // The panel frame spans the content and the housing-centred position, plus the
+      // ears that flare out along the display's top edge.
       let cameraCenteredX = anchorX - fittedWidth / 2
-      let left = min(x, cameraCenteredX)
-      let right = max(x + fittedWidth, cameraCenteredX + fittedWidth)
+      let left = min(x, cameraCenteredX) - expandedEarRadius
+      let right = max(x + fittedWidth, cameraCenteredX + fittedWidth) + expandedEarRadius
       frameX = max(visibleFrame.minX, left)
       frameWidth = min(visibleFrame.maxX, right) - frameX
     } else {

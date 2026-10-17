@@ -15,8 +15,8 @@ import Testing
 
   #expect(placement?.location == .camera)
   #expect(placement?.anchorX == 756)
-  #expect(placement?.frame.x == 423.5)
-  #expect(placement?.frame.width == 665)
+  #expect(placement?.frame.x == 423.5 - CameraDockGeometry.expandedEarRadius)
+  #expect(placement?.frame.width == 665 + CameraDockGeometry.expandedEarRadius * 2)
   #expect(placement?.frame.maxY == 982)
   #expect(placement?.contentFrame.maxY == 950)
   #expect(placement?.frame.isContained(in: screen) == true)
@@ -121,39 +121,39 @@ import Testing
   let content = layout.placement.contentFrame
   let housing = try #require(layout.cameraHousing)
 
-  // The stem always fills the housing band from the safe edge to the display top.
+  let top = parameters.screenFrame.maxY
+  // One surface from the display top: it covers the housing and the band around it.
   for metrics in [compact, middle, expanded, playing] {
-    #expect(metrics.stem.x == housing.x && metrics.stem.width == 200)
-    #expect(metrics.stem.maxY == parameters.screenFrame.maxY)
-    #expect(metrics.stem.minY == content.maxY)
-    #expect(metrics.outline.maxY == parameters.screenFrame.maxY)
-    #expect(metrics.tray.maxY == content.maxY)
-    #expect(metrics.tray.isContained(in: content, tolerance: 1e-9))
+    #expect(metrics.tray.maxY == top)
+    #expect(metrics.tray.minX <= housing.minX && metrics.tray.maxX >= housing.maxX)
+    #expect(metrics.tray.minX >= content.minX && metrics.tray.maxX <= content.maxX)
+    #expect(metrics.tray.minY >= content.minY)
+    #expect(metrics.earRadius > 0 && metrics.bottomCornerRadius > 0)
+    #expect(metrics.tray.minX - metrics.earRadius >= layout.placement.frame.minX)
+    #expect(metrics.tray.maxX + metrics.earRadius <= layout.placement.frame.maxX)
   }
-  // Parked: a short chin, centred on the housing, barely wider than it, fully rounded.
-  #expect(compact.tray.height == CameraDockGeometry.compactChinHeight)
+  // Parked: a pill from the display top to a short chin under the housing.
+  #expect(compact.tray.minY == content.maxY - CameraDockGeometry.compactChinHeight)
   #expect(compact.tray.width == 200 + CameraDockGeometry.compactChinOverhang * 2)
   #expect(abs(compact.tray.midX - housing.midX) < 1e-9)
-  #expect(compact.topCornerRadius == 0)
   #expect(compact.bottomCornerRadius == CameraDockGeometry.compactBottomCornerRadius)
-  #expect(compact.shoulderRadius == CameraDockGeometry.compactShoulderRadius)
+  #expect(compact.earRadius == CameraDockGeometry.compactEarRadius)
   #expect(compact.contentOpacity == 0)
   // Midway: every quantity is the linear midpoint, so a path animation between the
   // endpoints passes through this silhouette.
   #expect(middle.tray.width == (compact.tray.width + content.width) / 2)
   #expect(middle.tray.minY == (compact.tray.minY + content.minY) / 2)
-  #expect(middle.topCornerRadius == CameraDockGeometry.expandedTopCornerRadius / 2)
   #expect(middle.bottomCornerRadius == 18)
-  #expect(middle.shoulderRadius == 10)
+  #expect(middle.earRadius == 13)
   #expect(middle.contentOpacity > 0 && middle.contentOpacity < 0.1)
-  // Open with controls: the whole content frame. Open while playing: text strip only.
-  #expect(expanded.tray == content)
-  #expect(expanded.topCornerRadius == CameraDockGeometry.expandedTopCornerRadius)
+  // Open with controls: the content frame extended to the display top. Open while
+  // playing: the controls band leaves the bottom.
+  #expect(expanded.tray.minX == content.minX && expanded.tray.width == content.width)
+  #expect(expanded.tray.minY == content.minY)
   #expect(expanded.bottomCornerRadius == CameraDockGeometry.expandedBottomCornerRadius)
-  #expect(expanded.shoulderRadius == CameraDockGeometry.expandedShoulderRadius)
+  #expect(expanded.earRadius == CameraDockGeometry.expandedEarRadius)
   #expect(expanded.contentOpacity == 1)
-  #expect(playing.tray.height == content.height - CameraDockGeometry.controlsHeight)
-  #expect(playing.tray.height == layout.viewportHeight)
+  #expect(playing.tray.minY == content.minY + CameraDockGeometry.controlsHeight)
   #expect(playing.tray.width == content.width)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: .nan) == nil)
   #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 2)?.progress == 1)
@@ -279,7 +279,7 @@ import Testing
   #expect(changed?.frame.maxY == 1117)
   #expect(changed?.contentFrame.maxY == 1079)
   #expect(changed?.anchorX == 864)
-  #expect(changed?.frame.width == 760)
+  #expect(changed?.frame.width == 760 + CameraDockGeometry.expandedEarRadius * 2)
   #expect(
     changed?.frame.isContained(in: CameraDockRect(x: 0, y: 0, width: 1728, height: 1117)) == true)
 }

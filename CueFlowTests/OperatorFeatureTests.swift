@@ -892,11 +892,19 @@ import Testing
     #expect(revealedPath.boundingBoxOfPath.minY == attachedRoot.bounds.minY)
     #expect(revealedPath.boundingBoxOfPath.maxY == attachedRoot.bounds.maxY)
     #expect(abs(revealedPath.boundingBoxOfPath.width - attachedRoot.bounds.width) < 0.5)
+    let ear = CameraDockGeometry.expandedEarRadius
     #expect(
       revealedPath.contains(NSPoint(x: attachedRoot.bounds.midX, y: attachedRoot.bounds.maxY - 1)))
+    // The ears flare along the top edge; just below them the sides are straight.
+    #expect(
+      revealedPath.contains(
+        NSPoint(x: attachedRoot.bounds.minX + ear / 2, y: attachedRoot.bounds.maxY - 0.5)))
     #expect(
       !revealedPath.contains(
-        NSPoint(x: attachedRoot.bounds.minX + 1, y: attachedRoot.bounds.maxY - 1)))
+        NSPoint(x: attachedRoot.bounds.minX + 1, y: attachedRoot.bounds.maxY - ear - 1)))
+    #expect(
+      !revealedPath.contains(
+        NSPoint(x: attachedRoot.bounds.minX + 1, y: attachedRoot.bounds.minY + 1)))
     #expect(attachedRoot.reflection.alphaValue == 1)
     #expect(attachedRoot.grip.alphaValue == 1)
     if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -934,7 +942,11 @@ import Testing
       abs(
         chin.minY
           - (attachedRoot.bounds.maxY - safeTop - CameraDockGeometry.compactChinHeight)) < 0.5)
-    #expect(abs(chin.width - (200 + CameraDockGeometry.compactChinOverhang * 2)) < 0.5)
+    #expect(
+      abs(
+        chin.width
+          - (200 + CameraDockGeometry.compactChinOverhang * 2
+            + CameraDockGeometry.compactEarRadius * 2)) < 0.5)
     #expect(attachedRoot.reflection.alphaValue == 0)
     #expect(attachedRoot.cameraDockShapeAnimation == nil)
     #expect(
