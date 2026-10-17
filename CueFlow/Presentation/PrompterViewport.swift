@@ -35,6 +35,9 @@ import QuartzCore
   var centersText = false
   var columnWidthFractionOverride: Double?
   var hidesReadingGuide = false
+  func updateReadingGuideVisibility() {
+    guide.isHidden = hidesReadingGuide || !style.showsReadingGuide
+  }
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true

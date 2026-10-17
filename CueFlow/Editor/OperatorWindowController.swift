@@ -1114,8 +1114,13 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
     output?.reflection.horizontal = state.horizontal
     output?.reflection.vertical = state.vertical
-    preview.reflection.horizontal = state.calibrated && state.horizontal
-    preview.reflection.vertical = state.calibrated && state.vertical
+    // A calibrated preview shows what the live surface shows. Camera Dock never mirrors and
+    // replaces the reading guide with its own emphasis, so the preview follows it.
+    let dockLive = floating?.isCameraDock == true
+    preview.reflection.horizontal = state.calibrated && state.horizontal && !dockLive
+    preview.reflection.vertical = state.calibrated && state.vertical && !dockLive
+    preview.reflection.viewport.hidesReadingGuide = state.calibrated && dockLive
+    preview.reflection.viewport.updateReadingGuideVisibility()
     updatePreviewCaption()
   }
 
@@ -1123,7 +1128,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     previewCaption.stringValue = Self.previewCaption(
       screen: output?.window?.screen?.localizedName ?? floating?.window?.screen?.localizedName,
       size: session.logicalSize,
-      mirrored: state.calibrated && (state.horizontal || state.vertical))
+      mirrored: preview.reflection.horizontal || preview.reflection.vertical)
   }
   /// The stage caption follows the Quiet Studio board: what the stage shows, which display,
   /// the exact logical size, and whether the operator sees it mirrored.
