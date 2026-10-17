@@ -1,11 +1,11 @@
 ---
 # cueglass-nj97
 title: Resolve fresh CueGlass 0.3.0 release blockers
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-10-17T14:56:08Z
-updated_at: 2026-10-17T15:10:50Z
+updated_at: 2026-10-17T15:12:43Z
 parent: cueglass-aeqt
 ---
 
@@ -18,7 +18,7 @@ Resolve four source-correctness issues found by Copilot on PR #5 at a059bce903e9
 - [x] Reproduce and fix pending-revision error presentation with regression coverage.
 - [x] Reproduce and fix attached Dock height validation with regression coverage.
 - [x] Run configured gates, update release tracking, and commit correction series.
-- [ ] Push the correction branch and record handoff evidence.
+- [x] Push the correction branch and record handoff evidence.
 
 ## Verification evidence
 
@@ -29,3 +29,7 @@ Output recovery: both missing-display and disappeared-during-reopen paths reprod
 Load Latest: the pending footer formerly suppressed the downloading/retry status. The controller regression preserves the pending flag and immutable take while the footer now exposes the same recovery message both with and without a pending revision; routine Paused remains filtered.
 
 Attached fit: the original detached-height precheck rejected a 160-point attached strip in 168 visible points because detached controls would require 204 points. The new Core regression accepts the contained attached strip and still rejects detached overflow, attached overflow, and insufficient width; all 114 Core tests pass.
+
+## Summary of Changes
+
+Implemented and tested all four assigned source-correctness fixes. Core 114, native 162 through both runners, focused Thread Sanitizer, formatting, Beans, whitespace, universal unsigned build and package checks passed. Pushed fix/cueglass-030-followup; developer report and detailed counterfactual logs are at /Users/vikgamov/.local/state/cueglass/release-030/final4/developer.md. Completion records developer delivery only; independent final-tip verification and the release remain pending under cueglass-1fig.
