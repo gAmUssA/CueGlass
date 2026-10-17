@@ -105,6 +105,8 @@ private struct FakeSpeechAssetError: LocalizedError {
   private(set) var preferredDeviceAssignments = 0
   private var deviceHandler: (@MainActor () -> Void)?
   private(set) var inputRoute: VoiceInputRoute?
+  /// The captured-audio clock a test drives explicitly; nil leaves the coordinator on host time.
+  var capturedAudioTime: Double?
   private var routeHandler: (@MainActor (VoiceInputRoute?) -> Void)?
   func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {
     routeHandler = handler
@@ -617,6 +619,76 @@ private struct FakeSpeechAssetError: LocalizedError {
     await Task.yield()
     await mainTurn()
     #expect(controller.session.timeline.voiceCeiling == ceilingBeforeDelayedSpeech)
+    coordinator.stop()
+  }
+
+  /// Microphone recovery stops capture while host time keeps running. Silence detection
+  /// and the spoken-pause resume filter both read the source's captured-audio clock, the
+  /// timeline the transcriber stamps its words on, so a recovery gap neither ages the last
+  /// word into a silence hold nor hides the words spoken after a resume.
+  @Test func silenceAndSpokenPauseResumeShareTheCapturedAudioClockAcrossGaps() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(string: "North wind\ncarries the\nlantern home.")
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    controller.session.clock = { 0 }
+    controller.voiceCoordinator?.stop()
+    var uptime = 100.0
+    let source = FakeVoiceCaptureSource()
+    source.capturedAudioTime = 0
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." }, captureClock: { uptime })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.startVoiceFollow()
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    let initialCeiling = controller.session.timeline.voiceCeiling
+
+    // Four words end at 1.95 s of captured audio and confirm the second line.
+    source.capturedAudioTime = 2
+    source.send(transcript("North wind carries the", startingAt: 1))
+    for _ in 0..<200 where controller.session.timeline.voiceCeiling == initialCeiling {
+      await Task.yield()
+      await mainTurn()
+    }
+    let ceilingAfterSpeech = try #require(controller.session.timeline.voiceCeiling)
+    #expect(ceilingAfterSpeech != initialCeiling)
+    #expect(coordinator.state == .listening, "\(coordinator.state)")
+
+    // A six-second recovery gap on the host clock while only 0.1 s of audio arrives.
+    uptime = 106
+    source.capturedAudioTime = 2.1
+    await coordinator.advanceSilence(to: uptime)
+    #expect(coordinator.state == .listening, "\(coordinator.state)")
+    #expect(controller.session.timeline.voiceCeiling == ceilingAfterSpeech)
+
+    // Silence measured in captured audio still holds.
+    source.capturedAudioTime = 3.3
+    await coordinator.advanceSilence(to: uptime)
+    #expect(coordinator.state == .holding("Waiting for speech"), "\(coordinator.state)")
+
+    // A spoken pause, another gap, then Space: words after the resume point on the audio
+    // clock move the display.
+    source.capturedAudioTime = 4.5
+    source.send(transcript("CueGlass pause", startingAt: 4))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+    uptime = 140
+    source.capturedAudioTime = 5
+    controller.execute(.toggle)
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    #expect(source.stopCount == 0)
+    let ceilingAfterResume = controller.session.timeline.voiceCeiling
+
+    source.capturedAudioTime = 6
+    source.send(transcript("the lantern home", startingAt: 5.2))
+    for _ in 0..<200 where controller.session.timeline.voiceCeiling == ceilingAfterResume {
+      await Task.yield()
+      await mainTurn()
+    }
+    let ceilingAfterResumedSpeech = try #require(controller.session.timeline.voiceCeiling)
+    #expect(ceilingAfterResumedSpeech > ceilingAfterSpeech, "\(coordinator.state)")
     coordinator.stop()
   }
 

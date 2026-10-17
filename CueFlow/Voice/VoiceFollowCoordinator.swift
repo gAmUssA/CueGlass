@@ -57,6 +57,10 @@ enum VoiceFollowUIState: Equatable {
   /// The device actually capturing, read back from the input unit; nil while closed.
   var inputRoute: VoiceInputRoute? { get }
   func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void)
+  /// Seconds of audio delivered to the transcriber since `start`, on the same timeline as
+  /// the word times it reports. It stands still while no audio is captured, for example
+  /// during microphone recovery; nil when the source keeps no such clock.
+  var capturedAudioTime: Double? { get }
 }
 
 extension VoiceCaptureSource {
@@ -65,6 +69,7 @@ extension VoiceCaptureSource {
   func observeInputDevices(_ handler: @escaping @MainActor () -> Void) {}
   var inputRoute: VoiceInputRoute? { nil }
   func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {}
+  var capturedAudioTime: Double? { nil }
 }
 
 @MainActor protocol MicrophonePermissionChecking: AnyObject {
@@ -226,7 +231,6 @@ private actor VoiceAlignmentWorker {
   private var commandPauseAudioTime = 0.0
   private var captureStartedAtUptime: Double?
   private var captureStartedEpoch: UInt64?
-  private var alignmentStartedAtUptime: Double?
   private var paceEstimator: FollowPaceEstimator?
   var onStopFollowing: (() -> Void)?
   var onStopTake: (() -> Void)?
@@ -639,7 +643,6 @@ private actor VoiceAlignmentWorker {
     sourceStartTaskEpoch = nil
     captureStartedAtUptime = nil
     captureStartedEpoch = nil
-    alignmentStartedAtUptime = nil
     if session.voiceSessionActive && session.voiceSuspended {
       state = .suspended(reason)
     } else if !session.voiceSessionActive {
@@ -703,7 +706,6 @@ private actor VoiceAlignmentWorker {
           epoch: streamEpoch)
       }
     }
-    alignmentStartedAtUptime = captureClock()
     silenceTask = Task { [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(200))
@@ -724,10 +726,9 @@ private actor VoiceAlignmentWorker {
 
   func advanceSilence(to uptime: Double) async {
     guard uptime.isFinite, !commandPaused, session.voiceSessionActive, !session.voiceSuspended,
-      let worker, let alignmentStartedAtUptime
+      let worker, let now = captureTime(at: uptime)
     else { return }
-    let elapsed = max(0, uptime - alignmentStartedAtUptime)
-    if let result = await worker.tick(now: elapsed, epoch: epoch) { apply(result) }
+    if let result = await worker.tick(now: now, epoch: epoch) { apply(result) }
   }
 
   private func handle(
@@ -879,10 +880,20 @@ private actor VoiceAlignmentWorker {
     return epoch
   }
 
+  /// The one time base for silence detection and spoken-pause resume filtering: the audio
+  /// the source has captured, on the transcriber's timeline, so a microphone recovery gap
+  /// neither ages the last recognized word nor hides the words spoken after a resume.
+  /// Falls back to host time since capture started when the source keeps no audio clock.
+  private func captureTime(at uptime: Double) -> Double? {
+    if let captured = source.capturedAudioTime, captured.isFinite { return max(0, captured) }
+    guard let captureStartedAtUptime else { return nil }
+    let elapsed = uptime - captureStartedAtUptime
+    return elapsed.isFinite ? max(0, elapsed) : nil
+  }
+
   private func currentCaptureTime(atLeast minimum: Double) -> Double {
-    guard let captureStartedAtUptime else { return minimum }
-    let elapsed = captureClock() - captureStartedAtUptime
-    return max(minimum, elapsed.isFinite ? elapsed : minimum)
+    guard let now = captureTime(at: captureClock()) else { return minimum }
+    return max(minimum, now)
   }
 
   private static func uiState(for readiness: VoiceAssetReadiness) -> VoiceFollowUIState {

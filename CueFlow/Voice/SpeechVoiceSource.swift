@@ -63,6 +63,7 @@ struct CaptureGenerationGate: Sendable {
   static let inputBufferLimit = 256
 
   var inputRoute: VoiceInputRoute? { router?.route }
+  var capturedAudioTime: Double? { inputPipe?.audioTime }
 
   func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {
     routeHandler = handler
@@ -538,6 +539,14 @@ final class AudioInputPipe: @unchecked Sendable {
     lock.lock()
     converter = next
     lock.unlock()
+  }
+
+  /// Seconds of audio handed to the analyzer so far: the start time of the next buffer on
+  /// the transcriber's timeline. It only advances for captured frames.
+  var audioTime: Double {
+    lock.lock()
+    defer { lock.unlock() }
+    return Double(nextSampleTime) / targetFormat.sampleRate
   }
 
   func append(_ input: AVAudioPCMBuffer) {
