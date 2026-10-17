@@ -1095,26 +1095,29 @@ import Testing
     #expect(detachedPath.boundingBoxOfPath == detachedRoot.bounds)
   }
 
-  /// Synthetic notched display with a 212 pt housing, like the owner's MacBook fixture.
+  /// Synthetic notched display; the 212 pt housing is the owner's MacBook fixture and
+  /// 328 pt the wider housing of the repository's 1728-point fixture.
   private func notchedDisplay(
-    _ c: OperatorWindowController, id: CGDirectDisplayID, uuid: String
+    _ c: OperatorWindowController, id: CGDirectDisplayID, uuid: String,
+    housingWidth: Double = 212
   ) throws -> (DisplayDescriptor, housing: CameraDockRect) {
     let screen = try #require(NSScreen.screens.first)
     let frame = screen.frame
     let safeTop = 32.0
     let safeEdge = frame.maxY - safeTop
-    let sideWidth = ((frame.width - 212) / 2).rounded(.down)
+    let sideWidth = ((frame.width - housingWidth) / 2).rounded(.down)
     let parameters = dockParameters(
       for: screen, safeTop: safeTop, topInset: safeTop,
       left: CameraDockRect(x: frame.minX, y: safeEdge, width: sideWidth, height: safeTop),
       right: CameraDockRect(
-        x: frame.minX + sideWidth + 212, y: safeEdge, width: frame.width - sideWidth - 212,
-        height: safeTop))
+        x: frame.minX + sideWidth + housingWidth, y: safeEdge,
+        width: frame.width - sideWidth - housingWidth, height: safeTop))
     let display = syntheticDisplay(
       screen: screen, id: id, uuid: uuid, isBuiltIn: true, parameters: parameters)
     c.displayProvider = { [display] }
     return (
-      display, CameraDockRect(x: frame.minX + sideWidth, y: safeEdge, width: 212, height: safeTop)
+      display,
+      CameraDockRect(x: frame.minX + sideWidth, y: safeEdge, width: housingWidth, height: safeTop)
     )
   }
 
@@ -1129,10 +1132,14 @@ import Testing
       availableAt: words.last?.end ?? start, words: words)
   }
 
-  @Test func cameraDockBandControlsStayUsableAtMinimumWidthAndNudgeLimits() async throws {
+  @Test(arguments: [212.0, 328.0])
+  func cameraDockBandControlsStayUsableAtMinimumWidthAndNudgeLimits(housingWidth: Double)
+    async throws
+  {
     let c = try await prepared()
     defer { c.close() }
-    let (_, housing) = try notchedDisplay(c, id: 9031, uuid: "band-limits-display")
+    let (_, housing) = try notchedDisplay(
+      c, id: 9031, uuid: "band-limits-display-\(Int(housingWidth))", housingWidth: housingWidth)
     c.setCameraDockWidth(CameraDockGeometry.minimumWidth)
     c.showCameraDock()
     let dock = try #require(c.cameraDock)
@@ -1141,6 +1148,7 @@ import Testing
     dock.reflection.viewport.driver = nil
     await settle(c)
     let controls = try #require(root.cameraDockControls)
+    #expect(try #require(dock.dockLayout?.cameraHousing).width == housingWidth)
 
     for nudge in [
       0.0, CameraDockGeometry.maximumHorizontalNudge, CameraDockGeometry.minimumHorizontalNudge,
@@ -1153,32 +1161,47 @@ import Testing
       #expect(abs(layout.placement.contentFrame.midX - (housing.midX + nudge)) < 1)
       let originX = layout.placement.frame.minX
       let housingLocal = (housing.minX - originX)...(housing.maxX - originX)
-      let mask = try #require(root.cameraDockMaskPath)
-      func inMask(_ view: NSView) -> Bool {
+      let label: Comment = "housing \(housingWidth) nudge \(nudge)"
+      func inMask(_ view: NSView) throws -> Bool {
+        let mask = try #require(root.cameraDockMaskPath)
         let point = root.convert(CGPoint(x: view.frame.midX, y: view.frame.midY), from: controls)
         return mask.contains(point)
       }
+      // A real hit test from the root at the control's centre must land on that control.
+      func hits(_ view: NSView) -> Bool {
+        let point = root.convert(CGPoint(x: view.frame.midX, y: view.frame.midY), from: controls)
+        guard let actual = root.hitTest(point) else { return false }
+        return actual === view || actual.isDescendant(of: view)
+      }
       // Close and Play keep their full size left of the housing; Adjust and status sit right
       // of it; every control is hittable inside the silhouette, whatever the text nudge.
-      #expect(!controls.closeButton.isHidden, "nudge \(nudge)")
-      #expect(controls.closeButton.frame.width == 28, "nudge \(nudge)")
-      #expect(controls.playbackButton.frame.width == 28, "nudge \(nudge)")
-      #expect(controls.adjustButton.frame.width == 32, "nudge \(nudge)")
+      #expect(!controls.closeButton.isHidden, label)
+      #expect(controls.closeButton.frame.width == 28, label)
+      #expect(controls.playbackButton.frame.width == 28, label)
+      #expect(controls.adjustButton.frame.width == 32, label)
       #expect(controls.playbackButton.frame.minX >= controls.closeButton.frame.maxX)
-      #expect(controls.playbackButton.frame.maxX <= housingLocal.lowerBound - 10)
-      #expect(controls.statusLabel.frame.minX >= housingLocal.upperBound + 10)
-      #expect(controls.adjustButton.frame.minX >= controls.statusLabel.frame.maxX)
-      #expect(inMask(controls.closeButton), "close outside mask at nudge \(nudge)")
-      #expect(inMask(controls.playbackButton), "play outside mask at nudge \(nudge)")
-      #expect(inMask(controls.adjustButton), "adjust outside mask at nudge \(nudge)")
-      // Parked: Play and Adjust remain at the ends of the pill.
+      #expect(controls.playbackButton.frame.maxX <= housingLocal.lowerBound - 10, label)
+      #expect(controls.statusLabel.frame.minX >= housingLocal.upperBound + 10, label)
+      #expect(controls.adjustButton.frame.minX >= controls.statusLabel.frame.maxX, label)
+      #expect(try inMask(controls.closeButton), "close outside mask at \(label.rawValue)")
+      #expect(try inMask(controls.playbackButton), "play outside mask at \(label.rawValue)")
+      #expect(try inMask(controls.adjustButton), "adjust outside mask at \(label.rawValue)")
+      #expect(hits(controls.closeButton), "close not hittable at \(label.rawValue)")
+      #expect(hits(controls.playbackButton), "play not hittable at \(label.rawValue)")
+      #expect(hits(controls.adjustButton), "adjust not hittable at \(label.rawValue)")
+      // Parked: Play and Adjust remain full size at the ends of the pill, beside the housing.
       root.setCameraDockParked(true, animated: false)
       root.layoutSubtreeIfNeeded()
       controls.layoutSubtreeIfNeeded()
-      #expect(controls.playbackButton.frame.width == 28, "parked nudge \(nudge)")
-      #expect(controls.adjustButton.frame.width == 32, "parked nudge \(nudge)")
-      #expect(inMask(controls.playbackButton), "parked play outside mask at nudge \(nudge)")
-      #expect(inMask(controls.adjustButton), "parked adjust outside mask at nudge \(nudge)")
+      let parked: Comment = "parked \(label.rawValue)"
+      #expect(controls.playbackButton.frame.width == 28, parked)
+      #expect(controls.adjustButton.frame.width == 32, parked)
+      #expect(controls.playbackButton.frame.maxX <= housingLocal.lowerBound - 10, parked)
+      #expect(controls.adjustButton.frame.minX >= housingLocal.upperBound + 10, parked)
+      #expect(try inMask(controls.playbackButton), "parked play outside mask at \(label.rawValue)")
+      #expect(try inMask(controls.adjustButton), "parked adjust outside mask at \(label.rawValue)")
+      #expect(hits(controls.playbackButton), "parked play not hittable at \(label.rawValue)")
+      #expect(hits(controls.adjustButton), "parked adjust not hittable at \(label.rawValue)")
       root.setCameraDockParked(false, animated: false)
     }
   }
