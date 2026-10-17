@@ -330,14 +330,19 @@ public enum CameraDockGeometry {
     let amount = min(1, max(0, progress))
     let top = layout.screenParameters.screenFrame.maxY
     let content = layout.placement.contentFrame
-    let compactWidth = min(content.width, housing.width + compactChinOverhang * 2)
+    let frame = layout.placement.frame
+    // The parked pill keeps its overhang on both sides of the housing whatever the text
+    // width, so Play and Adjust always have their room at its ends; the frame already
+    // spans the wider controls band, so the pill only ever meets the frame on a narrow
+    // display.
+    let compactLeft = max(frame.minX, housing.minX - compactChinOverhang)
+    let compactRight = min(frame.maxX, housing.maxX + compactChinOverhang)
     let compactBottom = top - layout.contentTopInset - compactChinHeight
     let compactTray = CameraDockRect(
-      x: housing.midX - compactWidth / 2, y: compactBottom, width: compactWidth,
+      x: compactLeft, y: compactBottom, width: compactRight - compactLeft,
       height: top - compactBottom)
     // The open surface covers the (possibly nudged) text tray and the controls band on both
     // sides of the housing, so the in-band controls always have their reserved room.
-    let frame = layout.placement.frame
     let expandedLeft = max(
       frame.minX, min(content.minX, housing.minX - controlsBandReserve))
     let expandedRight = min(

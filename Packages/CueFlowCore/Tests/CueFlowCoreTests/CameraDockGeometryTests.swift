@@ -347,6 +347,40 @@ import Testing
   }
 }
 
+@Test func cameraDockParkedPillKeepsItsOverhangForAWiderHousingAtMinimumWidth() throws {
+  // A 328 pt housing (x 700…1028) with the 360 pt minimum text width: the text tray alone
+  // leaves 16 pt per side, less than the 52 pt overhang each parked control needs.
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1728, height: 1117),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1728, height: 1079), safeTop: 38,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 1079, width: 700, height: 38),
+    auxiliaryTopRightArea: CameraDockRect(x: 1028, y: 1079, width: 700, height: 38))
+  let overhang = CameraDockGeometry.compactChinOverhang
+  let reserve = CameraDockGeometry.controlsBandReserve
+  for nudge in [
+    CameraDockGeometry.minimumHorizontalNudge, 0.0, CameraDockGeometry.maximumHorizontalNudge,
+  ] {
+    let layout = try #require(
+      CameraDockGeometry.layout(
+        on: parameters, isBuiltIn: true,
+        preferences: CameraDockPreferences(
+          width: CameraDockGeometry.minimumWidth, lineCount: 3, horizontalNudge: nudge),
+        lineAdvance: 48))
+    let housing = try #require(layout.cameraHousing)
+    #expect(housing.width == 328)
+    #expect(layout.placement.contentFrame.width == CameraDockGeometry.minimumWidth)
+    let parked = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0))
+    #expect(parked.tray.minX == housing.minX - overhang, "nudge \(nudge)")
+    #expect(parked.tray.maxX == housing.maxX + overhang, "nudge \(nudge)")
+    #expect(parked.tray.minX - parked.earRadius >= layout.placement.frame.minX)
+    #expect(parked.tray.maxX + parked.earRadius <= layout.placement.frame.maxX)
+    let open = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 1))
+    #expect(open.tray.minX <= housing.minX - reserve, "nudge \(nudge)")
+    #expect(open.tray.maxX >= housing.maxX + reserve, "nudge \(nudge)")
+    #expect(open.tray.minX <= parked.tray.minX && open.tray.maxX >= parked.tray.maxX)
+  }
+}
+
 @Test func cameraDockGeometryClampsWidthAndHorizontalNudge() {
   let screen = CameraDockRect(x: -800, y: 0, width: 800, height: 800)
   let visible = CameraDockRect(x: -800, y: 0, width: 800, height: 760)
