@@ -14,6 +14,7 @@ import QuartzCore
   let panelBackground = NSView()
   let countdown = NSTextField(labelWithString: "")
   private var measurementGeneration = 0
+  private var fadesTopEdge = true
   private(set) var layoutCount = 0
   private(set) var measurementChunkCount = 0
   private(set) var measurementWorstSeconds = 0.0
@@ -28,6 +29,15 @@ import QuartzCore
   private(set) var endPosition: Double?
   private(set) var voiceLineTable: VoiceLineTable?
   var fractionalTranslation = true
+  var compactCountdown = false
+  /// Camera Dock presentation: centre each paragraph, widen the column, and let the
+  /// Dock's own emphasis stand in for the reading guide.
+  var centersText = false
+  var columnWidthFractionOverride: Double?
+  var hidesReadingGuide = false
+  func updateReadingGuideVisibility() {
+    guide.isHidden = hidesReadingGuide || !style.showsReadingGuide
+  }
   override init(frame: NSRect) {
     super.init(frame: frame)
     wantsLayer = true
@@ -71,22 +81,28 @@ import QuartzCore
     if newWindow == nil { driver?.stop() }
     super.viewWillMove(toWindow: newWindow)
   }
-  func configure(snapshot: ScriptSnapshot, style: ReadingStyle, size: CGSize) {
+  func configure(
+    snapshot: ScriptSnapshot, style: ReadingStyle, size: CGSize,
+    guideFractionOverride: Double? = nil, fadesTopEdge: Bool = true
+  ) {
     measurementGeneration += 1
     layoutCount += 1
     snapshotID = snapshot.id
     voiceLineTable = nil
     self.style = style
+    self.fadesTopEdge = fadesTopEdge
     frame.size = size
-    topPadding = size.height * style.readingGuideFraction
+    topPadding = size.height * (guideFractionOverride ?? style.readingGuideFraction)
     scroll.frame = bounds
-    let width = max(80, size.width * style.columnWidthFraction * (1 - 2 * style.sideMarginFraction))
+    let columnFraction = columnWidthFractionOverride ?? style.columnWidthFraction
+    let width = max(80, size.width * columnFraction * (1 - 2 * style.sideMarginFraction))
     let insetX = (size.width - width) / 2
     text.textContainerInset = CGSize(width: insetX, height: topPadding)
     text.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
     text.textContainer?.containerSize = CGSize(width: width, height: .greatestFiniteMagnitude)
+    let built = PresentationBuilder.build(snapshot.attributed, style: style)
     text.textStorage?.setAttributedString(
-      PresentationBuilder.build(snapshot.attributed, style: style))
+      centersText ? PresentationBuilder.centered(built) : built)
     updateAids(style)
     preparedUntil = 0
     endPosition = nil
@@ -97,6 +113,10 @@ import QuartzCore
     if digit == nil && countdown.isHidden { return }
     countdown.isHidden = digit == nil
     if let digit, countdown.stringValue != String(digit) { countdown.stringValue = String(digit) }
+    if compactCountdown {
+      countdown.font = .monospacedDigitSystemFont(
+        ofSize: min(96, max(28, bounds.height * 0.45)), weight: .semibold)
+    }
     countdown.frame = CGRect(x: 0, y: bounds.height * 0.25, width: bounds.width, height: 120)
   }
   func updateAids(_ next: ReadingStyle) {
@@ -108,7 +128,7 @@ import QuartzCore
     }
     style = next
     layer?.backgroundColor = NSColor.clear.cgColor
-    let width = bounds.width * next.columnWidthFraction
+    let width = bounds.width * (columnWidthFractionOverride ?? next.columnWidthFraction)
     panelBackground.frame = CGRect(
       x: (bounds.width - width) / 2, y: 0, width: width, height: bounds.height)
     panelBackground.layer?.backgroundColor =
@@ -117,13 +137,23 @@ import QuartzCore
     guide.frame = NSRect(x: 0, y: topPadding - 8, width: bounds.width, height: 16)
     guide.style = next
     guide.needsDisplay = true
-    guide.isHidden = !next.showsReadingGuide
+    guide.isHidden = hidesReadingGuide || !next.showsReadingGuide
     if next.edgeFadeFraction > 0 {
       let mask = CAGradientLayer()
       mask.frame = bounds
-      mask.colors = [
-        NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor,
-      ]
+      mask.isGeometryFlipped = scroll.layer?.isGeometryFlipped ?? scroll.isFlipped
+      mask.startPoint = CGPoint(x: 0.5, y: mask.isGeometryFlipped ? 1 : 0)
+      mask.endPoint = CGPoint(x: 0.5, y: mask.isGeometryFlipped ? 0 : 1)
+      mask.colors =
+        fadesTopEdge
+        ? [
+          NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+          NSColor.clear.cgColor,
+        ]
+        : [
+          NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+          NSColor.black.cgColor,
+        ]
       mask.locations = [
         0, NSNumber(value: next.edgeFadeFraction), NSNumber(value: 1 - next.edgeFadeFraction), 1,
       ]
@@ -306,6 +336,7 @@ import QuartzCore
 }
 @MainActor final class ScaledPreviewContainer: NSView {
   let reflection = ReflectionContainerView(frame: .zero)
+  let placementMapView = CameraDockPlacementMapView(frame: .zero)
   var logicalSize = CGSize(width: 1280, height: 720) {
     didSet {
       reflection.bounds = CGRect(origin: .zero, size: logicalSize)
@@ -316,6 +347,8 @@ import QuartzCore
   override init(frame: NSRect) {
     super.init(frame: frame)
     addSubview(reflection)
+    placementMapView.isHidden = true
+    addSubview(placementMapView)
     wantsLayer = true
     layer?.backgroundColor = NSColor.black.cgColor
   }
@@ -327,11 +360,84 @@ import QuartzCore
     reflection.frame = CGRect(
       x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width,
       height: size.height)
+    placementMapView.frame = bounds
+    placementMapView.needsDisplay = true
     reflection.bounds = CGRect(origin: .zero, size: logicalSize)
     reflection.needsLayout = true
     reflection.layoutSubtreeIfNeeded()
     // Native clip views may reset their origin while their ancestor is scaled.
     reflection.viewport.apply(position: reflection.viewport.currentPosition)
+  }
+}
+
+@MainActor final class CameraDockPlacementMapView: NSView {
+  var map: CameraDockPlacementMap? { didSet { needsDisplay = true } }
+
+  override var isOpaque: Bool { true }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor(srgbRed: 0.055, green: 0.059, blue: 0.067, alpha: 1).setFill()
+    bounds.fill()
+    guard let map else { return }
+
+    let available = bounds.insetBy(dx: 8, dy: 8)
+    let aspect = map.displayAspectRatio
+    let width = min(available.width, available.height * aspect)
+    let height = width / aspect
+    let display = CGRect(
+      x: available.midX - width / 2, y: available.midY - height / 2,
+      width: width, height: height)
+    NSColor(srgbRed: 0.15, green: 0.16, blue: 0.18, alpha: 1).setFill()
+    NSBezierPath(rect: display).fill()
+    NSColor(srgbRed: 0.38, green: 0.4, blue: 0.44, alpha: 1).setStroke()
+    NSBezierPath(rect: display).stroke()
+
+    func screenRect(_ rect: CameraDockRect) -> CGRect {
+      CGRect(
+        x: display.minX + display.width * rect.x,
+        y: display.minY + display.height * rect.y,
+        width: display.width * rect.width,
+        height: display.height * rect.height)
+    }
+
+    NSColor(srgbRed: 0.09, green: 0.1, blue: 0.12, alpha: 1).setFill()
+    NSBezierPath(rect: screenRect(map.menuBarBand)).fill()
+    if let housing = map.cameraHousing {
+      let rect = screenRect(housing)
+      let radius = min(5, rect.height / 3)
+      let path = NSBezierPath()
+      path.move(to: NSPoint(x: rect.minX, y: rect.maxY))
+      path.line(to: NSPoint(x: rect.maxX, y: rect.maxY))
+      path.line(to: NSPoint(x: rect.maxX, y: rect.minY + radius))
+      path.curve(
+        to: NSPoint(x: rect.maxX - radius, y: rect.minY),
+        controlPoint1: NSPoint(x: rect.maxX, y: rect.minY),
+        controlPoint2: NSPoint(x: rect.maxX - radius, y: rect.minY))
+      path.line(to: NSPoint(x: rect.minX + radius, y: rect.minY))
+      path.curve(
+        to: NSPoint(x: rect.minX, y: rect.minY + radius),
+        controlPoint1: NSPoint(x: rect.minX + radius, y: rect.minY),
+        controlPoint2: NSPoint(x: rect.minX, y: rect.minY))
+      path.close()
+      NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1).setFill()
+      path.fill()
+    }
+
+    let dockRect = screenRect(map.dock)
+    switch map.style {
+    case .attached: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1).setFill()
+    case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1).setFill()
+    }
+    NSBezierPath(rect: dockRect).fill()
+    NSColor.systemBlue.withAlphaComponent(0.9).setStroke()
+    let outline = NSBezierPath(rect: dockRect)
+    outline.lineWidth = 1
+    outline.stroke()
+    let contentRect = screenRect(map.content)
+    NSColor.white.withAlphaComponent(0.75).setStroke()
+    let contentOutline = NSBezierPath(roundedRect: contentRect, xRadius: 3, yRadius: 3)
+    contentOutline.lineWidth = 0.75
+    contentOutline.stroke()
   }
 }
 

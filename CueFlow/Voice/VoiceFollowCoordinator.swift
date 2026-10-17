@@ -51,6 +51,25 @@ enum VoiceFollowUIState: Equatable {
     TranscriptEvent, any Error
   >
   func stop()
+  func availableInputDevices() -> [VoiceInputDeviceOption]
+  func setPreferredInputDevice(uid: String?)
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void)
+  /// The device actually capturing, read back from the input unit; nil while closed.
+  var inputRoute: VoiceInputRoute? { get }
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void)
+  /// Seconds of audio delivered to the transcriber since `start`, on the same timeline as
+  /// the word times it reports. It stands still while no audio is captured, for example
+  /// during microphone recovery; nil when the source keeps no such clock.
+  var capturedAudioTime: Double? { get }
+}
+
+extension VoiceCaptureSource {
+  func availableInputDevices() -> [VoiceInputDeviceOption] { [] }
+  func setPreferredInputDevice(uid: String?) {}
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void) {}
+  var inputRoute: VoiceInputRoute? { nil }
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {}
+  var capturedAudioTime: Double? { nil }
 }
 
 @MainActor protocol MicrophonePermissionChecking: AnyObject {
@@ -188,6 +207,11 @@ private actor VoiceAlignmentWorker {
   private(set) var state: VoiceFollowUIState = .checking { didSet { onChange?() } }
   private(set) var selectedLocaleIdentifier: String
   private(set) var locales: [VoiceLocaleOption] = [] { didSet { onChange?() } }
+  private(set) var inputDevices: [VoiceInputDeviceOption] = [] { didSet { onChange?() } }
+  /// Remembered microphone UID; `nil` follows the system default input.
+  private(set) var selectedInputDeviceUID: String? { didSet { onChange?() } }
+  /// What the capture source reports it is actually using; nil while capture is closed.
+  private(set) var inputRoute: VoiceInputRoute? { didSet { onChange?() } }
   private(set) var installationProgress = 0.0
   var onChange: (() -> Void)?
   private var epoch: UInt64 = 0
@@ -224,6 +248,12 @@ private actor VoiceAlignmentWorker {
     self.captureClock = captureClock
     let stored = UserDefaults.standard.string(forKey: "voiceFollowLocale")
     selectedLocaleIdentifier = stored ?? Locale.current.identifier
+    let storedDevice = UserDefaults.standard.string(forKey: Self.inputDeviceDefaultsKey)
+    selectedInputDeviceUID = storedDevice.flatMap { $0.isEmpty ? nil : $0 }
+    inputDevices = source.availableInputDevices()
+    source.setPreferredInputDevice(uid: selectedInputDeviceUID)
+    source.observeInputDevices { [weak self] in self?.refreshInputDevices() }
+    source.observeInputRoute { [weak self] route in self?.inputRoute = route }
     session.onVoiceStartIntentInvalidated = { [weak self] reason, _ in
       self?.cancelPendingActivation(reason: reason)
     }
@@ -231,6 +261,48 @@ private actor VoiceAlignmentWorker {
       self?.manualOverride(reason: reason, epoch: nextEpoch)
     }
     session.onVoiceEnded = { [weak self] in self?.sessionEndedVoice() }
+  }
+
+  static let inputDeviceDefaultsKey = "voiceInputDeviceUID"
+
+  /// The microphone in use. While capture is open this is the device the input unit
+  /// reports; otherwise the remembered device when attached, else the system default.
+  var effectiveInputDeviceUID: String? {
+    if let inputRoute {
+      return inputRoute.usesSystemDefault && inputRoute.failure == nil ? nil : inputRoute.deviceUID
+    }
+    return VoiceInputSelection.resolve(
+      preferredUID: selectedInputDeviceUID, available: inputDevices)
+  }
+
+  /// Why the microphone in use differs from the remembered choice, for the inspector.
+  var inputRouteNotice: String? {
+    let preferredName = selectedInputDeviceUID.flatMap { uid in
+      inputDevices.first { $0.uid == uid }?.name
+    }
+    if let inputRoute {
+      return inputRoute.notice(preferredName: preferredName)
+    }
+    guard let selectedInputDeviceUID,
+      !inputDevices.contains(where: { $0.uid == selectedInputDeviceUID })
+    else { return nil }
+    return "\(preferredName ?? "The selected microphone") is not connected — using System Default"
+  }
+
+  func refreshInputDevices() {
+    inputDevices = source.availableInputDevices()
+    source.setPreferredInputDevice(uid: selectedInputDeviceUID)
+  }
+
+  /// Chooses the microphone. Takes effect immediately, including while following: capture
+  /// moves to the new device without ending the session or losing the position.
+  func selectInputDevice(uid: String?) {
+    let next = uid.flatMap { $0.isEmpty ? nil : $0 }
+    selectedInputDeviceUID = next
+    if ProcessInfo.processInfo.environment["CUEFLOW_EPHEMERAL"] != "1" {
+      UserDefaults.standard.set(next ?? "", forKey: Self.inputDeviceDefaultsKey)
+    }
+    source.setPreferredInputDevice(uid: next)
   }
 
   var isActive: Bool { session.voiceSessionActive }
@@ -634,12 +706,11 @@ private actor VoiceAlignmentWorker {
           epoch: streamEpoch)
       }
     }
-    let startTime = ProcessInfo.processInfo.systemUptime
     silenceTask = Task { [weak self] in
       while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(200))
         guard let self, !Task.isCancelled, epoch == streamEpoch else { return }
-        let uptime = ProcessInfo.processInfo.systemUptime
+        let uptime = captureClock()
         if let command = commandMatcher.advance(to: uptime) {
           let audioTime = commandMatcher.lastResolvedAudioTime ?? 0
           let event = TranscriptEvent(
@@ -648,13 +719,16 @@ private actor VoiceAlignmentWorker {
           await handle(command, event: event, worker: worker, epoch: streamEpoch)
           guard !Task.isCancelled, epoch == streamEpoch else { return }
         }
-        let now = uptime - startTime
-        guard !commandPaused else { continue }
-        if let result = await worker.tick(now: now, epoch: streamEpoch) {
-          apply(result)
-        }
+        await advanceSilence(to: uptime)
       }
     }
+  }
+
+  func advanceSilence(to uptime: Double) async {
+    guard uptime.isFinite, !commandPaused, session.voiceSessionActive, !session.voiceSuspended,
+      let worker, let now = captureTime(at: uptime)
+    else { return }
+    if let result = await worker.tick(now: now, epoch: epoch) { apply(result) }
   }
 
   private func handle(
@@ -736,7 +810,7 @@ private actor VoiceAlignmentWorker {
         guard scriptIndex.tokens.indices.contains(index),
           let y = lineTable.y(for: scriptIndex.tokens[index])
         else { return }
-        let velocity = paceVelocity(for: result)
+        let velocity = catchUpVelocity(for: result, cadence: paceVelocity(for: result))
         try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
         state = .listening
       case .jump(_, let index):
@@ -755,12 +829,28 @@ private actor VoiceAlignmentWorker {
           scriptIndex.tokens.indices.contains(result.progressIndex),
           let y = lineTable.y(for: scriptIndex.tokens[result.progressIndex])
         else { break }
-        let velocity = paceVelocity(for: result)
+        let velocity = catchUpVelocity(for: result, cadence: paceVelocity(for: result))
         try session.voiceGlide(to: y, velocity: velocity, epoch: epoch)
       }
     } catch {
       captureFailed("Follow Voice stopped: \(error.localizedDescription)", epoch: epoch)
     }
+  }
+
+  /// When the line confirmed by finalized speech is well ahead of the display, glide fast
+  /// enough to reach it within `FollowCatchUp.catchUpSeconds`. The gap is measured to the
+  /// confirmed position only, so volatile wording never speeds the page up; the voice
+  /// ceiling still stops the page at the spoken line.
+  private func catchUpVelocity(for result: VoiceDecisionEvent, cadence: Double?) -> Double? {
+    guard let index = result.paceProgressIndex, let scriptIndex, let lineTable,
+      scriptIndex.tokens.indices.contains(index),
+      let confirmed = lineTable.y(for: scriptIndex.tokens[index]),
+      let current = try? session.timeline.position(at: session.effectiveTime)
+    else { return cadence }
+    return FollowCatchUp.velocity(
+      distance: confirmed - current, cadence: cadence, baseline: session.nominalVelocity,
+      maximum: session.lineAdvance * session.configuredMax / 60,
+      lineAdvance: session.lineAdvance)
   }
 
   private func paceVelocity(for result: VoiceDecisionEvent) -> Double? {
@@ -790,10 +880,20 @@ private actor VoiceAlignmentWorker {
     return epoch
   }
 
+  /// The one time base for silence detection and spoken-pause resume filtering: the audio
+  /// the source has captured, on the transcriber's timeline, so a microphone recovery gap
+  /// neither ages the last recognized word nor hides the words spoken after a resume.
+  /// Falls back to host time since capture started when the source keeps no audio clock.
+  private func captureTime(at uptime: Double) -> Double? {
+    if let captured = source.capturedAudioTime, captured.isFinite { return max(0, captured) }
+    guard let captureStartedAtUptime else { return nil }
+    let elapsed = uptime - captureStartedAtUptime
+    return elapsed.isFinite ? max(0, elapsed) : nil
+  }
+
   private func currentCaptureTime(atLeast minimum: Double) -> Double {
-    guard let captureStartedAtUptime else { return minimum }
-    let elapsed = captureClock() - captureStartedAtUptime
-    return max(minimum, elapsed.isFinite ? elapsed : minimum)
+    guard let now = captureTime(at: captureClock()) else { return minimum }
+    return max(minimum, now)
   }
 
   private static func uiState(for readiness: VoiceAssetReadiness) -> VoiceFollowUIState {

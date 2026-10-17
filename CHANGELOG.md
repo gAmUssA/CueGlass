@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-10-17
+
+- Validate Camera Dock fit using its resolved attached height, without reserving unused detached controls.
+- Show Load Latest failure and retry guidance alongside the pending-script notice.
+- Keep playback paused with its position retained when Camera Dock cannot restore Output.
+- Synchronize the Follow Voice audio clock with captured-buffer timestamps across microphone recovery.
+- Add Camera Dock, a camera-adjacent prompter with a notch-attached island, animated expansion and collapse, centered reading line, and integrated controls. Displays without a notch can use an emulated island or a plain tray.
+- Add per-display placement controls and a matching operator preview while preserving the shared playback session and Reduce Motion support.
+- Add a microphone picker and capture recovery across audio-device changes for Follow Voice, with quicker bounded catch-up to confirmed speech.
+- Reorganize the inspector into Text, Playback, and Output tabs and refine the Quiet Studio toolbar, editor notices, preview captions, timers, and Controls panel.
+- Keep macOS 14 as the minimum system version; Follow Voice requires macOS 26 or later. GitHub binaries remain unsigned and unnotarized.
+
 ## 0.2.0 — 2026-10-15
 
 - Add opt-in macOS 26+ Follow Voice with on-device speech analysis, explicit microphone/model consent, bounded script alignment, and adaptive presenter-paced scrolling while retaining macOS 14 compatibility.

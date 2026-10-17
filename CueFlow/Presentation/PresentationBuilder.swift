@@ -45,6 +45,19 @@ import CueFlowCore
     }
     return result
   }
+  /// Centres every paragraph without touching fonts, colours, or line pitch.
+  static func centered(_ source: NSAttributedString) -> NSAttributedString {
+    let result = NSMutableAttributedString(attributedString: source)
+    let range = NSRange(location: 0, length: result.length)
+    result.enumerateAttribute(.paragraphStyle, in: range) { value, run, _ in
+      let paragraph =
+        (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
+        ?? NSMutableParagraphStyle()
+      paragraph.alignment = .center
+      result.addAttribute(.paragraphStyle, value: paragraph, range: run)
+    }
+    return result
+  }
   static func color(_ values: [Double]) -> NSColor {
     NSColor(srgbRed: values[0], green: values[1], blue: values[2], alpha: values[3])
   }

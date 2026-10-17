@@ -90,6 +90,7 @@ import Testing
   #expect(elapsed.value(at: 32) == 7)
   var map = CommandMap()
   #expect(map.command(for: .init("b")) == .toggle)
+  #expect(map.command(for: .init("d", command: true, option: true)) == .cameraDock)
   #expect(map.command(for: .init("up", shift: true)) == .jumpFaster)
   #expect(throws: BindingError.self) { try map.bind(.init("q", command: true), to: .reverse) }
   #expect(throws: BindingError.self) { try map.bind(.init("b"), to: .reverse) }

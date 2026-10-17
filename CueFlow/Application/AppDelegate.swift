@@ -1,6 +1,9 @@
 import AppKit
 
-@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
+  NSMenuItemValidation
+{
   var documents: CueFlowDocumentController?
   func applicationWillFinishLaunching(_ notification: Notification) {
     documents = CueFlowDocumentController()
@@ -103,12 +106,20 @@ import AppKit
       view, "Floating Prompter", #selector(floatingAction), "f",
       modifiers: [.command, .option])
     add(
+      view, "Camera Dock", #selector(cameraDockAction), "d",
+      modifiers: [.command, .option])
+    view.items.last?.target = self
+    add(
       view, "Show Inspector", #selector(toggleInspector), "i",
       modifiers: [.command, .control])
     let window = menu("Window")
     add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
     NSApp.windowsMenu = window
     NSApp.mainMenu = main
+  }
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    guard menuItem.action == #selector(cameraDockAction) else { return true }
+    return current != nil
   }
   func menuNeedsUpdate(_ menu: NSMenu) {
     guard menu.identifier?.rawValue == "CueGlassRecents" else { return }
@@ -145,6 +156,7 @@ import AppKit
   @objc func stopTakeAction() { current?.stopTakeAction() }
   @objc func controlsAction() { current?.controlsAction() }
   @objc func floatingAction() { current?.floatingAction() }
+  @objc func cameraDockAction() { current?.cameraDockAction() }
   @objc func toggleInspector() { current?.toggleInspector() }
   @objc func toggle() { current?.toggle() }
   @objc func faster() { current?.adjustSpeed(1) }

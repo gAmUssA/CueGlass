@@ -54,6 +54,20 @@ struct CaptureGenerationGate: Sendable {
   private var captureStartedAt = 0.0
   private var resultStreamsRemaining = 0
   private var captureGeneration = CaptureGenerationGate()
+  private var router: VoiceCaptureRouter?
+  private var preferredInputDeviceUID: String?
+  private var deviceObserver: AudioInputDeviceObserver?
+  private var routeHandler: (@MainActor (VoiceInputRoute?) -> Void)?
+  private var reconfiguration: Task<Void, Never>?
+  /// The analyzer keeps up in real time; this only has to absorb a reconfiguration stall.
+  static let inputBufferLimit = 256
+
+  var inputRoute: VoiceInputRoute? { router?.route }
+  var capturedAudioTime: Double? { inputPipe?.audioTime }
+
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {
+    routeHandler = handler
+  }
 
   func supportedLocales() async -> [VoiceLocaleOption] {
     guard SpeechTranscriber.isAvailable else { return [] }
@@ -136,6 +150,28 @@ struct CaptureGenerationGate: Sendable {
     installationRequest = nil
   }
 
+  func availableInputDevices() -> [VoiceInputDeviceOption] {
+    AudioInputDeviceCatalog.inputDevices()
+  }
+
+  /// Remembers the microphone to open. While capture is running, the engine switches to it in
+  /// place; the analyzer, transcript stream, and the take all stay where they are.
+  func setPreferredInputDevice(uid: String?) {
+    let next = uid.flatMap { $0.isEmpty ? nil : $0 }
+    let changed = next != preferredInputDeviceUID
+    preferredInputDeviceUID = next
+    guard let router, let generation = captureGeneration.activeGeneration else { return }
+    router.preferredUID = next
+    // A device-list change can move the system default or bring the remembered device
+    // back, so the route is re-applied even when the remembered choice is unchanged.
+    _ = changed
+    scheduleReconfiguration(generation: generation)
+  }
+
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void) {
+    deviceObserver = AudioInputDeviceObserver(handler)
+  }
+
   func start(localeIdentifier: String) async throws -> AsyncThrowingStream<
     TranscriptEvent, any Error
   > {
@@ -169,14 +205,28 @@ struct CaptureGenerationGate: Sendable {
     try Task.checkCancellation()
 
     let engine = AVAudioEngine()
-    let inputNode = engine.inputNode
-    let inputFormat = inputNode.inputFormat(forBus: 0)
-    guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
-      let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
-    else { throw VoiceSourceError.microphoneFormatUnavailable }
+    let router = VoiceCaptureRouter(
+      host: EngineInputHost(engine: engine), catalog: SystemInputCatalog(),
+      preferredUID: preferredInputDeviceUID)
+    router.onRouteChanged = { [weak self] route in self?.routeHandler?(route) }
+    guard captureGeneration.activate(generation) else { throw CancellationError() }
+    self.engine = engine
+    self.router = router
+    let inputFormat: AVAudioFormat
+    do {
+      inputFormat = try await router.open()
+      try ensureCurrentRequest(generation)
+    } catch {
+      if captureGeneration.acceptsCallback(generation) { stopCurrentCapture() }
+      throw error
+    }
+    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+      stopCurrentCapture()
+      throw VoiceSourceError.microphoneFormatUnavailable
+    }
 
     let inputPair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream(
-      of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(24))
+      of: AnalyzerInput.self, bufferingPolicy: .bufferingNewest(Self.inputBufferLimit))
     let outputPair = AsyncThrowingStream<TranscriptEvent, any Error>.makeStream(
       of: TranscriptEvent.self, bufferingPolicy: .bufferingNewest(32))
     let pipe = AudioInputPipe(
@@ -184,8 +234,6 @@ struct CaptureGenerationGate: Sendable {
     ) { [weak self] error in
       Task { @MainActor in self?.failAudio(error, generation: generation) }
     }
-    guard captureGeneration.activate(generation) else { throw CancellationError() }
-    self.engine = engine
     self.analyzer = analyzer
     self.transcriber = module
     self.commandTranscriber = commandModule
@@ -193,6 +241,15 @@ struct CaptureGenerationGate: Sendable {
     outputContinuation = outputPair.continuation
     inputPipe = pipe
     resultStreamsRemaining = commandModule == nil ? 1 : 2
+    // Plugging, unplugging, or switching a microphone changes the input's sample rate or
+    // channel count; the engine stops and posts this. The router rebuilds the tap on the
+    // new format — or folds the change into startup while the analyzer is still preparing —
+    // and the analyzer and transcript stream keep running instead of ending the session.
+    configurationObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in self?.scheduleReconfiguration(generation: generation) }
+    }
 
     do {
       try await analyzer.prepareToAnalyze(in: targetFormat)
@@ -251,19 +308,11 @@ struct CaptureGenerationGate: Sendable {
         }
       }
 
-      inputNode.installTap(
-        onBus: 0, bufferSize: 1024, format: inputFormat,
-        block: makeSpeechAudioTapHandler(for: pipe))
-      configurationObserver = NotificationCenter.default.addObserver(
-        forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-      ) { [weak self] _ in
-        Task { @MainActor in
-          self?.failAudio(VoiceSourceError.audioConfigurationChanged, generation: generation)
-        }
-      }
       try ensureCurrentRequest(generation)
       try Task.checkCancellation()
-      try engine.start()
+      // One owner installs the one tap: a device switched during preparation is applied
+      // here, with its own format, before the tap goes in.
+      try await router.goLive(tap: Self.tapFactory(for: pipe, targetFormat: targetFormat))
       try ensureCurrentRequest(generation)
       return outputPair.stream
     } catch {
@@ -279,10 +328,11 @@ struct CaptureGenerationGate: Sendable {
 
   private func stopCurrentCapture() {
     captureGeneration.deactivate()
-    if let engine {
-      if engine.isRunning { engine.stop() }
-      engine.inputNode.removeTap(onBus: 0)
-    }
+    reconfiguration?.cancel()
+    reconfiguration = nil
+    router?.close()
+    router = nil
+    if routeHandler != nil { routeHandler?(nil) }
     if let configurationObserver {
       NotificationCenter.default.removeObserver(configurationObserver)
       self.configurationObserver = nil
@@ -305,6 +355,43 @@ struct CaptureGenerationGate: Sendable {
     commandTranscriber = nil
     resultStreamsRemaining = 0
     captureStartedAt = 0
+  }
+
+  /// Builds the tap for a (possibly new) input format: the pipe swaps its converter and the
+  /// same real-time handler feeds the analyzer, so the sample clock keeps counting.
+  private static func tapFactory(
+    for pipe: AudioInputPipe, targetFormat: AVAudioFormat
+  ) -> VoiceCaptureRouter.TapFactory {
+    { inputFormat in
+      guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+        throw VoiceSourceError.microphoneFormatUnavailable
+      }
+      pipe.replaceConverter(converter)
+      return makeSpeechAudioTapHandler(for: pipe)
+    }
+  }
+
+  private func scheduleReconfiguration(generation: UInt64) {
+    guard captureGeneration.acceptsCallback(generation) else { return }
+    reconfiguration?.cancel()
+    reconfiguration = Task { @MainActor [weak self] in
+      await self?.reconfigureCapture(generation: generation)
+    }
+  }
+
+  /// Rebuilds only the audio input: same engine, same analyzer, same transcript stream.
+  /// While startup is still preparing the router records the change and applies it when the
+  /// tap goes in, so startup and reconfiguration never install competing taps.
+  private func reconfigureCapture(generation: UInt64) async {
+    guard captureGeneration.acceptsCallback(generation), let router else { return }
+    do {
+      _ = try await router.reconfigure()
+    } catch is CancellationError {
+      return
+    } catch {
+      guard captureGeneration.acceptsCallback(generation) else { return }
+      failAudio(error, generation: generation)
+    }
   }
 
   private func ensureCurrentRequest(_ generation: UInt64) throws {
@@ -428,7 +515,8 @@ struct CaptureGenerationGate: Sendable {
 
 @available(macOS 26.0, *)
 final class AudioInputPipe: @unchecked Sendable {
-  private let converter: AVAudioConverter
+  private let lock = NSLock()
+  private var converter: AVAudioConverter
   private let targetFormat: AVAudioFormat
   private let continuation: AsyncThrowingStream<AnalyzerInput, any Error>.Continuation
   private let onError: @Sendable (any Error) -> Void
@@ -445,7 +533,26 @@ final class AudioInputPipe: @unchecked Sendable {
     self.onError = onError
   }
 
+  /// Swaps the converter when the input device or its format changes; the output format and
+  /// the running sample clock are unchanged.
+  func replaceConverter(_ next: AVAudioConverter) {
+    lock.lock()
+    converter = next
+    lock.unlock()
+  }
+
+  /// Seconds of audio handed to the analyzer so far: the start time of the next buffer on
+  /// the transcriber's timeline. It only advances for captured frames.
+  var audioTime: Double {
+    lock.lock()
+    defer { lock.unlock() }
+    return Double(nextSampleTime) / targetFormat.sampleRate
+  }
+
   func append(_ input: AVAudioPCMBuffer) {
+    lock.lock()
+    let converter = self.converter
+    lock.unlock()
     let scaledCapacity =
       ceil(
         Double(input.frameLength) * targetFormat.sampleRate / input.format.sampleRate) + 64
@@ -476,8 +583,10 @@ final class AudioInputPipe: @unchecked Sendable {
     }
     guard output.frameLength > 0 else { return }
     let sampleRate = CMTimeScale(targetFormat.sampleRate.rounded())
+    lock.lock()
     let start = CMTime(value: nextSampleTime, timescale: sampleRate)
     nextSampleTime += Int64(output.frameLength)
+    lock.unlock()
     if case .terminated = continuation.yield(
       AnalyzerInput(buffer: output, bufferStartTime: start))
     {
@@ -526,7 +635,7 @@ private enum VoiceSourceError: LocalizedError {
     case .modelNotReady: "The selected speech model is not installed and ready."
     case .noCompatibleAudioFormat: "No audio format is available for this speech model."
     case .microphoneFormatUnavailable: "The microphone did not provide a usable audio format."
-    case .audioConfigurationChanged: "The audio input device changed or disconnected."
+    case .audioConfigurationChanged: "The audio input device changed and could not be reopened."
     case .bufferConversionFailed: "Microphone audio could not be prepared for transcription."
     case .inputStreamTerminated: "The microphone audio stream is no longer available."
     }

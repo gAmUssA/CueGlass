@@ -11,10 +11,12 @@ One file per decision, named `NNNN-<kebab-title>.md`. Each record carries Title,
 | [0004](0004-lines-per-minute-direction-and-schema.md) | LPM, direction, bounded navigation and schema | accepted |
 | [0005](0005-native-surfaces-commands-and-timing.md) | Native surfaces, commands, timing and reading aids | accepted |
 | [0006](0006-public-github-actions-release-build.md) | Public GitHub Actions build and unnotarized prerelease assets | accepted |
-| [0007](0007-shared-timeline-voice-glide-ceiling.md) | Shared timeline voice-follow glide ceiling | accepted |
+| [0007](0007-shared-timeline-voice-glide-ceiling.md) | Shared timeline voice-follow glide ceiling | accepted — configuration-change clause superseded by 0013 |
 | [0008](0008-spoken-follow-voice-transport.md) | Prefixed spoken transport controls for Follow Voice | superseded by 0009 |
 | [0009](0009-follow-voice-command-confirmation.md) | Confirm stable Follow Voice commands and support the short stop phrase | superseded by 0011 |
 | [0010](0010-contextual-command-recognition-channel.md) | Use a contextual command channel for Follow Voice controls | accepted |
 | [0011](0011-prompter-follow-voice-wake-phrase.md) | Accept Prompter as a Follow Voice command wake phrase | accepted |
+| [0012](0012-camera-dock-placement.md) | Camera Dock placement below the camera safe area | accepted |
+| [0013](0013-microphone-continuity-and-catch-up.md) | Follow Voice microphone continuity, truthful input routing, and catch-up glide | accepted |
 
-Sources: `CueFlow-Codex-Handoff.md` (product specification), the architect decision note for task `cueglass-v1` (kept outside the repository), and Follow Voice task requirements. Work tracking lives in [Beans](../../.beans/) ([MVP milestone cueglass-aeqt](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md)). All eleven records are delivered. Accepted ADR decisions do not constitute independent acceptance of the application; MVP acceptance remains open. ADR 0001 delivery is tracked by `cueglass-xfha`.
+Sources: `CueFlow-Codex-Handoff.md` (product specification), the architect decision note for task `cueglass-v1` (kept outside the repository), Follow Voice task requirements, and the accepted Camera Dock design for `cueglass-jjwt`. Work tracking lives in [Beans](../../.beans/) ([MVP milestone cueglass-aeqt](../../.beans/cueglass-aeqt--cueflow-v1-mvp.md)). All thirteen records are delivered. Accepted ADR decisions do not constitute independent acceptance of the application; MVP acceptance remains open. ADR 0001 delivery is tracked by `cueglass-xfha`.

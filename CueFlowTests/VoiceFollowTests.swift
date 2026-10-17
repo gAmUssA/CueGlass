@@ -100,8 +100,33 @@ private struct FakeSpeechAssetError: LocalizedError {
   private var startWaiters: [CheckedContinuation<Void, Never>] = []
   private var startCompletion: CheckedContinuation<Void, Never>?
   private var output: AsyncThrowingStream<TranscriptEvent, any Error>.Continuation?
+  var availableDevices: [VoiceInputDeviceOption] = []
+  private(set) var preferredInputDeviceUID: String?
+  private(set) var preferredDeviceAssignments = 0
+  private var deviceHandler: (@MainActor () -> Void)?
+  private(set) var inputRoute: VoiceInputRoute?
+  /// The captured-audio clock a test drives explicitly; nil leaves the coordinator on host time.
+  var capturedAudioTime: Double?
+  private var routeHandler: (@MainActor (VoiceInputRoute?) -> Void)?
+  func observeInputRoute(_ handler: @escaping @MainActor (VoiceInputRoute?) -> Void) {
+    routeHandler = handler
+  }
+  func simulateRoute(_ route: VoiceInputRoute?) {
+    inputRoute = route
+    routeHandler?(route)
+  }
 
   func supportedLocales() async -> [VoiceLocaleOption] { localeOptions }
+  func availableInputDevices() -> [VoiceInputDeviceOption] { availableDevices }
+  func setPreferredInputDevice(uid: String?) {
+    preferredInputDeviceUID = uid
+    preferredDeviceAssignments += 1
+  }
+  func observeInputDevices(_ handler: @escaping @MainActor () -> Void) { deviceHandler = handler }
+  func simulateDeviceChange(_ devices: [VoiceInputDeviceOption]) {
+    availableDevices = devices
+    deviceHandler?()
+  }
   func readiness(localeIdentifier: String) async -> VoiceAssetReadiness {
     readinessCount += 1
     for waiter in readinessWaiters { waiter.resume() }
@@ -376,6 +401,68 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(source.startCount == 0)
   }
 
+  @Test func audioSampleClockMatchesPublishedBuffersDuringConcurrentReads() async throws {
+    guard #available(macOS 26.0, *) else { return }
+    let format = try #require(
+      AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: false))
+    let converter = try #require(AVAudioConverter(from: format, to: format))
+    let replacement = try #require(AVAudioConverter(from: format, to: format))
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512))
+    buffer.frameLength = 512
+    let samples = try #require(buffer.int16ChannelData?.pointee)
+    samples.update(repeating: 0, count: 512)
+    let pair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream()
+    let pipe = AudioInputPipe(
+      converter: converter, targetFormat: format, continuation: pair.continuation,
+      onError: { pair.continuation.finish(throwing: $0) })
+    let invocation = AudioTapInvocation(
+      handler: makeSpeechAudioTapHandler(for: pipe), buffer: buffer,
+      time: AVAudioTime(sampleTime: 0, atRate: format.sampleRate))
+    let readerReady = DispatchSemaphore(value: 0)
+    let writerReady = DispatchSemaphore(value: 0)
+    let work = DispatchGroup()
+    work.enter()
+    DispatchQueue.global().async {
+      var previous = 0.0
+      for _ in 0..<64 {
+        readerReady.signal()
+        writerReady.wait()
+        for _ in 0..<128 {
+          let current = pipe.audioTime
+          #expect(current >= previous && current <= 32_768.0 / 48_000)
+          previous = current
+        }
+      }
+      work.leave()
+    }
+    work.enter()
+    DispatchQueue.global().async {
+      for index in 0..<64 {
+        readerReady.wait()
+        writerReady.signal()
+        if index == 32 { pipe.replaceConverter(replacement) }
+        invocation.invoke()
+      }
+      work.leave()
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      work.notify(queue: .main) { continuation.resume() }
+    }
+    pair.continuation.finish()
+    var frames: Int64 = 0
+    var count = 0
+    for try await input in pair.stream {
+      #expect(input.bufferStartTime == CMTime(value: frames, timescale: 48_000))
+      #expect(input.buffer.frameLength == 512)
+      frames += Int64(input.buffer.frameLength)
+      count += 1
+    }
+    #expect(count == 64)
+    #expect(frames == 32_768)
+    #expect(pipe.audioTime == 32_768.0 / 48_000)
+  }
+
   @Test func audioTapProcessesBuffersFromRealtimeQueue() async throws {
     guard #available(macOS 26.0, *) else { return }
     let format = try #require(
@@ -594,6 +681,76 @@ private struct FakeSpeechAssetError: LocalizedError {
     await Task.yield()
     await mainTurn()
     #expect(controller.session.timeline.voiceCeiling == ceilingBeforeDelayedSpeech)
+    coordinator.stop()
+  }
+
+  /// Microphone recovery stops capture while host time keeps running. Silence detection
+  /// and the spoken-pause resume filter both read the source's captured-audio clock, the
+  /// timeline the transcriber stamps its words on, so a recovery gap neither ages the last
+  /// word into a silence hold nor hides the words spoken after a resume.
+  @Test func silenceAndSpokenPauseResumeShareTheCapturedAudioClockAcrossGaps() async throws {
+    let doc = ScriptDocument()
+    doc.source = NSAttributedString(string: "North wind\ncarries the\nlantern home.")
+    let controller = OperatorWindowController(document: doc)
+    defer { controller.close() }
+    controller.session.clock = { 0 }
+    controller.voiceCoordinator?.stop()
+    var uptime = 100.0
+    let source = FakeVoiceCaptureSource()
+    source.capturedAudioTime = 0
+    let coordinator = VoiceFollowCoordinator(
+      session: controller.session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." }, captureClock: { uptime })
+    controller.voiceCoordinator = coordinator
+    await coordinator.refreshAvailability()
+
+    controller.startVoiceFollow()
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    let initialCeiling = controller.session.timeline.voiceCeiling
+
+    // Four words end at 1.95 s of captured audio and confirm the second line.
+    source.capturedAudioTime = 2
+    source.send(transcript("North wind carries the", startingAt: 1))
+    for _ in 0..<200 where controller.session.timeline.voiceCeiling == initialCeiling {
+      await Task.yield()
+      await mainTurn()
+    }
+    let ceilingAfterSpeech = try #require(controller.session.timeline.voiceCeiling)
+    #expect(ceilingAfterSpeech != initialCeiling)
+    #expect(coordinator.state == .listening, "\(coordinator.state)")
+
+    // A six-second recovery gap on the host clock while only 0.1 s of audio arrives.
+    uptime = 106
+    source.capturedAudioTime = 2.1
+    await coordinator.advanceSilence(to: uptime)
+    #expect(coordinator.state == .listening, "\(coordinator.state)")
+    #expect(controller.session.timeline.voiceCeiling == ceilingAfterSpeech)
+
+    // Silence measured in captured audio still holds.
+    source.capturedAudioTime = 3.3
+    await coordinator.advanceSilence(to: uptime)
+    #expect(coordinator.state == .holding("Waiting for speech"), "\(coordinator.state)")
+
+    // A spoken pause, another gap, then Space: words after the resume point on the audio
+    // clock move the display.
+    source.capturedAudioTime = 4.5
+    source.send(transcript("CueGlass pause", startingAt: 4))
+    await waitForVoiceState(.commandPaused, coordinator: coordinator)
+    uptime = 140
+    source.capturedAudioTime = 5
+    controller.execute(.toggle)
+    await waitForVoiceState(.listening, coordinator: coordinator)
+    #expect(source.stopCount == 0)
+    let ceilingAfterResume = controller.session.timeline.voiceCeiling
+
+    source.capturedAudioTime = 6
+    source.send(transcript("the lantern home", startingAt: 5.2))
+    for _ in 0..<200 where controller.session.timeline.voiceCeiling == ceilingAfterResume {
+      await Task.yield()
+      await mainTurn()
+    }
+    let ceilingAfterResumedSpeech = try #require(controller.session.timeline.voiceCeiling)
+    #expect(ceilingAfterResumedSpeech > ceilingAfterSpeech, "\(coordinator.state)")
     coordinator.stop()
   }
 
@@ -1038,9 +1195,147 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.velocity > baseline)
-    #expect(session.timeline.velocity <= baseline * 1.4)
+    // The cadence component stays within 1.4 × baseline; the catch-up glide may add to it
+    // while the display trails confirmed speech, never beyond the configured maximum.
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     #expect(session.voiceSessionActive)
     coordinator.stop()
+  }
+
+  @Test func confirmedSpeechFarAheadOfTheDisplayGlidesFasterThanTheCadenceCap() async throws {
+    let text = "North wind\ncarries the\nlantern home."
+    let document = ScriptDocument()
+    document.source = NSAttributedString(string: text)
+    let session = PlaybackSession()
+    session.clock = { 0 }
+    try session.prepare(document)
+    let snapshot = try #require(session.snapshot)
+    let sourceText = text as NSString
+    let lineTable = VoiceLineTable(
+      lines: ["North wind", "carries the", "lantern home."].enumerated().map { index, line in
+        let range = sourceText.range(of: line)
+        return VoiceLine(
+          utf16Range: range.location..<(range.location + range.length), minY: Double(index) * 80)
+      })
+    let source = FakeVoiceCaptureSource()
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    await coordinator.refreshAvailability()
+    try await start(
+      coordinator, session: session, snapshot: snapshot, table: lineTable, token: -1)
+    let baseline = session.timeline.velocity
+    let maximum = session.lineAdvance * session.configuredMax / 60
+
+    // The presenter is already two lines ahead of a display that has not moved.
+    source.send(transcript("North wind", startingAt: 0))
+    source.send(transcript("lantern home.", startingAt: 0.6))
+    for _ in 0..<200 where session.timeline.velocity <= baseline * 1.4 {
+      await Task.yield()
+      await mainTurn()
+    }
+
+    #expect(session.timeline.velocity > baseline * 1.4)
+    #expect(session.timeline.velocity <= maximum)
+    #expect(abs(session.timeline.velocity - 160 / FollowCatchUp.catchUpSeconds) < 1e-6)
+    #expect(session.timeline.voiceCeiling == 160)
+    coordinator.stop()
+  }
+
+  @Test func microphoneSelectionFollowsAttachedDevicesAndReachesTheSource() async throws {
+    let (session, _, _) = try take()
+    let builtIn = VoiceInputDeviceOption(
+      uid: "built-in", name: "MacBook Pro Microphone", isDefault: true)
+    let external = VoiceInputDeviceOption(uid: "usb-1", name: "USB Microphone", isDefault: false)
+    let source = FakeVoiceCaptureSource()
+    source.availableDevices = [builtIn, external]
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    #expect(coordinator.inputDevices == [builtIn, external])
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+
+    coordinator.selectInputDevice(uid: external.uid)
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+    #expect(source.preferredInputDeviceUID == external.uid)
+
+    // The chosen microphone goes away: capture follows the system default, the choice is kept
+    // so the device is used again when it returns.
+    source.simulateDeviceChange([builtIn])
+    #expect(coordinator.inputDevices == [builtIn])
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+    source.simulateDeviceChange([builtIn, external])
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+
+    coordinator.selectInputDevice(uid: "")
+    #expect(coordinator.selectedInputDeviceUID == nil)
+    #expect(source.preferredInputDeviceUID == nil)
+    coordinator.selectInputDevice(uid: nil)
+    #expect(coordinator.selectedInputDeviceUID == nil)
+  }
+
+  @Test func theReportedRouteOverridesListMembershipAndSurfacesFallbackOrFailure() throws {
+    let (session, _, _) = try take()
+    let builtIn = VoiceInputDeviceOption(
+      uid: "built-in", name: "MacBook Pro Microphone", isDefault: true)
+    let external = VoiceInputDeviceOption(uid: "usb-1", name: "USB Microphone", isDefault: false)
+    let source = FakeVoiceCaptureSource()
+    source.availableDevices = [builtIn, external]
+    let coordinator = VoiceFollowCoordinator(
+      session: session, source: source, microphone: FakeMicrophonePermission(.granted),
+      usageDescription: { "Mic for voice." })
+    coordinator.selectInputDevice(uid: external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+    #expect(coordinator.inputRouteNotice == nil)
+
+    // The unit refused the switch: the picker keeps the choice, but the effective device is
+    // what the unit reports, and the inspector says why.
+    source.simulateRoute(
+      VoiceInputRoute(
+        deviceUID: builtIn.uid, deviceName: builtIn.name, usesSystemDefault: false,
+        preferredUnavailable: false, failure: "device is busy"))
+    #expect(coordinator.selectedInputDeviceUID == external.uid)
+    #expect(coordinator.effectiveInputDeviceUID == builtIn.uid)
+    #expect(
+      coordinator.inputRouteNotice
+        == "Could not switch to USB Microphone: device is busy — still using MacBook Pro Microphone"
+    )
+
+    // The remembered device went away while capturing: the default was selected explicitly.
+    source.simulateDeviceChange([builtIn])
+    source.simulateRoute(
+      VoiceInputRoute(
+        deviceUID: builtIn.uid, deviceName: builtIn.name, usesSystemDefault: true,
+        preferredUnavailable: true, failure: nil))
+    #expect(coordinator.effectiveInputDeviceUID == nil)
+    #expect(
+      coordinator.inputRouteNotice
+        == "The selected microphone is not connected — using System Default (MacBook Pro Microphone)"
+    )
+
+    // Capture closed: the notice falls back to list membership only.
+    source.simulateRoute(nil)
+    #expect(coordinator.inputRoute == nil)
+    #expect(
+      coordinator.inputRouteNotice
+        == "The selected microphone is not connected — using System Default")
+    source.simulateDeviceChange([builtIn, external])
+    #expect(coordinator.inputRouteNotice == nil)
+    #expect(coordinator.effectiveInputDeviceUID == external.uid)
+  }
+
+  @Test func inputSelectionResolvesOnlyAttachedDevices() {
+    let devices = [
+      VoiceInputDeviceOption(uid: "a", name: "A", isDefault: true),
+      VoiceInputDeviceOption(uid: "b", name: "B", isDefault: false),
+    ]
+    #expect(VoiceInputSelection.resolve(preferredUID: "b", available: devices) == "b")
+    #expect(VoiceInputSelection.resolve(preferredUID: "missing", available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: nil, available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: "", available: devices) == nil)
+    #expect(VoiceInputSelection.resolve(preferredUID: "a", available: []) == nil)
   }
 
   @Test func watermarkOnlyFinalizationFeedsConfirmedProgressToPaceEstimator() async throws {
@@ -1083,7 +1378,7 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.velocity > baseline)
-    #expect(session.timeline.velocity <= baseline * 1.4)
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     coordinator.stop()
   }
 
@@ -1164,7 +1459,7 @@ private struct FakeSpeechAssetError: LocalizedError {
     }
 
     #expect(session.timeline.voiceCeiling == 240)
-    #expect(session.timeline.velocity <= nominal * 1.4 + 0.001)
+    #expect(session.timeline.velocity <= session.lineAdvance * session.configuredMax / 60)
     coordinator.stop()
   }
 

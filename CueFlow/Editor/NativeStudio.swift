@@ -38,7 +38,7 @@ struct StageReadout: View {
         Text(readout.status).font(.system(size: 11, weight: .semibold))
       }.padding(.horizontal, 8).padding(.vertical, 5).background(
         statusColor.opacity(0.12), in: Capsule())
-      clock(readout.elapsed, label: "ELAPSED")
+      clock(readout.elapsed, label: "elapsed")
       GeometryReader { geometry in
         ZStack(alignment: .leading) {
           Capsule().fill(.white.opacity(0.12))
@@ -46,7 +46,7 @@ struct StageReadout: View {
             .frame(width: geometry.size.width * min(1, max(0, readout.progress)))
         }
       }.frame(minWidth: 100, idealWidth: 140, maxWidth: 200).frame(height: 3)
-      clock(readout.remaining, label: "REMAINING")
+      clock(readout.remaining == "—" ? "—" : "−" + readout.remaining, label: "remaining")
       VStack(alignment: .trailing, spacing: 2) {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
           Text(readout.pace.replacingOccurrences(of: " lpm", with: "")).font(
@@ -64,18 +64,43 @@ struct StageReadout: View {
   private var statusColor: Color {
     if readout.status == "Playing" { return .green }
     if readout.status == "Paused" || readout.status.hasPrefix("Starting") { return .orange }
+    if readout.status == "End of script" { return .blue }
     return .secondary
   }
   private func clock(_ value: String, label: String) -> some View {
     VStack(alignment: .leading, spacing: 3) {
       Text(value).font(.system(size: 13, weight: .medium)).monospacedDigit()
-      Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
+      Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
     }.fixedSize()
+  }
+}
+/// Pale notice over the page while a take holds it read-only (Quiet Studio ①/④).
+struct EditorTakeBanner: View {
+  unowned let controller: OperatorWindowController
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+      Text("Editing locked during the take").font(.system(size: 12)).lineLimit(1)
+      Spacer(minLength: 8)
+      Button("Stop Take") { controller.stop() }.controlSize(.small)
+    }
+    .padding(.horizontal, 16).padding(.vertical, 8)
+    .background(Color(nsColor: .systemYellow).opacity(0.12))
+    .overlay(alignment: .bottom) { Divider() }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Editing locked during the take")
   }
 }
 struct StageFooter: View {
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
+  var noticeStatus: String? {
+    guard
+      !["", "Ready", "Paused", "Playing", "Take prepared", "Stopped — editing enabled"]
+        .contains(state.status)
+    else { return nil }
+    return state.status
+  }
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
@@ -84,7 +109,7 @@ struct StageFooter: View {
         Slider(
           value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
           in: 2...max(10, state.maximum)
-        ).tint(.gray).accessibilityLabel("Reading pace in lines per minute")
+        ).accessibilityLabel("Reading pace in lines per minute")
         Image(systemName: "hare").foregroundStyle(.secondary)
         TextField(
           "LPM", value: Binding(get: { state.speed }, set: { controller.setSpeed($0) }),
@@ -92,34 +117,39 @@ struct StageFooter: View {
         ).textFieldStyle(.roundedBorder).frame(width: 54)
         Text("lpm").font(.system(size: 11)).foregroundStyle(.secondary)
       }
-      if state.active {
+      if state.active && state.voiceActive {
         HStack(spacing: 8) {
-          Image(systemName: "lock.fill")
-          Text("Editing locked for this take").font(.system(size: 11))
+          Circle().fill(state.voiceSuspended ? .orange : .green).frame(width: 6, height: 6)
+          Text(state.voiceMessage).font(.system(size: 11)).lineLimit(1)
           Spacer(minLength: 0)
-          if state.voiceActive {
-            Circle().fill(state.voiceSuspended ? .orange : .green).frame(width: 6, height: 6)
-            Text(state.voiceMessage).font(.system(size: 10)).lineLimit(1)
-            if state.voiceSuspended {
-              Button("Resume Following") { controller.startVoiceFollow(resume: true) }
-                .controlSize(.small)
-            }
-            Button(state.voiceSuspended ? "Stop Following" : "Stop Follow Voice") {
-              controller.stopVoiceFollow()
-            }.controlSize(.small)
+          if state.voiceSuspended {
+            Button("Resume Following") { controller.startVoiceFollow(resume: true) }
+              .controlSize(.small)
           }
-          Button("Stop Take") { controller.stop() }.controlSize(.small)
-        }.padding(8).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+          Button(state.voiceSuspended ? "Stop Following" : "Stop Follow Voice") {
+            controller.stopVoiceFollow()
+          }.controlSize(.small)
+        }.padding(8).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
       }
-      if state.pending
-        || !["", "Ready", "Paused", "Playing", "Take prepared", "Stopped — editing enabled"]
-          .contains(state.status)
-      {
-        HStack {
-          Text(state.status).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+      if state.pending || noticeStatus != nil {
+        // Notices are inline banners, not alerts (Quiet Studio ⑥).
+        HStack(alignment: .center, spacing: 10) {
+          Image(systemName: state.pending ? "info.circle" : "exclamationmark.circle")
+            .foregroundStyle(.secondary)
+          VStack(alignment: .leading, spacing: 2) {
+            if state.pending {
+              Text("A newer version of this script is available.").font(.system(size: 12))
+              Text("The current take is unchanged until you load it.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            if let noticeStatus {
+              Text(noticeStatus).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+          }
           Spacer()
           if state.pending {
-            Button("Load Latest") { controller.loadLatest() }.disabled(state.running)
+            Button("Load") { controller.loadLatest() }.disabled(state.running)
+              .accessibilityLabel("Load Latest")
           } else if state.active && !state.running {
             Button(
               controller.session.message.localizedCaseInsensitiveContains("end")
@@ -132,10 +162,12 @@ struct StageFooter: View {
               }
             }.controlSize(.small)
           }
-        }
+        }.padding(10).background(
+          RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.06))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.1))))
       }
       Text(
-        "↑ ↓ \(Int(state.fineStep)) lpm · ⇧↑ ⇧↓ \(Int(state.jumpStep)) lpm · Scroll to pause and scrub"
+        "↑ ↓ fine \(Int(state.fineStep)) lpm · ⇧↑ ⇧↓ jump \(Int(state.jumpStep)) lpm · scroll over stage to scrub (pauses)"
       )
       .font(.system(size: 10)).foregroundStyle(.tertiary)
     }.padding(16).foregroundStyle(.primary).environment(\.colorScheme, .dark)

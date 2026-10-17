@@ -2,7 +2,7 @@ import Foundation
 
 public enum PlaybackCommand: String, Codable, CaseIterable, Sendable {
   case toggle, faster, slower, jumpFaster, jumpSlower, nextParagraph, previousParagraph, restart,
-    reverse, exit
+    reverse, exit, cameraDock
 }
 public struct KeyChord: Codable, Hashable, Sendable {
   public var key: String
@@ -43,6 +43,7 @@ public struct CommandMap: Codable, Sendable {
       .init(chord: .init("home"), command: .restart),
       .init(chord: .init("up", command: true), command: .restart),
       .init(chord: .init("r"), command: .reverse), .init(chord: .init("escape"), command: .exit),
+      .init(chord: .init("d", command: true, option: true), command: .cameraDock),
     ]
   }
   public func command(for chord: KeyChord) -> PlaybackCommand? {
