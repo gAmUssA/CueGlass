@@ -70,12 +70,60 @@ public struct CameraDockScreenParameters: Equatable, Sendable {
 public struct CameraDockLayout: Equatable, Sendable {
   public let screenParameters: CameraDockScreenParameters
   public let placement: CameraDockPlacement
+  public let cameraHousing: CameraDockRect?
+  public let contentTopInset: Double
   public let viewportWidth: Double
+  /// The logical prompt viewport height handed to the shared playback session.
   public let viewportHeight: Double
+  /// The part of the logical viewport the Dock shows: the reading guide sits at the top
+  /// edge of this band and exactly `lineCount` lines fit below it.
+  public let visibleViewportHeight: Double
+  /// The band above the reading guide that the Dock hides. The presentation viewport
+  /// reserves `CameraDockGeometry.guideFraction` of its height above the guide; the
+  /// Dock clips that band so no partially scrolled line is cut under the camera.
+  public let hiddenViewportTop: Double
   public let lineCount: Int
   public let isBuiltInDisplay: Bool
   public let style: CameraDockVisualStyle
   public let cameraSafeAreaHeight: Double
+}
+
+/// The attached Camera Dock silhouette at one point of the compact-to-expanded morph.
+/// `stem` fills the camera housing band; `tray` hangs below the safe edge. Both corner
+/// radii and the concave shoulder fillets interpolate with `progress`, so paths built
+/// from any two metrics share one element sequence and animate cleanly.
+public struct CameraDockMorphMetrics: Equatable, Sendable {
+  public let progress: Double
+  public let stem: CameraDockRect
+  public let tray: CameraDockRect
+  public let outline: CameraDockRect
+  public let topCornerRadius: Double
+  public let bottomCornerRadius: Double
+  public let shoulderRadius: Double
+  public let contentOpacity: Double
+}
+
+/// Motion contract for the attached Camera Dock morph. The timings are deterministic
+/// inputs for the presentation layer; the spring parameters describe one settled,
+/// slightly under-damped spring (damping ratio ≈ 0.8).
+public enum CameraDockMotion {
+  public static let springMass = 1.0
+  public static let springStiffness = 220.0
+  public static let springDamping = 24.0
+  public static let expandInitialVelocity = 0.2
+  public static let minimumShapeDuration = 0.5
+  public static let maximumShapeDuration = 0.8
+  public static let expandContentDelay = 0.08
+  public static let expandContentDuration = 0.22
+  public static let collapseContentDuration = 0.12
+  /// Reduce Motion keeps a short crossfade and skips the shape motion entirely.
+  public static let reducedMotionContentDuration = 0.15
+
+  /// Clamps a spring's estimated settling time into the perceptible, well-paced window.
+  public static func shapeDuration(settling: Double) -> Double {
+    guard settling.isFinite else { return minimumShapeDuration }
+    return min(maximumShapeDuration, max(minimumShapeDuration, settling))
+  }
 }
 
 public struct CameraDockPlacementMap: Equatable, Sendable {
@@ -91,7 +139,9 @@ public struct CameraDockPlacementMap: Equatable, Sendable {
 public enum CameraDockGeometry {
   public static let minimumWidth = 360.0
   public static let maximumWidth = 760.0
-  public static let defaultWidthFraction = 0.44
+  /// Keep the expanded Camera Dock close to Sapphire's focused, camera-width composition.
+  public static let defaultWidthFraction = 0.38
+  fileprivate static let previousDefaultWidthFraction = 0.44
   public static let detachedGap = 6.0
   public static let controlsHeight = 44.0
   public static let minimumLineCount = 2
@@ -99,17 +149,57 @@ public enum CameraDockGeometry {
   public static let defaultLineCount = 3
   public static let minimumHorizontalNudge = -120.0
   public static let maximumHorizontalNudge = 120.0
+  public static let estimatedNotchSafeAreaHeight = 37.0
+  /// Fraction of the logical viewport height the presentation layer places above the
+  /// reading guide when it configures the Camera Dock viewport. The Dock hides that
+  /// band (`CameraDockLayout.hiddenViewportTop`) so the guide line is the first line.
+  public static let guideFraction = 0.2
+  /// Margin kept above the first line and below the last line of the visible strip.
+  public static let viewportVerticalPadding = 8.0
+
+  /// Compact (parked) silhouette: a short chin under the housing with fully rounded
+  /// lower corners and small shoulder fillets.
+  public static let compactChinHeight = 14.0
+  public static let compactChinOverhang = 14.0
+  public static let compactBottomCornerRadius = 14.0
+  public static let compactShoulderRadius = 8.0
+  /// Expanded silhouette: a rounded tray hanging from the housing. The shoulders rise
+  /// into the camera band beside the housing so the black surface blends with the
+  /// housing's rounded corners; prompt content never enters that band.
+  public static let expandedTopCornerRadius = 22.0
+  public static let expandedBottomCornerRadius = 22.0
+  public static let expandedShoulderRadius = 12.0
+  /// Content fades in only once the tray has mostly opened.
+  public static let contentFadeStartProgress = 0.45
 
   public static func defaultWidth(screenWidth: Double) -> Double {
     guard screenWidth.isFinite, screenWidth > 0 else { return minimumWidth }
     return min(maximumWidth, max(minimumWidth, screenWidth * defaultWidthFraction))
   }
 
+  /// Logical viewport height: once the presentation layer reserves `guideFraction`
+  /// above the guide, the remainder holds exactly `lineCount` lines plus the padding.
+  /// The result is a whole multiple of `viewportHeightStep`, so the hidden band, the
+  /// visible strip, and the panel frame are all whole points and survive AppKit's
+  /// integral window frames.
+  public static let viewportHeightStep = 5.0
   public static func viewportHeight(lineAdvance: Double, lineCount: Int) -> Double? {
     guard lineAdvance.isFinite, lineAdvance > 0,
       (minimumLineCount...maximumLineCount).contains(lineCount)
     else { return nil }
-    return ceil(lineAdvance * (Double(lineCount) + 0.25) + 16)
+    let visibleLines = lineAdvance * Double(lineCount) + viewportVerticalPadding
+    let exact = visibleLines / (1 - guideFraction)
+    return ceil(exact / viewportHeightStep) * viewportHeightStep
+  }
+
+  public static func hiddenViewportTop(viewportHeight: Double) -> Double {
+    guard viewportHeight.isFinite, viewportHeight > 0 else { return 0 }
+    return max(0, viewportHeight * guideFraction - viewportVerticalPadding)
+  }
+
+  public static func visibleViewportHeight(viewportHeight: Double) -> Double {
+    guard viewportHeight.isFinite, viewportHeight > 0 else { return 0 }
+    return viewportHeight - hiddenViewportTop(viewportHeight: viewportHeight)
   }
 
   public static func layout(
@@ -117,23 +207,46 @@ public enum CameraDockGeometry {
     preferences: CameraDockPreferences, lineAdvance: Double
   ) -> CameraDockLayout? {
     let preferences = preferences.normalized()
+    let builtInTarget = isBuiltIn && !isMirrored
+    let reportedSafeTop = cameraSafeAreaHeight(on: parameters)
+    let effectiveSafeTop: Double
+    if builtInTarget, preferences.forceNotchAttachment == true {
+      effectiveSafeTop = max(reportedSafeTop, estimatedNotchSafeAreaHeight)
+    } else if builtInTarget, preferences.forceNotchAttachment == false {
+      effectiveSafeTop = 0
+    } else {
+      effectiveSafeTop = reportedSafeTop
+    }
+    let disablesNotchInference = builtInTarget && preferences.forceNotchAttachment == false
+    let effectiveParameters = CameraDockScreenParameters(
+      screenFrame: parameters.screenFrame, visibleFrame: parameters.visibleFrame,
+      safeTop: effectiveSafeTop,
+      auxiliaryTopLeftArea: disablesNotchInference ? nil : parameters.auxiliaryTopLeftArea,
+      auxiliaryTopRightArea: disablesNotchInference ? nil : parameters.auxiliaryTopRightArea)
     guard
       let viewportHeight = viewportHeight(
         lineAdvance: lineAdvance, lineCount: preferences.lineCount)
     else { return nil }
-    let builtInTarget = isBuiltIn && !isMirrored
+    let visibleHeight = visibleViewportHeight(viewportHeight: viewportHeight)
     guard
       let placement = placement(
-        on: parameters, isBuiltIn: builtInTarget, width: preferences.width,
-        height: viewportHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
+        on: effectiveParameters, isBuiltIn: builtInTarget, width: preferences.width,
+        height: visibleHeight + controlsHeight, horizontalNudge: preferences.horizontalNudge)
     else { return nil }
+    let attached = placement.location == .camera
+    let safeAreaHeight = attached ? cameraSafeAreaHeight(on: effectiveParameters) : 0
+    let menuBarHeight = max(0, parameters.screenFrame.maxY - parameters.visibleFrame.maxY)
+    let contentTopInset = attached ? max(safeAreaHeight, menuBarHeight) : 0
     return CameraDockLayout(
-      screenParameters: parameters, placement: placement,
+      screenParameters: effectiveParameters, placement: placement,
+      cameraHousing: attached ? cameraHousingFrame(on: effectiveParameters) : nil,
+      contentTopInset: contentTopInset,
       viewportWidth: placement.contentFrame.width, viewportHeight: viewportHeight,
+      visibleViewportHeight: visibleHeight,
+      hiddenViewportTop: hiddenViewportTop(viewportHeight: viewportHeight),
       lineCount: preferences.lineCount, isBuiltInDisplay: builtInTarget,
       style: placement.location == .camera ? .attached : .detached,
-      cameraSafeAreaHeight: placement.location == .camera
-        ? cameraSafeAreaHeight(on: parameters) : 0)
+      cameraSafeAreaHeight: safeAreaHeight)
   }
 
   public static func cameraSafeAreaHeight(on parameters: CameraDockScreenParameters) -> Double {
@@ -141,6 +254,74 @@ public enum CameraDockGeometry {
       screenFrame: parameters.screenFrame, safeTop: parameters.safeTop,
       auxiliaryTopLeftArea: parameters.auxiliaryTopLeftArea,
       auxiliaryTopRightArea: parameters.auxiliaryTopRightArea)
+  }
+
+  public static func cameraHousingFrame(
+    on parameters: CameraDockScreenParameters
+  ) -> CameraDockRect? {
+    let screen = parameters.screenFrame
+    let safeAreaHeight = cameraSafeAreaHeight(on: parameters)
+    guard screen.isFiniteAndPositive, safeAreaHeight > 0 else { return nil }
+    let safeEdge = screen.maxY - safeAreaHeight
+    func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
+      area.isFiniteAndPositive && area.isContained(in: screen, tolerance: 0.5)
+        && area.minY >= safeEdge - 0.5
+    }
+    if let left = parameters.auxiliaryTopLeftArea,
+      let right = parameters.auxiliaryTopRightArea,
+      isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX
+    {
+      return CameraDockRect(
+        x: left.maxX, y: safeEdge, width: right.minX - left.maxX, height: safeAreaHeight)
+    }
+    let width = min(screen.width * 0.2, max(36, safeAreaHeight * 4.5))
+    return CameraDockRect(
+      x: screen.midX - width / 2, y: safeEdge, width: width, height: safeAreaHeight)
+  }
+
+  /// The attached silhouette between the parked chin (`progress == 0`) and the open
+  /// tray (`progress == 1`). With `controlsVisible == false` the open tray ends at the
+  /// bottom of the prompt strip, so a playing Dock shows text only.
+  public static func morphMetrics(
+    for layout: CameraDockLayout, progress: Double, controlsVisible: Bool = true
+  ) -> CameraDockMorphMetrics? {
+    guard layout.style == .attached, let housing = layout.cameraHousing,
+      progress.isFinite, layout.contentTopInset > 0
+    else { return nil }
+    let amount = min(1, max(0, progress))
+    let screen = layout.screenParameters.screenFrame
+    let stem = CameraDockRect(
+      x: housing.x, y: screen.maxY - layout.contentTopInset,
+      width: housing.width, height: layout.contentTopInset)
+    let content = layout.placement.contentFrame
+    let compactWidth = min(content.width, housing.width + compactChinOverhang * 2)
+    let compactTray = CameraDockRect(
+      x: housing.midX - compactWidth / 2,
+      y: stem.minY - compactChinHeight, width: compactWidth, height: compactChinHeight)
+    let expandedHeight = controlsVisible ? content.height : content.height - controlsHeight
+    let expandedTray = CameraDockRect(
+      x: content.x, y: content.maxY - expandedHeight, width: content.width,
+      height: expandedHeight)
+    func interpolate(_ start: Double, _ end: Double) -> Double {
+      start + (end - start) * amount
+    }
+    let tray = CameraDockRect(
+      x: interpolate(compactTray.x, expandedTray.x),
+      y: interpolate(compactTray.y, expandedTray.y),
+      width: interpolate(compactTray.width, expandedTray.width),
+      height: interpolate(compactTray.height, expandedTray.height))
+    let outline = CameraDockRect(
+      x: min(stem.minX, tray.minX), y: min(stem.minY, tray.minY),
+      width: max(stem.maxX, tray.maxX) - min(stem.minX, tray.minX),
+      height: max(stem.maxY, tray.maxY) - min(stem.minY, tray.minY))
+    let opacity = min(
+      1, max(0, (amount - contentFadeStartProgress) / (1 - contentFadeStartProgress)))
+    return CameraDockMorphMetrics(
+      progress: amount, stem: stem, tray: tray, outline: outline,
+      topCornerRadius: interpolate(0, expandedTopCornerRadius),
+      bottomCornerRadius: interpolate(compactBottomCornerRadius, expandedBottomCornerRadius),
+      shoulderRadius: interpolate(compactShoulderRadius, expandedShoulderRadius),
+      contentOpacity: opacity)
   }
 
   public static func placementMap(
@@ -171,31 +352,6 @@ public enum CameraDockGeometry {
     else { return nil }
     guard let content = normalized(layout.placement.contentFrame) else { return nil }
 
-    var cameraHousing: CameraDockRect?
-    if layout.style == .attached, layout.cameraSafeAreaHeight > 0 {
-      let housing: CameraDockRect
-      let safeEdge = screen.maxY - layout.cameraSafeAreaHeight
-      func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
-        area.isFiniteAndPositive && area.isContained(in: screen, tolerance: 0.5)
-          && area.minY >= safeEdge - 0.5
-      }
-      if let left = parameters.auxiliaryTopLeftArea,
-        let right = parameters.auxiliaryTopRightArea,
-        isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX
-      {
-        housing = CameraDockRect(
-          x: left.maxX, y: screen.maxY - layout.cameraSafeAreaHeight,
-          width: right.minX - left.maxX, height: layout.cameraSafeAreaHeight)
-      } else {
-        let width = min(screen.width * 0.2, max(36, layout.cameraSafeAreaHeight * 4.5))
-        housing = CameraDockRect(
-          x: screen.midX - width / 2, y: screen.maxY - layout.cameraSafeAreaHeight,
-          width: width, height: layout.cameraSafeAreaHeight)
-      }
-      guard let normalizedHousing = normalized(housing) else { return nil }
-      cameraHousing = normalizedHousing
-    }
-
     let label = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
     let display = label.isEmpty ? "Display" : label
     let type = layout.isBuiltInDisplay ? "Built-in" : "External"
@@ -210,7 +366,8 @@ public enum CameraDockGeometry {
 
     return CameraDockPlacementMap(
       displayAspectRatio: aspectRatio, style: layout.style, menuBarBand: menuBarBand,
-      cameraHousing: cameraHousing, dock: dock, content: content, caption: caption)
+      cameraHousing: layout.cameraHousing.flatMap(normalized), dock: dock, content: content,
+      caption: caption)
   }
 
   public static func placement(
@@ -259,24 +416,23 @@ public enum CameraDockGeometry {
 
     if hasCameraSafeArea {
       let cameraSafeEdge = screenFrame.maxY - cameraSafeTop
-      if cameraSafeEdge <= visibleFrame.maxY + 0.5 {
-        top = screenFrame.maxY
-        panelTopInset = cameraSafeTop
-        location = .camera
-        // The safe edge keeps the panel below the housing. NSScreen's auxiliary areas refine
-        // the horizontal anchor, but missing or inconsistent areas must not reject a safe fit.
-        func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
-          area.isFiniteAndPositive && area.isContained(in: screenFrame, tolerance: 0.5)
-            && area.minY >= cameraSafeEdge - 0.5
+      let menuBarInset = max(0, screenFrame.maxY - visibleFrame.maxY)
+      top = screenFrame.maxY
+      panelTopInset = max(cameraSafeTop, menuBarInset)
+      location = .camera
+      // Keep the tray below both the camera-safe edge and the visible menu-bar boundary.
+      // The housing width remains the only part drawn through the top exclusion band.
+      func isUsableAuxiliaryArea(_ area: CameraDockRect) -> Bool {
+        area.isFiniteAndPositive && area.isContained(in: screenFrame, tolerance: 0.5)
+          && area.minY >= cameraSafeEdge - 0.5
+      }
+      switch (auxiliaryTopLeftArea, auxiliaryTopRightArea) {
+      case (.some(let left), .some(let right)):
+        if isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX {
+          anchorX = left.maxX + (right.minX - left.maxX) / 2
         }
-        switch (auxiliaryTopLeftArea, auxiliaryTopRightArea) {
-        case (.some(let left), .some(let right)):
-          if isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX {
-            anchorX = left.maxX + (right.minX - left.maxX) / 2
-          }
-        default:
-          break
-        }
+      default:
+        break
       }
     }
 
@@ -343,8 +499,14 @@ public struct CameraDockPreferences: Codable, Equatable, Sendable {
   public var width: Double
   public var lineCount: Int
   public var horizontalNudge: Double
+  /// `true` opts into a centered notch attachment when screen geometry is missing.
+  /// `nil` follows system geometry; `false` explicitly disables notch attachment.
+  public var forceNotchAttachment: Bool?
 
-  public init(width: Double, lineCount: Int = 3, horizontalNudge: Double = 0) {
+  public init(
+    width: Double, lineCount: Int = 3, horizontalNudge: Double = 0,
+    forceNotchAttachment: Bool? = nil
+  ) {
     self.width =
       width.isFinite
       ? min(CameraDockGeometry.maximumWidth, max(CameraDockGeometry.minimumWidth, width))
@@ -358,6 +520,7 @@ public struct CameraDockPreferences: Codable, Equatable, Sendable {
         CameraDockGeometry.maximumHorizontalNudge,
         max(CameraDockGeometry.minimumHorizontalNudge, horizontalNudge))
       : 0
+    self.forceNotchAttachment = forceNotchAttachment
   }
 
   public static func defaults(screenWidth: Double) -> Self {
@@ -365,7 +528,9 @@ public struct CameraDockPreferences: Codable, Equatable, Sendable {
   }
 
   public func normalized() -> Self {
-    Self(width: width, lineCount: lineCount, horizontalNudge: horizontalNudge)
+    Self(
+      width: width, lineCount: lineCount, horizontalNudge: horizontalNudge,
+      forceNotchAttachment: forceNotchAttachment)
   }
 }
 
@@ -380,7 +545,18 @@ public struct CameraDockPreferenceCatalog: Codable, Equatable, Sendable {
     guard !uuid.isEmpty, let value = values[uuid] else {
       return .defaults(screenWidth: screenWidth)
     }
-    return value.normalized()
+    let normalized = value.normalized()
+    let oldDefault = min(
+      CameraDockGeometry.maximumWidth,
+      max(
+        CameraDockGeometry.minimumWidth,
+        screenWidth * CameraDockGeometry.previousDefaultWidthFraction))
+    let migrationTolerance = max(2, screenWidth * 0.005)
+    guard abs(normalized.width - oldDefault) <= migrationTolerance else { return normalized }
+    return CameraDockPreferences(
+      width: CameraDockGeometry.defaultWidth(screenWidth: screenWidth),
+      lineCount: normalized.lineCount, horizontalNudge: normalized.horizontalNudge,
+      forceNotchAttachment: normalized.forceNotchAttachment)
   }
 
   public mutating func set(_ preference: CameraDockPreferences, forDisplayUUID uuid: String) {

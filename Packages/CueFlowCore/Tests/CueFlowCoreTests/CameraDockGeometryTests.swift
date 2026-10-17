@@ -79,6 +79,120 @@ import Testing
       safeTop: CameraDockGeometry.cameraSafeAreaHeight(on: parameters)) == "Camera Dock")
 }
 
+@Test func cameraDockCanJoinNotchWhenBuiltInDisplayOmitsNotchGeometry() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(
+        width: 665, lineCount: 2, forceNotchAttachment: true), lineAdvance: 40))
+  let housing = try #require(layout.cameraHousing)
+  let map = try #require(
+    CameraDockGeometry.placementMap(for: layout, displayName: "Built-in Retina Display"))
+
+  #expect(layout.style == .attached)
+  #expect(layout.cameraSafeAreaHeight == CameraDockGeometry.estimatedNotchSafeAreaHeight)
+  #expect(layout.placement.frame.maxY == parameters.screenFrame.maxY)
+  #expect(housing.width == layout.cameraSafeAreaHeight * 4.5)
+  #expect(housing.midX == parameters.screenFrame.midX)
+  #expect(map.cameraHousing != nil)
+  #expect(map.caption.contains("notch integrated"))
+}
+
+@Test func cameraDockMorphMetricsKeepAContinuousStemAndInterpolateTheTray() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 656, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 856, y: 950, width: 656, height: 32))
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40))
+  let compact = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0))
+  let middle = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0.5))
+  let expanded = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 1))
+  let playing = try #require(
+    CameraDockGeometry.morphMetrics(for: layout, progress: 1, controlsVisible: false))
+  let content = layout.placement.contentFrame
+  let housing = try #require(layout.cameraHousing)
+
+  // The stem always fills the housing band from the safe edge to the display top.
+  for metrics in [compact, middle, expanded, playing] {
+    #expect(metrics.stem.x == housing.x && metrics.stem.width == 200)
+    #expect(metrics.stem.maxY == parameters.screenFrame.maxY)
+    #expect(metrics.stem.minY == content.maxY)
+    #expect(metrics.outline.maxY == parameters.screenFrame.maxY)
+    #expect(metrics.tray.maxY == content.maxY)
+    #expect(metrics.tray.isContained(in: content, tolerance: 1e-9))
+  }
+  // Parked: a short chin, centred on the housing, barely wider than it, fully rounded.
+  #expect(compact.tray.height == CameraDockGeometry.compactChinHeight)
+  #expect(compact.tray.width == 200 + CameraDockGeometry.compactChinOverhang * 2)
+  #expect(abs(compact.tray.midX - housing.midX) < 1e-9)
+  #expect(compact.topCornerRadius == 0)
+  #expect(compact.bottomCornerRadius == CameraDockGeometry.compactBottomCornerRadius)
+  #expect(compact.shoulderRadius == CameraDockGeometry.compactShoulderRadius)
+  #expect(compact.contentOpacity == 0)
+  // Midway: every quantity is the linear midpoint, so a path animation between the
+  // endpoints passes through this silhouette.
+  #expect(middle.tray.width == (compact.tray.width + content.width) / 2)
+  #expect(middle.tray.minY == (compact.tray.minY + content.minY) / 2)
+  #expect(middle.topCornerRadius == CameraDockGeometry.expandedTopCornerRadius / 2)
+  #expect(middle.bottomCornerRadius == 18)
+  #expect(middle.shoulderRadius == 10)
+  #expect(middle.contentOpacity > 0 && middle.contentOpacity < 0.1)
+  // Open with controls: the whole content frame. Open while playing: text strip only.
+  #expect(expanded.tray == content)
+  #expect(expanded.topCornerRadius == CameraDockGeometry.expandedTopCornerRadius)
+  #expect(expanded.bottomCornerRadius == CameraDockGeometry.expandedBottomCornerRadius)
+  #expect(expanded.shoulderRadius == CameraDockGeometry.expandedShoulderRadius)
+  #expect(expanded.contentOpacity == 1)
+  #expect(playing.tray.height == content.height - CameraDockGeometry.controlsHeight)
+  #expect(playing.tray.height == layout.visibleViewportHeight)
+  #expect(playing.tray.width == content.width)
+  #expect(CameraDockGeometry.morphMetrics(for: layout, progress: .nan) == nil)
+  #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 2)?.progress == 1)
+  #expect(CameraDockGeometry.morphMetrics(for: layout, progress: -1)?.progress == 0)
+}
+
+@Test func cameraDockMorphMetricsAreAbsentForDetachedLayouts() throws {
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil)
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: false,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2), lineAdvance: 40))
+  #expect(layout.style == .detached)
+  #expect(layout.hiddenViewportTop == 14)
+  #expect(layout.placement.contentFrame.height == 96 + CameraDockGeometry.controlsHeight)
+  #expect(CameraDockGeometry.morphMetrics(for: layout, progress: 1) == nil)
+}
+
+@Test func cameraDockAttachmentOverrideIsBackwardCompatibleAndCanDisableInference() throws {
+  let oldPreferences = Data(#"{"width":600,"lineCount":2,"horizontalNudge":0}"#.utf8)
+  let decoded = try JSONDecoder().decode(CameraDockPreferences.self, from: oldPreferences)
+  #expect(decoded.forceNotchAttachment == nil)
+
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 0,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 656, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 856, y: 950, width: 656, height: 32))
+  let layout = try #require(
+    CameraDockGeometry.layout(
+      on: parameters, isBuiltIn: true,
+      preferences: CameraDockPreferences(width: 600, lineCount: 2, forceNotchAttachment: false),
+      lineAdvance: 40))
+  #expect(layout.style == .detached)
+  #expect(layout.cameraHousing == nil)
+}
+
 @Test func cameraDockDoesNotInferNotchFromIncompleteOrMisalignedAuxiliaryAreas() throws {
   let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
   let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
@@ -216,7 +330,10 @@ import Testing
   #expect(notched.placement.contentFrame.maxY == 950)
   #expect(notched.placement.anchorX == 756)
   #expect(notched.viewportWidth == notched.placement.contentFrame.width)
-  #expect(notched.viewportHeight == 146)
+  #expect(notched.viewportHeight == 160)
+  #expect(notched.hiddenViewportTop == 24)
+  #expect(notched.visibleViewportHeight == 136)
+  #expect(notched.placement.contentFrame.height == 136 + CameraDockGeometry.controlsHeight)
   #expect(notched.cameraSafeAreaHeight == 32)
 
   let fallbackParameters = CameraDockScreenParameters(
@@ -407,13 +524,15 @@ import Testing
       preferences: CameraDockPreferences(width: 665.28, lineCount: 2), lineAdvance: 42))
 
   #expect(layout.style == .attached)
-  #expect(layout.viewportHeight == 111)
+  #expect(layout.viewportHeight == 115)
+  #expect(layout.visibleViewportHeight == 100)
   #expect(
     layout.placement.frame.height
-      == layout.viewportHeight + CameraDockGeometry.controlsHeight + layout.cameraSafeAreaHeight)
+      == layout.visibleViewportHeight + CameraDockGeometry.controlsHeight
+      + layout.contentTopInset)
   #expect(
     layout.placement.contentFrame.height
-      == layout.viewportHeight + CameraDockGeometry.controlsHeight)
+      == layout.visibleViewportHeight + CameraDockGeometry.controlsHeight)
   #expect(layout.placement.anchorX == 756)
 }
 
@@ -491,7 +610,7 @@ import Testing
   #expect(malformedPlacement == nil)
 }
 
-@Test func cameraDockUsesVisibleTopWhenSafeEdgeIsAboveTheUsableFrame() throws {
+@Test func cameraDockKeepsNotchStemAndTrayBelowTheMenuBarWhenSafeEdgeIsAboveIt() throws {
   let screen = CameraDockRect(x: 0, y: 0, width: 1512, height: 982)
   let visible = CameraDockRect(x: 0, y: 0, width: 1512, height: 950)
   let placement = try #require(
@@ -500,21 +619,21 @@ import Testing
       auxiliaryTopLeftArea: nil, auxiliaryTopRightArea: nil, isBuiltIn: true,
       width: 665.28, height: 180, horizontalNudge: 0))
 
-  #expect(placement.location == .topOfDisplay)
-  #expect(placement.frame.maxY == visible.maxY - CameraDockGeometry.detachedGap)
-  #expect(placement.frame.isContained(in: visible, tolerance: 0.5))
+  #expect(placement.location == .camera)
+  #expect(placement.frame.maxY == screen.maxY)
+  #expect(placement.contentFrame.maxY == visible.maxY)
+  #expect(placement.frame.isContained(in: screen, tolerance: 0.5))
+  #expect(placement.contentFrame.isContained(in: visible, tolerance: 0.5))
 }
 
 @Test func cameraDockPreferenceDefaultsAndBoundsAreStable() throws {
-  #expect(CameraDockGeometry.defaultWidthFraction == 0.44)
-  #expect(CameraDockGeometry.defaultWidth(screenWidth: 1512) == 665.28)
-  #expect(CameraDockGeometry.defaultWidth(screenWidth: 1200) == 528)
+  #expect(CameraDockGeometry.defaultWidthFraction == 0.38)
+  #expect(abs(CameraDockGeometry.defaultWidth(screenWidth: 1512) - 574.56) < 1e-9)
+  #expect(CameraDockGeometry.defaultWidth(screenWidth: 1200) == 456)
   #expect(CameraDockGeometry.defaultWidth(screenWidth: 800) == 360)
   #expect(CameraDockGeometry.defaultWidth(screenWidth: 2400) == 760)
   #expect(
-    CameraDockPreferences.defaults(screenWidth: 1512)
-      == CameraDockPreferences(
-        width: 665.28, lineCount: 3, horizontalNudge: 0))
+    abs(CameraDockPreferences.defaults(screenWidth: 1512).width - 574.56) < 1e-9)
   #expect(CameraDockPreferences(width: 360, lineCount: 2, horizontalNudge: 0).width == 360)
   #expect(CameraDockPreferences(width: 760, lineCount: 5, horizontalNudge: 0).lineCount == 5)
   #expect(
@@ -524,8 +643,52 @@ import Testing
   #expect(CameraDockPreferences(width: 500, horizontalNudge: 1000).horizontalNudge == 120)
   #expect(CameraDockPreferences(width: 761, lineCount: 6).width == 760)
   #expect(CameraDockPreferences(width: 359, lineCount: 1).lineCount == 2)
-  #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 3) == 146)
+  #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 3) == 160)
   #expect(CameraDockGeometry.viewportHeight(lineAdvance: 40, lineCount: 1) == nil)
+}
+
+@Test func cameraDockViewportHidesTheBandAboveTheGuideAndShowsWholeLines() throws {
+  // The presentation layer places `guideFraction` of the logical height above the guide.
+  // The visible strip must start `viewportVerticalPadding` above the first line and hold
+  // exactly `lineCount` lines plus the same padding below, for every supported count.
+  for lineCount in CameraDockGeometry.minimumLineCount...CameraDockGeometry.maximumLineCount {
+    for lineAdvance in [24.0, 41.6, 83.2, 124.8] {
+      let height = try #require(
+        CameraDockGeometry.viewportHeight(lineAdvance: lineAdvance, lineCount: lineCount))
+      let hidden = CameraDockGeometry.hiddenViewportTop(viewportHeight: height)
+      let visible = CameraDockGeometry.visibleViewportHeight(viewportHeight: height)
+      let guideOffset = height * CameraDockGeometry.guideFraction
+      let needed = lineAdvance * Double(lineCount) + CameraDockGeometry.viewportVerticalPadding * 2
+
+      #expect(hidden >= 0)
+      #expect(abs(guideOffset - hidden - CameraDockGeometry.viewportVerticalPadding) < 1e-9)
+      #expect(visible >= needed - 1e-9)
+      let slack = CameraDockGeometry.viewportHeightStep * (1 - CameraDockGeometry.guideFraction)
+      #expect(visible <= needed + slack + 1e-9)
+      #expect(hidden + visible == height)
+      #expect(hidden == hidden.rounded() && visible == visible.rounded())
+      #expect(height.truncatingRemainder(dividingBy: CameraDockGeometry.viewportHeightStep) == 0)
+    }
+  }
+  #expect(CameraDockGeometry.hiddenViewportTop(viewportHeight: .nan) == 0)
+  #expect(CameraDockGeometry.hiddenViewportTop(viewportHeight: 20) == 0)
+  #expect(CameraDockGeometry.visibleViewportHeight(viewportHeight: -1) == 0)
+}
+
+@Test func cameraDockMotionDurationsStayPerceptibleAndBounded() {
+  #expect(CameraDockMotion.shapeDuration(settling: 0.1) == CameraDockMotion.minimumShapeDuration)
+  #expect(CameraDockMotion.shapeDuration(settling: 0.62) == 0.62)
+  #expect(CameraDockMotion.shapeDuration(settling: 3) == CameraDockMotion.maximumShapeDuration)
+  #expect(CameraDockMotion.shapeDuration(settling: .nan) == CameraDockMotion.minimumShapeDuration)
+  #expect(CameraDockMotion.minimumShapeDuration >= 0.4)
+  #expect(CameraDockMotion.maximumShapeDuration <= 1)
+  #expect(CameraDockMotion.expandContentDelay + CameraDockMotion.expandContentDuration < 0.5)
+  #expect(CameraDockMotion.reducedMotionContentDuration <= 0.2)
+  // Damping ratio of the published spring stays slightly under critical: settled, not floppy.
+  let ratio =
+    CameraDockMotion.springDamping
+    / (2 * (CameraDockMotion.springStiffness * CameraDockMotion.springMass).squareRoot())
+  #expect(ratio > 0.7 && ratio < 1)
 }
 
 @Test func cameraDockPreferenceCatalogPersistsByDisplayUUID() throws {
@@ -548,6 +711,24 @@ import Testing
   #expect(
     restored.preference(forDisplayUUID: "new-display", screenWidth: 1512)
       == CameraDockPreferences.defaults(screenWidth: 1512))
+}
+
+@Test func cameraDockPreferenceCatalogMigratesOnlyThePreviousDefaultWidth() {
+  var catalog = CameraDockPreferenceCatalog()
+  catalog.set(
+    CameraDockPreferences(width: 665.28, lineCount: 2, horizontalNudge: 8),
+    forDisplayUUID: "legacy-default")
+  catalog.set(
+    CameraDockPreferences(width: 600, lineCount: 4, horizontalNudge: -16),
+    forDisplayUUID: "custom-width")
+
+  let migrated = catalog.preference(forDisplayUUID: "legacy-default", screenWidth: 1512)
+  #expect(abs(migrated.width - 574.56) < 1e-9)
+  #expect(migrated.lineCount == 2)
+  #expect(migrated.horizontalNudge == 8)
+  #expect(
+    catalog.preference(forDisplayUUID: "custom-width", screenWidth: 1512)
+      == CameraDockPreferences(width: 600, lineCount: 4, horizontalNudge: -16))
 }
 
 @Test func cameraDockDisplaySelectionUsesBuiltInUnlessMirrored() {
