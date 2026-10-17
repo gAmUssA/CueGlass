@@ -2,6 +2,7 @@
 
 ## 0.3.0 — 2026-10-17
 
+- Synchronize the Follow Voice audio clock with captured-buffer timestamps across microphone recovery.
 - Add Camera Dock, a camera-adjacent prompter with a notch-attached island, animated expansion and collapse, centered reading line, and integrated controls. Displays without a notch can use an emulated island or a plain tray.
 - Add per-display placement controls and a matching operator preview while preserving the shared playback session and Reduce Motion support.
 - Add a microphone picker and capture recovery across audio-device changes for Follow Voice, with quicker bounded catch-up to confirmed speech.

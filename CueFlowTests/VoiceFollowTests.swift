@@ -401,6 +401,68 @@ private struct FakeSpeechAssetError: LocalizedError {
     #expect(source.startCount == 0)
   }
 
+  @Test func audioSampleClockMatchesPublishedBuffersDuringConcurrentReads() async throws {
+    guard #available(macOS 26.0, *) else { return }
+    let format = try #require(
+      AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: false))
+    let converter = try #require(AVAudioConverter(from: format, to: format))
+    let replacement = try #require(AVAudioConverter(from: format, to: format))
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512))
+    buffer.frameLength = 512
+    let samples = try #require(buffer.int16ChannelData?.pointee)
+    samples.update(repeating: 0, count: 512)
+    let pair = AsyncThrowingStream<AnalyzerInput, any Error>.makeStream()
+    let pipe = AudioInputPipe(
+      converter: converter, targetFormat: format, continuation: pair.continuation,
+      onError: { pair.continuation.finish(throwing: $0) })
+    let invocation = AudioTapInvocation(
+      handler: makeSpeechAudioTapHandler(for: pipe), buffer: buffer,
+      time: AVAudioTime(sampleTime: 0, atRate: format.sampleRate))
+    let readerReady = DispatchSemaphore(value: 0)
+    let writerReady = DispatchSemaphore(value: 0)
+    let work = DispatchGroup()
+    work.enter()
+    DispatchQueue.global().async {
+      var previous = 0.0
+      for _ in 0..<64 {
+        readerReady.signal()
+        writerReady.wait()
+        for _ in 0..<128 {
+          let current = pipe.audioTime
+          #expect(current >= previous && current <= 32_768.0 / 48_000)
+          previous = current
+        }
+      }
+      work.leave()
+    }
+    work.enter()
+    DispatchQueue.global().async {
+      for index in 0..<64 {
+        readerReady.wait()
+        writerReady.signal()
+        if index == 32 { pipe.replaceConverter(replacement) }
+        invocation.invoke()
+      }
+      work.leave()
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      work.notify(queue: .main) { continuation.resume() }
+    }
+    pair.continuation.finish()
+    var frames: Int64 = 0
+    var count = 0
+    for try await input in pair.stream {
+      #expect(input.bufferStartTime == CMTime(value: frames, timescale: 48_000))
+      #expect(input.buffer.frameLength == 512)
+      frames += Int64(input.buffer.frameLength)
+      count += 1
+    }
+    #expect(count == 64)
+    #expect(frames == 32_768)
+    #expect(pipe.audioTime == 32_768.0 / 48_000)
+  }
+
   @Test func audioTapProcessesBuffersFromRealtimeQueue() async throws {
     guard #available(macOS 26.0, *) else { return }
     let format = try #require(

@@ -583,8 +583,10 @@ final class AudioInputPipe: @unchecked Sendable {
     }
     guard output.frameLength > 0 else { return }
     let sampleRate = CMTimeScale(targetFormat.sampleRate.rounded())
+    lock.lock()
     let start = CMTime(value: nextSampleTime, timescale: sampleRate)
     nextSampleTime += Int64(output.frameLength)
+    lock.unlock()
     if case .terminated = continuation.yield(
       AnalyzerInput(buffer: output, bufferStartTime: start))
     {
