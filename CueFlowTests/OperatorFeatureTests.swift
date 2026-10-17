@@ -1,5 +1,6 @@
 import AppKit
 import CueFlowCore
+import QuartzCore
 import Testing
 
 @testable import CueFlow
@@ -138,6 +139,67 @@ import Testing
     DisplayDescriptor(
       screen: screen, preference: DisplayPreference(uuid: uuid, name: uuid), id: id,
       isBuiltIn: isBuiltIn, isMirrored: isMirrored, cameraDockParameters: parameters)
+  }
+  private func enterExitEvent(_ type: NSEvent.EventType) throws -> NSEvent {
+    try #require(
+      NSEvent.enterExitEvent(
+        with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+  }
+  private func elementCount(_ path: CGPath) -> Int {
+    var count = 0
+    path.applyWithBlock { _ in count += 1 }
+    return count
+  }
+  /// Instrument, not an assertion: with `CUEFLOW_DOCK_SILHOUETTE_DIR` set, writes one PNG
+  /// per morph state so a reviewer can look at the attached silhouette without a notched Mac.
+  private func writeCameraDockSilhouettes(layout: CameraDockLayout, bounds: CGRect) throws {
+    guard let directory = ProcessInfo.processInfo.environment["CUEFLOW_DOCK_SILHOUETTE_DIR"]
+    else { return }
+    let origin = CGPoint(x: layout.placement.frame.minX, y: layout.placement.frame.minY)
+    let states: [(String, Double, Bool)] = [
+      ("1-parked", 0, true), ("2-midway", 0.5, true), ("3-open-ready", 1, true),
+      ("4-open-playing", 1, false),
+    ]
+    let scale: CGFloat = 2
+    let margin: CGFloat = 40
+    for (name, progress, controls) in states {
+      let metrics = try #require(
+        CameraDockGeometry.morphMetrics(for: layout, progress: progress, controlsVisible: controls))
+      let path = FloatingRoot.attachedPath(metrics, in: bounds, frameOrigin: origin)
+      let size = CGSize(width: bounds.width + margin * 2, height: bounds.height)
+      let context = try #require(
+        CGContext(
+          data: nil, width: Int(size.width * scale), height: Int(size.height * scale),
+          bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+      context.scaleBy(x: scale, y: scale)
+      context.setFillColor(CGColor(red: 0.42, green: 0.62, blue: 0.66, alpha: 1))
+      context.fill(CGRect(origin: .zero, size: size))
+      // Menu-bar band and the pixel-free housing, for context.
+      let band = CGRect(
+        x: 0, y: size.height - layout.contentTopInset, width: size.width,
+        height: layout.contentTopInset)
+      context.setFillColor(CGColor(red: 0.3, green: 0.47, blue: 0.5, alpha: 1))
+      context.fill(band)
+      if let housing = layout.cameraHousing {
+        context.setFillColor(CGColor(red: 0.12, green: 0.12, blue: 0.13, alpha: 1))
+        context.fill(
+          CGRect(
+            x: margin + housing.minX - origin.x, y: band.minY, width: housing.width,
+            height: band.height))
+      }
+      context.translateBy(x: margin, y: 0)
+      context.addPath(path)
+      context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+      context.fillPath()
+      let image = try #require(context.makeImage())
+      let representation = NSBitmapImageRep(cgImage: image)
+      let data = try #require(representation.representation(using: .png, properties: [:]))
+      let url = URL(fileURLWithPath: directory).appendingPathComponent(
+        "camera-dock-\(name).png")
+      try data.write(to: url)
+    }
   }
   @Test func finalFragmentGeometryKeepsAnchorAndTimedDeadline() async throws {
     for count in [20, 64, 65, 200] {
@@ -597,7 +659,7 @@ import Testing
     #expect(panel.canBecomeKey)
     #expect(!panel.isMovable)
     #expect(!panel.isMovableByWindowBackground)
-    #expect(panel.isOpaque)
+    #expect(!panel.isOpaque)
     #expect(
       panel.level
         == FloatingPrompterWindowController.cameraDockWindowLevel(
@@ -760,7 +822,6 @@ import Testing
     let attachedDock = try #require(c.cameraDock)
     let attachedWindow = try #require(attachedDock.window)
     let attachedRoot = try #require(attachedDock.root)
-    let attachedCorners = try #require(attachedRoot.layer).maskedCorners
 
     #expect(attachedDock.dockStyle == .attached)
     #expect(abs(attachedWindow.frame.maxY - frame.maxY) < 0.5)
@@ -768,18 +829,141 @@ import Testing
     #expect(
       attachedWindow.level == NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 3))
     #expect(!attachedWindow.hasShadow)
+    #expect(!attachedWindow.isOpaque)
     let attachedColor = try #require(attachedWindow.backgroundColor.usingColorSpace(.sRGB))
-    #expect(attachedColor.redComponent == 0)
-    #expect(attachedColor.greenComponent == 0)
-    #expect(attachedColor.blueComponent == 0)
-    #expect(attachedRoot.layer?.cornerRadius == 14)
-    #expect(attachedCorners.contains(.layerMinXMinYCorner))
-    #expect(attachedCorners.contains(.layerMaxXMinYCorner))
-    #expect(!attachedCorners.contains(.layerMinXMaxYCorner))
-    #expect(!attachedCorners.contains(.layerMaxXMaxYCorner))
+    #expect(attachedColor.alphaComponent == 0)
+    #expect(attachedRoot.layer?.cornerRadius == 0)
+    #expect(attachedRoot.layer?.mask is CAShapeLayer)
     #expect(attachedDock.reflection.layer?.cornerRadius == 0)
     attachedRoot.layoutSubtreeIfNeeded()
-    #expect(abs(attachedRoot.bounds.maxY - attachedRoot.reflection.frame.maxY - safeTop) < 0.5)
+    let attachedLayout = try #require(attachedDock.dockLayout)
+    let clip = attachedRoot.cameraDockContentClip
+    let viewport = attachedDock.reflection.viewport
+    #expect(attachedRoot.reflection.superview === clip)
+    #expect(abs(attachedRoot.bounds.maxY - clip.frame.maxY - safeTop) < 0.5)
+    #expect(abs(clip.frame.height - attachedLayout.visibleViewportHeight) < 0.5)
+    #expect(attachedRoot.reflection.frame.minY == 0)
+    #expect(abs(attachedRoot.reflection.frame.height - attachedLayout.viewportHeight) < 0.5)
+    #expect(
+      abs(
+        attachedRoot.reflection.frame.height - clip.frame.height
+          - attachedLayout.hiddenViewportTop) < 0.5)
+    #expect(attachedRoot.reflection.bounds.size == attachedRoot.reflection.frame.size)
+    // The operator reserves `guideFraction` of the viewport above the guide; the clip hides
+    // exactly that band minus the padding, so the guide line is the first visible line.
+    #expect(
+      abs(viewport.topPadding - attachedLayout.viewportHeight * CameraDockGeometry.guideFraction)
+        < 1e-9)
+    #expect(
+      abs(
+        viewport.topPadding - attachedLayout.hiddenViewportTop
+          - CameraDockGeometry.viewportVerticalPadding) < 1e-9)
+    #expect(viewport.panelBackground.isHidden)
+
+    // Showing the Dock reveals it: the open tray with its controls band, sprung from the chin.
+    #expect(attachedRoot.cameraDockIsExpanded)
+    #expect(!attachedRoot.cameraDockIsParked)
+    let revealedPath = try #require(attachedRoot.cameraDockMaskPath)
+    #expect(revealedPath.boundingBoxOfPath.minY == attachedRoot.bounds.minY)
+    #expect(revealedPath.boundingBoxOfPath.maxY == attachedRoot.bounds.maxY)
+    #expect(abs(revealedPath.boundingBoxOfPath.width - attachedRoot.bounds.width) < 0.5)
+    #expect(
+      revealedPath.contains(NSPoint(x: attachedRoot.bounds.midX, y: attachedRoot.bounds.maxY - 1)))
+    #expect(
+      !revealedPath.contains(
+        NSPoint(x: attachedRoot.bounds.minX + 1, y: attachedRoot.bounds.maxY - 1)))
+    #expect(attachedRoot.reflection.alphaValue == 1)
+    #expect(attachedRoot.grip.alphaValue == 1)
+    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      #expect(attachedRoot.cameraDockShapeAnimation == nil)
+    } else {
+      let reveal = try #require(attachedRoot.cameraDockShapeAnimation as? CASpringAnimation)
+      #expect(reveal.keyPath == "path")
+      #expect(reveal.duration >= CameraDockMotion.minimumShapeDuration)
+      #expect(reveal.duration <= CameraDockMotion.maximumShapeDuration)
+      #expect(reveal.stiffness == CameraDockMotion.springStiffness)
+      #expect(reveal.damping == CameraDockMotion.springDamping)
+    }
+    // Both morph endpoints share one element sequence, so Core Animation can interpolate.
+    let origin = CGPoint(
+      x: attachedLayout.placement.frame.minX, y: attachedLayout.placement.frame.minY)
+    let chinMetrics = try #require(
+      CameraDockGeometry.morphMetrics(for: attachedLayout, progress: 0))
+    let openMetrics = try #require(
+      CameraDockGeometry.morphMetrics(for: attachedLayout, progress: 1, controlsVisible: false))
+    #expect(
+      elementCount(
+        FloatingRoot.attachedPath(chinMetrics, in: attachedRoot.bounds, frameOrigin: origin))
+        == elementCount(
+          FloatingRoot.attachedPath(openMetrics, in: attachedRoot.bounds, frameOrigin: origin)))
+
+    try writeCameraDockSilhouettes(layout: attachedLayout, bounds: attachedRoot.bounds)
+
+    // Parked: a short chin under the housing, no text, and no hit region beside it.
+    attachedRoot.setCameraDockParked(true, animated: false)
+    #expect(attachedRoot.cameraDockIsParked)
+    #expect(!attachedRoot.cameraDockIsExpanded)
+    let chin = try #require(attachedRoot.cameraDockMaskPath).boundingBoxOfPath
+    #expect(chin.maxY == attachedRoot.bounds.maxY)
+    #expect(
+      abs(
+        chin.minY
+          - (attachedRoot.bounds.maxY - safeTop - CameraDockGeometry.compactChinHeight)) < 0.5)
+    #expect(abs(chin.width - (200 + CameraDockGeometry.compactChinOverhang * 2)) < 0.5)
+    #expect(attachedRoot.reflection.alphaValue == 0)
+    #expect(attachedRoot.cameraDockShapeAnimation == nil)
+    #expect(
+      attachedRoot.hitTest(
+        NSPoint(x: attachedRoot.bounds.minX + 2, y: attachedRoot.bounds.maxY - 2)) == nil)
+    #expect(
+      attachedRoot.hitTest(NSPoint(x: attachedRoot.bounds.midX, y: attachedRoot.bounds.midY))
+        == nil)
+    #expect(
+      attachedRoot.hitTest(NSPoint(x: attachedRoot.bounds.midX, y: attachedRoot.bounds.maxY - 2))
+        != nil)
+
+    // Hover peeks a parked Dock open; leaving lets it fall closed again.
+    attachedRoot.mouseEntered(with: try enterExitEvent(.mouseEntered))
+    #expect(attachedRoot.cameraDockIsExpanded)
+    #expect(attachedRoot.cameraDockIsParked)
+    attachedRoot.mouseExited(with: try enterExitEvent(.mouseExited))
+    #expect(!attachedRoot.cameraDockIsExpanded)
+
+    // Playback opens the Dock, drops the controls band from the tray, and ends parking.
+    attachedRoot.updateCameraDockPlaybackState(true, animated: false)
+    #expect(attachedRoot.cameraDockIsExpanded)
+    #expect(!attachedRoot.cameraDockIsParked)
+    let playing = try #require(attachedRoot.cameraDockMaskPath).boundingBoxOfPath
+    #expect(abs(playing.minY - (attachedRoot.bounds.minY + 44)) < 0.5)
+    #expect(playing.maxY == attachedRoot.bounds.maxY)
+    #expect(attachedRoot.grip.alphaValue == 0)
+    #expect(attachedRoot.reflection.alphaValue == 1)
+    attachedRoot.mouseExited(with: try enterExitEvent(.mouseExited))
+    #expect(attachedRoot.cameraDockIsExpanded)
+    attachedRoot.updateCameraDockPlaybackState(false, animated: true)
+    #expect(try #require(attachedRoot.cameraDockMaskPath).boundingBoxOfPath.minY == 0)
+    #expect(attachedRoot.grip.alphaValue == 1)
+
+    // Reduce Motion: no shape motion, only a short crossfade of the content.
+    let opacityKey = FloatingRoot.cameraDockContentOpacityAnimationKey
+    attachedRoot.cameraDockReduceMotionOverride = true
+    attachedRoot.setCameraDockParked(true, animated: true)
+    #expect(attachedRoot.cameraDockShapeAnimation == nil)
+    let reducedFade = try #require(
+      attachedRoot.reflection.layer?.animation(forKey: opacityKey) as? CABasicAnimation)
+    #expect(reducedFade.duration == CameraDockMotion.reducedMotionContentDuration)
+    #expect(attachedRoot.reflection.alphaValue == 0)
+    // Full motion: a spring on the shape, and the content fades in after a short delay.
+    attachedRoot.cameraDockReduceMotionOverride = false
+    attachedRoot.setCameraDockParked(false, animated: true)
+    let open = try #require(attachedRoot.cameraDockShapeAnimation as? CASpringAnimation)
+    #expect(abs(open.initialVelocity - CameraDockMotion.expandInitialVelocity) < 1e-6)
+    let openFade = try #require(
+      attachedRoot.reflection.layer?.animation(forKey: opacityKey) as? CABasicAnimation)
+    #expect(openFade.duration == CameraDockMotion.expandContentDuration)
+    #expect(openFade.fillMode == .backwards)
+    #expect(attachedRoot.reflection.alphaValue == 1)
+    attachedRoot.cameraDockReduceMotionOverride = nil
 
     c.stopPresenting()
     let externalParameters = CameraDockScreenParameters(
@@ -797,20 +981,85 @@ import Testing
     let detachedDock = try #require(c.cameraDock)
     let detachedWindow = try #require(detachedDock.window)
     let detachedRoot = try #require(detachedDock.root)
-    let detachedCorners = try #require(detachedRoot.layer).maskedCorners
-    let detachedColor = try #require(detachedWindow.backgroundColor.usingColorSpace(.sRGB))
+    let detachedLayer = try #require(detachedRoot.layer)
+    let detachedWindowColor = try #require(detachedWindow.backgroundColor.usingColorSpace(.sRGB))
+    let detachedLayerColor = try #require(
+      detachedLayer.backgroundColor.flatMap(NSColor.init(cgColor:))?.usingColorSpace(.sRGB))
 
     #expect(detachedDock.dockStyle == .detached)
     #expect(detachedWindow.frame.maxY == screen.visibleFrame.maxY - 6)
+    #expect(!detachedWindow.isOpaque)
     #expect(detachedWindow.hasShadow)
-    #expect(detachedColor.redComponent > 0 && detachedColor.redComponent < 0.1)
-    #expect(detachedColor.greenComponent > 0 && detachedColor.greenComponent < 0.1)
-    #expect(detachedColor.blueComponent > 0 && detachedColor.blueComponent < 0.1)
+    #expect(detachedWindowColor.alphaComponent == 0)
+    #expect(detachedLayerColor.redComponent > 0 && detachedLayerColor.redComponent < 0.1)
+    #expect(detachedLayerColor.greenComponent > 0 && detachedLayerColor.greenComponent < 0.1)
+    #expect(detachedLayerColor.blueComponent > 0 && detachedLayerColor.blueComponent < 0.1)
     #expect(detachedRoot.layer?.cornerRadius == 14)
-    #expect(detachedCorners.contains(.layerMinXMinYCorner))
-    #expect(detachedCorners.contains(.layerMaxXMinYCorner))
-    #expect(detachedCorners.contains(.layerMinXMaxYCorner))
-    #expect(detachedCorners.contains(.layerMaxXMaxYCorner))
+    #expect(detachedLayer.mask is CAShapeLayer)
+    let detachedPath = try #require((detachedLayer.mask as? CAShapeLayer)?.path)
+    #expect(detachedPath.boundingBoxOfPath == detachedRoot.bounds)
+  }
+
+  @Test func explicitCameraDockCollapsePausesWithoutMovingAndPlaybackReexpands() async throws {
+    let c = try await prepared()
+    defer { c.close() }
+    let screen = try #require(NSScreen.screens.first)
+    let frame = screen.frame
+    let safeTop = 32.0
+    let safeEdge = frame.maxY - safeTop
+    let sideWidth = (frame.width - 200) / 2
+    let parameters = dockParameters(
+      for: screen, safeTop: safeTop, topInset: safeTop,
+      left: CameraDockRect(x: frame.minX, y: safeEdge, width: sideWidth, height: safeTop),
+      right: CameraDockRect(
+        x: frame.minX + sideWidth + 200, y: safeEdge, width: sideWidth, height: safeTop))
+    let display = syntheticDisplay(
+      screen: screen, id: 9003, uuid: "collapse-test-display", isBuiltIn: true,
+      parameters: parameters)
+    c.displayProvider = { [display] }
+    c.showCameraDock()
+    let dock = try #require(c.cameraDock)
+    let root = try #require(dock.root)
+    let viewport = dock.reflection.viewport
+    viewport.driver?.stop()
+    viewport.driver = nil
+    await settle(c)
+    #expect(c.session.state == .paused)
+    c.state.countdown = 0
+    c.session.countdownSeconds = 0
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .running)
+    let before = try #require(c.authoritative.captureAnchor())
+
+    #expect(root.cameraDockIsExpanded)
+    #expect(root.cameraDockPlaybackActive)
+
+    dock.collapseToNotch()
+    await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(c.authoritative.captureAnchor()?.utf16Offset == before.utf16Offset)
+    #expect(root.cameraDockIsParked)
+    #expect(!root.cameraDockIsExpanded)
+    let compactPath = try #require(root.cameraDockMaskPath)
+    #expect(compactPath.boundingBoxOfPath.height < root.bounds.height)
+    #expect(compactPath.boundingBoxOfPath.maxY == root.bounds.maxY)
+    #expect(dock.window?.frame == dock.window?.frame.standardized)
+
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .running)
+    #expect(root.cameraDockIsExpanded)
+    #expect(!root.cameraDockIsParked)
+    let playingPath = try #require(root.cameraDockMaskPath)
+    #expect(abs(playingPath.boundingBoxOfPath.minY - (root.bounds.minY + 44)) < 0.5)
+    #expect(playingPath.boundingBoxOfPath.maxY == root.bounds.maxY)
+
+    c.toggle()
+    await settle(c)
+    #expect(c.session.state == .paused)
+    #expect(root.cameraDockIsExpanded)
+    #expect(try #require(root.cameraDockMaskPath).boundingBoxOfPath.minY == root.bounds.minY)
   }
 
   @Test func ordinaryFloatingRootRetainsRoundedClipping() async throws {

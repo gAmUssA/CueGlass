@@ -36,6 +36,7 @@ enum PrompterPlacement: Equatable {
   private(set) var dockStyle: CameraDockVisualStyle = .detached
   private(set) var dockTopInset: CGFloat = 0
   private(set) var dockContentOffsetX: CGFloat = 0
+  private(set) var dockLayout: CameraDockLayout?
   weak var operatorController: OperatorWindowController?
 
   var isCameraDock: Bool { placement == .cameraDock }
@@ -85,9 +86,10 @@ enum PrompterPlacement: Equatable {
     else { return nil }
     dockLocation = geometry.placement.location
     dockStyle = geometry.style
-    dockTopInset = CGFloat(geometry.cameraSafeAreaHeight)
+    dockTopInset = CGFloat(geometry.contentTopInset)
     dockContentOffsetX = CGFloat(
       geometry.placement.contentFrame.minX - geometry.placement.frame.minX)
+    dockLayout = geometry
     let frame = Self.cgRect(geometry.placement.frame)
     let window = PresentationPanel(
       contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
@@ -96,14 +98,15 @@ enum PrompterPlacement: Equatable {
     configure(
       window: window, controller: controller, screen: screen,
       viewportSize: CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight),
-      cameraDockTopInset: dockTopInset, cameraDockContentOffsetX: dockContentOffsetX)
+      cameraDockTopInset: dockTopInset, cameraDockContentOffsetX: dockContentOffsetX,
+      cameraDockLayout: dockLayout)
     window.setFrame(frame, display: false)
   }
 
   private func configure(
     window: PresentationPanel, controller: OperatorWindowController, screen: NSScreen,
     viewportSize: CGSize, cameraDockTopInset: CGFloat = 0,
-    cameraDockContentOffsetX: CGFloat = 0
+    cameraDockContentOffsetX: CGFloat = 0, cameraDockLayout: CameraDockLayout? = nil
   ) {
     window.operatorController = controller
     window.title = isCameraDock ? "CueGlass · Camera Dock" : "CueGlass · Floating Prompter"
@@ -114,9 +117,9 @@ enum PrompterPlacement: Equatable {
     window.hidesOnDeactivate = false
     window.level = Self.cameraDockWindowLevel(isCameraDock: isCameraDock, style: dockStyle)
     window.isReleasedWhenClosed = false
-    window.isOpaque = isCameraDock
+    window.isOpaque = false
     window.hasShadow = !isCameraDock || dockStyle == .detached
-    window.backgroundColor = isCameraDock ? Self.dockBackgroundColor(dockStyle) : .clear
+    window.backgroundColor = .clear
     window.minSize =
       isCameraDock ? CGSize(width: 360, height: 120) : CGSize(width: 320, height: 180)
     if isCameraDock {
@@ -128,7 +131,7 @@ enum PrompterPlacement: Equatable {
     let root = FloatingRoot(
       reflection: reflection, controller: controller, placement: placement,
       cameraDockStyle: dockStyle, cameraDockTopInset: cameraDockTopInset,
-      cameraDockContentOffsetX: cameraDockContentOffsetX)
+      cameraDockContentOffsetX: cameraDockContentOffsetX, cameraDockLayout: cameraDockLayout)
     root.logicalSize = viewportSize
     self.root = root
     window.contentView = root
@@ -139,6 +142,7 @@ enum PrompterPlacement: Equatable {
     reflection.layer?.masksToBounds = true
     reflection.viewport.compactCountdown = isCameraDock
     if isCameraDock {
+      applyCameraDockTextPanelVisibility(style: controller.state.style)
       root.setAccessibilityElement(true)
       root.setAccessibilityLabel("CueGlass prompt")
       if let controls = root.cameraDockControls {
@@ -148,6 +152,38 @@ enum PrompterPlacement: Equatable {
   }
 
   required init?(coder: NSCoder) { fatalError("Use an explicit presentation initializer") }
+
+  /// The Dock's black surface is the text panel. The viewport's own panel rectangle would
+  /// otherwise show as a lighter column inside it, so hide it whenever the reading style's
+  /// background is dark enough to disappear into the surface; keep a light panel visible
+  /// so light-background styles stay legible.
+  static func hidesTextPanel(for style: ReadingStyle) -> Bool {
+    guard style.backgroundRGBA.count >= 3 else { return false }
+    let luminance =
+      0.2126 * style.backgroundRGBA[0] + 0.7152 * style.backgroundRGBA[1]
+      + 0.0722 * style.backgroundRGBA[2]
+    return luminance.isFinite && luminance < 0.18
+  }
+
+  private func applyCameraDockTextPanelVisibility(style: ReadingStyle) {
+    guard isCameraDock else { return }
+    reflection.viewport.panelBackground.isHidden = Self.hidesTextPanel(for: style)
+  }
+
+  override func showWindow(_ sender: Any?) {
+    super.showWindow(sender)
+    root?.revealCameraDock()
+  }
+
+  /// Parks the attached Dock as a chin under the housing. Playback pauses first so the
+  /// take never scrolls while hidden; hover peeks, and Play re-opens it.
+  func collapseToNotch() {
+    guard isCameraDock, dockStyle == .attached, let controller = operatorController else {
+      return
+    }
+    if controller.state.running { controller.toggle() }
+    root?.setCameraDockParked(true)
+  }
 
   static func cameraDockLayout(
     display: DisplayDescriptor, preferences: CameraDockPreferences, style: ReadingStyle
@@ -167,13 +203,6 @@ enum PrompterPlacement: Equatable {
 
   private static func cgRect(_ rect: CameraDockRect) -> CGRect {
     CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
-  }
-
-  private static func dockBackgroundColor(_ style: CameraDockVisualStyle) -> NSColor {
-    switch style {
-    case .attached: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
-    case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
-    }
   }
 
   @discardableResult func updateCameraDockPlacement(
@@ -210,20 +239,21 @@ enum PrompterPlacement: Equatable {
     dockPreferences = preferences.normalized()
     dockLocation = geometry.placement.location
     dockStyle = geometry.style
-    dockTopInset = CGFloat(geometry.cameraSafeAreaHeight)
+    dockTopInset = CGFloat(geometry.contentTopInset)
     dockContentOffsetX = CGFloat(
       geometry.placement.contentFrame.minX - geometry.placement.frame.minX)
+    dockLayout = geometry
     displayID = display.id
     displayUUID = display.preference.uuid ?? display.screen.localizedName
     window.setFrame(Self.cgRect(geometry.placement.frame), display: true)
     window.level = Self.cameraDockWindowLevel(isCameraDock: true, style: dockStyle)
-    window.backgroundColor = Self.dockBackgroundColor(dockStyle)
+    window.backgroundColor = .clear
     window.hasShadow = dockStyle == .detached
-    root?.applyCameraDockStyle(dockStyle)
-    root?.cameraDockTopInset = dockTopInset
-    root?.cameraDockContentOffsetX = dockContentOffsetX
+    root?.applyCameraDockLayout(
+      geometry, topInset: dockTopInset, contentOffsetX: dockContentOffsetX,
+      logicalSize: CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight))
     root?.reflection.layer?.cornerRadius = 0
-    root?.logicalSize = CGSize(width: geometry.viewportWidth, height: geometry.viewportHeight)
+    applyCameraDockTextPanelVisibility(style: style)
     return true
   }
 
@@ -262,26 +292,64 @@ enum PrompterPlacement: Equatable {
   let reflection: ReflectionContainerView
   let grip: NSView
   let cameraDockControls: CameraDockControlsView?
+  /// Camera Dock only: clips the logical prompt viewport to its visible strip. The band
+  /// above the reading guide (`CameraDockLayout.hiddenViewportTop`) overflows this view's
+  /// top edge and is never drawn, so the guide line is the first visible line.
+  let cameraDockContentClip = NSView()
   let placement: PrompterPlacement
   weak var controller: OperatorWindowController?
-  var logicalSize = CGSize(width: 800, height: 400) { didSet { needsLayout = true } }
-  var cameraDockTopInset: CGFloat = 0 { didSet { needsLayout = true } }
-  var cameraDockContentOffsetX: CGFloat = 0 { didSet { needsLayout = true } }
+  var logicalSize = CGSize(width: 800, height: 400) {
+    didSet {
+      needsLayout = true
+      cameraDockShapeNeedsUpdate = true
+    }
+  }
+  var cameraDockTopInset: CGFloat = 0 {
+    didSet {
+      needsLayout = true
+      cameraDockShapeNeedsUpdate = true
+    }
+  }
+  var cameraDockContentOffsetX: CGFloat = 0 {
+    didSet {
+      needsLayout = true
+      cameraDockShapeNeedsUpdate = true
+    }
+  }
+  private(set) var cameraDockLayout: CameraDockLayout? {
+    didSet {
+      needsLayout = true
+      cameraDockShapeNeedsUpdate = true
+    }
+  }
+  /// Test seam: `nil` follows the system Reduce Motion setting.
+  var cameraDockReduceMotionOverride: Bool?
   private var tracking: NSTrackingArea?
+  private let cameraDockMask = CAShapeLayer()
+  private(set) var cameraDockStyle: CameraDockVisualStyle = .detached
+  private(set) var cameraDockIsExpanded = true
+  private(set) var cameraDockIsParked = false
+  private(set) var cameraDockPlaybackActive = false
+  private var cameraDockShapeNeedsUpdate = true
+  private var cameraDockLastMaskSize = CGSize.zero
   private var cameraDockKeyViewLoopInstalled = false
   private var cameraDockKeyViewLoopInstallationScheduled = false
+  static let cameraDockShapeAnimationKey = "cameraDockShape"
+  static let cameraDockContentOpacityAnimationKey = "cameraDockContentOpacity"
   init(
     reflection: ReflectionContainerView, controller: OperatorWindowController,
     placement: PrompterPlacement = .floating,
     cameraDockStyle: CameraDockVisualStyle = .detached,
     cameraDockTopInset: CGFloat = 0,
-    cameraDockContentOffsetX: CGFloat = 0
+    cameraDockContentOffsetX: CGFloat = 0,
+    cameraDockLayout: CameraDockLayout? = nil
   ) {
     self.reflection = reflection
     self.controller = controller
     self.placement = placement
     self.cameraDockTopInset = cameraDockTopInset
     self.cameraDockContentOffsetX = cameraDockContentOffsetX
+    self.cameraDockLayout = cameraDockLayout
     let content: NSView
     if placement == .cameraDock {
       let controls = CameraDockControlsView(controller: controller)
@@ -318,10 +386,18 @@ enum PrompterPlacement: Equatable {
       content.bottomAnchor.constraint(equalTo: grip.bottomAnchor),
     ])
     super.init(frame: .zero)
-    addSubview(reflection)
+    if placement == .cameraDock {
+      cameraDockContentClip.wantsLayer = true
+      cameraDockContentClip.layer?.masksToBounds = true
+      cameraDockContentClip.addSubview(reflection)
+      addSubview(cameraDockContentClip)
+    } else {
+      addSubview(reflection)
+    }
     addSubview(grip)
     wantsLayer = true
     if placement == .cameraDock {
+      cameraDockIsExpanded = cameraDockStyle == .detached
       applyCameraDockStyle(cameraDockStyle)
     } else {
       layer?.cornerRadius = 14
@@ -335,30 +411,238 @@ enum PrompterPlacement: Equatable {
     case .detached: NSColor(srgbRed: 0.039, green: 0.039, blue: 0.043, alpha: 1)
     }
   }
-  func applyCameraDockStyle(_ style: CameraDockVisualStyle) {
+  private func applyCameraDockStyle(_ style: CameraDockVisualStyle) {
     guard placement == .cameraDock else { return }
+    cameraDockStyle = style
     let color = Self.backgroundColor(style)
     wantsLayer = true
     layer?.backgroundColor = color.cgColor
-    layer?.cornerRadius = 14
-    layer?.maskedCorners =
-      style == .attached
-      ? [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-      : [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-    layer?.masksToBounds = true
+    layer?.cornerRadius = style == .detached ? 14 : 0
+    layer?.masksToBounds = false
+    cameraDockMask.fillColor = NSColor.white.cgColor
+    cameraDockMask.frame = layer?.bounds ?? bounds
+    layer?.mask = cameraDockMask
     grip.wantsLayer = true
     grip.layer?.backgroundColor = color.cgColor
+    if style == .detached {
+      cameraDockIsExpanded = true
+      cameraDockIsParked = false
+    }
+    cameraDockShapeNeedsUpdate = true
+  }
+  /// Applies one Core layout in a single step. Geometry changes (width, lines, nudge,
+  /// display) resize the window, so the silhouette snaps to the new frame on the next
+  /// layout pass; only state transitions animate.
+  func applyCameraDockLayout(
+    _ layout: CameraDockLayout, topInset: CGFloat, contentOffsetX: CGFloat,
+    logicalSize: CGSize
+  ) {
+    guard placement == .cameraDock else { return }
+    if cameraDockStyle != layout.style { applyCameraDockStyle(layout.style) }
+    cameraDockTopInset = topInset
+    cameraDockContentOffsetX = contentOffsetX
+    cameraDockLayout = layout
+    self.logicalSize = logicalSize
+  }
+  /// First presentation: an attached Dock unfurls from the housing chin into the open
+  /// tray, so the operator sees where it lives before reading from it.
+  func revealCameraDock() {
+    guard placement == .cameraDock, cameraDockStyle == .attached else { return }
+    cameraDockIsParked = false
+    cameraDockIsExpanded = false
+    updateCameraDockShape(animated: false)
+    setCameraDockExpanded(true, animated: true)
+  }
+  func setCameraDockParked(_ parked: Bool, animated: Bool = true) {
+    guard placement == .cameraDock, cameraDockStyle == .attached else { return }
+    cameraDockIsParked = parked
+    setCameraDockExpanded(!parked || cameraDockPlaybackActive, animated: animated)
+  }
+  func setCameraDockExpanded(_ expanded: Bool, animated: Bool = true) {
+    guard placement == .cameraDock else { return }
+    let shouldExpand = cameraDockStyle == .attached ? expanded : true
+    guard cameraDockIsExpanded != shouldExpand else { return }
+    cameraDockIsExpanded = shouldExpand
+    updateCameraDockShape(animated: animated)
+    refreshTrackingArea()
+  }
+  /// Playback opens the Dock and tightens the tray to the text strip; pausing brings the
+  /// controls band back. Both edges of the change animate.
+  func updateCameraDockPlaybackState(_ active: Bool, animated: Bool = true) {
+    guard placement == .cameraDock, cameraDockPlaybackActive != active else { return }
+    cameraDockPlaybackActive = active
+    if active { cameraDockIsParked = false }
+    if active, !cameraDockIsExpanded {
+      setCameraDockExpanded(true, animated: animated)
+    } else {
+      updateCameraDockShape(animated: animated)
+    }
+  }
+  private var cameraDockReduceMotion: Bool {
+    cameraDockReduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+  }
+  private var cameraDockControlsVisible: Bool { !cameraDockPlaybackActive }
+  private func cameraDockPath(expanded: Bool, controlsVisible: Bool) -> CGPath {
+    let bounds = self.bounds
+    guard cameraDockStyle == .attached, let layout = cameraDockLayout,
+      let metrics = CameraDockGeometry.morphMetrics(
+        for: layout, progress: expanded ? 1 : 0, controlsVisible: controlsVisible),
+      bounds.width > 0, bounds.height > 0
+    else {
+      return CGPath(
+        roundedRect: bounds, cornerWidth: 14, cornerHeight: 14, transform: nil)
+    }
+    return Self.attachedPath(
+      metrics, in: bounds,
+      frameOrigin: CGPoint(
+        x: layout.placement.frame.minX, y: layout.placement.frame.minY))
+  }
+  /// One element sequence for every morph state, so Core Animation can interpolate the
+  /// path. Counter-clockwise from the tray's lower-left corner: rounded bottom, rounded
+  /// upper-right, concave right shoulder into the stem, square stem top (it bleeds into
+  /// the housing), concave left shoulder, rounded upper-left.
+  static func attachedPath(
+    _ metrics: CameraDockMorphMetrics, in bounds: CGRect, frameOrigin: CGPoint
+  ) -> CGPath {
+    func local(_ rect: CameraDockRect) -> CGRect {
+      CGRect(
+        x: bounds.minX + rect.minX - frameOrigin.x, y: bounds.minY + rect.minY - frameOrigin.y,
+        width: rect.width, height: rect.height)
+    }
+    let stem = local(metrics.stem)
+    let tray = local(metrics.tray)
+    let bottom = min(metrics.bottomCornerRadius, tray.width / 2, tray.height / 2)
+    let sideRoom = max(0, (tray.width - stem.width) / 2)
+    let shoulder = min(metrics.shoulderRadius, sideRoom, stem.height)
+    let top = min(metrics.topCornerRadius, max(0, sideRoom - shoulder), tray.height / 2)
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: tray.minX + bottom, y: tray.minY))
+    path.addLine(to: CGPoint(x: tray.maxX - bottom, y: tray.minY))
+    path.addQuadCurve(
+      to: CGPoint(x: tray.maxX, y: tray.minY + bottom),
+      control: CGPoint(x: tray.maxX, y: tray.minY))
+    path.addLine(to: CGPoint(x: tray.maxX, y: tray.maxY - top))
+    path.addQuadCurve(
+      to: CGPoint(x: tray.maxX - top, y: tray.maxY),
+      control: CGPoint(x: tray.maxX, y: tray.maxY))
+    path.addLine(to: CGPoint(x: stem.maxX + shoulder, y: tray.maxY))
+    path.addQuadCurve(
+      to: CGPoint(x: stem.maxX, y: tray.maxY + shoulder),
+      control: CGPoint(x: stem.maxX, y: tray.maxY))
+    path.addLine(to: CGPoint(x: stem.maxX, y: stem.maxY))
+    path.addLine(to: CGPoint(x: stem.minX, y: stem.maxY))
+    path.addLine(to: CGPoint(x: stem.minX, y: tray.maxY + shoulder))
+    path.addQuadCurve(
+      to: CGPoint(x: stem.minX - shoulder, y: tray.maxY),
+      control: CGPoint(x: stem.minX, y: tray.maxY))
+    path.addLine(to: CGPoint(x: tray.minX + top, y: tray.maxY))
+    path.addQuadCurve(
+      to: CGPoint(x: tray.minX, y: tray.maxY - top),
+      control: CGPoint(x: tray.minX, y: tray.maxY))
+    path.addLine(to: CGPoint(x: tray.minX, y: tray.minY + bottom))
+    path.addQuadCurve(
+      to: CGPoint(x: tray.minX + bottom, y: tray.minY),
+      control: CGPoint(x: tray.minX, y: tray.minY))
+    path.closeSubpath()
+    return path
+  }
+  private func updateCameraDockShape(animated: Bool) {
+    guard placement == .cameraDock, let layer, bounds.width > 0, bounds.height > 0 else { return }
+    cameraDockShapeNeedsUpdate = false
+    cameraDockLastMaskSize = bounds.size
+    cameraDockMask.frame = layer.bounds
+    let newPath = cameraDockPath(
+      expanded: cameraDockIsExpanded, controlsVisible: cameraDockControlsVisible)
+    let fromPath =
+      cameraDockMask.presentation()?.path
+      ?? cameraDockMask.path
+      ?? cameraDockPath(expanded: !cameraDockIsExpanded, controlsVisible: cameraDockControlsVisible)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    cameraDockMask.path = newPath
+    CATransaction.commit()
+    let contentTargets: [(NSView, CGFloat)] = [
+      (reflection, cameraDockIsExpanded ? 1 : 0),
+      (grip, cameraDockIsExpanded && cameraDockControlsVisible ? 1 : 0),
+    ]
+    let shapeKey = Self.cameraDockShapeAnimationKey
+    let opacityKey = Self.cameraDockContentOpacityAnimationKey
+    guard animated, cameraDockStyle == .attached else {
+      cameraDockMask.removeAnimation(forKey: shapeKey)
+      for (view, alpha) in contentTargets {
+        view.layer?.removeAnimation(forKey: opacityKey)
+        view.alphaValue = alpha
+      }
+      window?.invalidateShadow()
+      return
+    }
+    let reduceMotion = cameraDockReduceMotion
+    if reduceMotion {
+      cameraDockMask.removeAnimation(forKey: shapeKey)
+    } else {
+      let spring = CASpringAnimation(keyPath: "path")
+      spring.fromValue = fromPath
+      spring.toValue = newPath
+      spring.mass = CameraDockMotion.springMass
+      spring.stiffness = CameraDockMotion.springStiffness
+      spring.damping = CameraDockMotion.springDamping
+      spring.initialVelocity = cameraDockIsExpanded ? CameraDockMotion.expandInitialVelocity : 0
+      spring.duration = CameraDockMotion.shapeDuration(settling: spring.settlingDuration)
+      cameraDockMask.add(spring, forKey: shapeKey)
+    }
+    for (view, alpha) in contentTargets {
+      let fromOpacity = view.layer?.presentation()?.opacity ?? Float(view.alphaValue)
+      view.alphaValue = alpha
+      guard Float(alpha) != fromOpacity else { continue }
+      let fade = CABasicAnimation(keyPath: "opacity")
+      fade.fromValue = fromOpacity
+      fade.toValue = Float(alpha)
+      let opening = alpha > 0
+      if reduceMotion {
+        fade.duration = CameraDockMotion.reducedMotionContentDuration
+      } else {
+        fade.duration =
+          opening
+          ? CameraDockMotion.expandContentDuration
+          : CameraDockMotion.collapseContentDuration
+        if opening, let layer = view.layer {
+          fade.beginTime =
+            layer.convertTime(CACurrentMediaTime(), from: nil) + CameraDockMotion.expandContentDelay
+          fade.fillMode = .backwards
+        }
+      }
+      fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      view.layer?.add(fade, forKey: opacityKey)
+    }
+    window?.invalidateShadow()
+  }
+  var cameraDockMaskPath: CGPath? { cameraDockMask.path }
+  var cameraDockShapeAnimation: CAAnimation? {
+    cameraDockMask.animation(forKey: Self.cameraDockShapeAnimationKey)
+  }
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    if placement == .cameraDock, let path = cameraDockMask.path {
+      let localPoint = convert(point, from: superview)
+      guard path.contains(localPoint) else { return nil }
+    }
+    return super.hitTest(point)
   }
   override func layout() {
     super.layout()
     if placement == .cameraDock {
       let gripHeight = min(44, bounds.height)
       let contentWidth = min(logicalSize.width, max(0, bounds.width - cameraDockContentOffsetX))
+      let visibleHeight = max(0, bounds.height - gripHeight - cameraDockTopInset)
+      cameraDockContentClip.frame = CGRect(
+        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth, height: visibleHeight)
+      // The logical viewport is taller than the strip; its hidden band overflows the top.
       reflection.frame = CGRect(
-        x: cameraDockContentOffsetX, y: gripHeight, width: contentWidth,
-        height: max(0, bounds.height - gripHeight - cameraDockTopInset))
+        x: 0, y: 0, width: contentWidth, height: max(visibleHeight, logicalSize.height))
       grip.frame = CGRect(
         x: cameraDockContentOffsetX, y: 0, width: contentWidth, height: gripHeight)
+      if cameraDockShapeNeedsUpdate || cameraDockLastMaskSize != bounds.size {
+        updateCameraDockShape(animated: false)
+      }
     } else {
       reflection.frame = bounds
       let height = controller?.state.contrastWarning.isEmpty == false ? 52.0 : 28.0
@@ -404,20 +688,43 @@ enum PrompterPlacement: Equatable {
   }
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
+    refreshTrackingArea()
+  }
+  private func refreshTrackingArea() {
     if let tracking { removeTrackingArea(tracking) }
+    let rect: CGRect
+    if placement == .cameraDock, cameraDockStyle == .attached, !cameraDockIsExpanded,
+      let path = cameraDockMask.path
+    {
+      rect = path.boundingBoxOfPath.insetBy(dx: -8, dy: -6)
+    } else {
+      rect = bounds
+    }
     let area = NSTrackingArea(
-      rect: bounds, options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect], owner: self)
+      rect: rect, options: [.activeAlways, .mouseEnteredAndExited], owner: self)
     addTrackingArea(area)
     tracking = area
   }
   override func mouseEntered(with event: NSEvent) {
+    if placement == .cameraDock {
+      // Peek: a parked Dock opens under the pointer and closes again when it leaves.
+      setCameraDockExpanded(true)
+      return
+    }
     grip.alphaValue = 1
   }
   override func mouseExited(with event: NSEvent) {
+    if placement == .cameraDock {
+      if cameraDockIsParked, !cameraDockPlaybackActive {
+        setCameraDockExpanded(false)
+      }
+      return
+    }
     grip.alphaValue = controller?.session.state == .running ? 0 : 1
   }
   func updateCameraDockControls() {
     cameraDockControls?.refresh()
+    updateCameraDockPlaybackState(controller?.state.running ?? false)
   }
 }
 struct FloatingGrip: View {
@@ -491,6 +798,8 @@ struct FloatingGrip: View {
   let playbackButton = NSButton(frame: .zero)
   let adjustButton = NSPopUpButton(frame: .zero, pullsDown: true)
   private let statusLabel = NSTextField(labelWithString: "Ready")
+  static let collapseMenuTitle = "Collapse to Notch"
+  private(set) var collapseItem: NSMenuItem?
 
   var accessibilityControls: [NSView] { [closeButton, playbackButton, adjustButton] }
 
@@ -585,12 +894,15 @@ struct FloatingGrip: View {
     addMenuItem("Move Left", to: menu, action: #selector(nudgeLeft))
     menu.addItem(NSMenuItem.separator())
     addMenuItem("Reset Placement", to: menu, action: #selector(resetPlacement))
+    collapseItem = addMenuItem(Self.collapseMenuTitle, to: menu, action: #selector(collapseToNotch))
   }
 
-  private func addMenuItem(_ title: String, to menu: NSMenu, action: Selector) {
+  @discardableResult
+  private func addMenuItem(_ title: String, to menu: NSMenu, action: Selector) -> NSMenuItem {
     let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
     item.target = self
     menu.addItem(item)
+    return item
   }
 
   func refresh() {
@@ -601,6 +913,7 @@ struct FloatingGrip: View {
     playbackButton.image = NSImage(
       systemSymbolName: controller.state.running ? "pause.fill" : "play.fill",
       accessibilityDescription: CameraDockGrip.playbackAccessibilityLabel)
+    collapseItem?.isEnabled = controller.cameraDock?.dockStyle == .attached
   }
 
   @objc private func closeDock() { controller?.hideOutput() }
@@ -630,4 +943,5 @@ struct FloatingGrip: View {
     controller.setCameraDockHorizontalNudge(controller.state.cameraDockHorizontalNudge - 8)
   }
   @objc private func resetPlacement() { controller?.resetCameraDockPreferences() }
+  @objc private func collapseToNotch() { controller?.cameraDock?.collapseToNotch() }
 }
