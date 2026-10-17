@@ -181,6 +181,10 @@ public enum CameraDockGeometry {
   public static let compactChinOverhang = 52.0
   public static let compactBottomCornerRadius = 14.0
   public static let compactEarRadius = 10.0
+  /// Open silhouette: the black band keeps this much room on each side of the housing for
+  /// the in-band controls (edge, close, gap, play; edge, adjust, gap, status), whatever
+  /// width and nudge the text tray uses. The tray and frame grow to cover it.
+  public static let controlsBandReserve = 84.0
   /// Open silhouette: the black surface runs from the display top down to the bottom of
   /// the prompt tray and covers the menu-bar band around the housing; prompt content
   /// still never enters that band. The ears widen the panel frame on both sides.
@@ -306,9 +310,13 @@ public enum CameraDockGeometry {
       return CameraDockRect(
         x: left.maxX, y: safeEdge, width: right.minX - left.maxX, height: safeAreaHeight)
     }
-    let width = min(screen.width * 0.2, emulatedHousingSize(screenWidth: screen.width).width)
+    let width = emulatedHousingWidth(screenWidth: screen.width)
     return CameraDockRect(
       x: screen.midX - width / 2, y: safeEdge, width: width, height: safeAreaHeight)
+  }
+
+  static func emulatedHousingWidth(screenWidth: Double) -> Double {
+    min(screenWidth * 0.2, emulatedHousingSize(screenWidth: screenWidth).width)
   }
 
   /// The attached silhouette between the parked pill (`progress == 0`) and the open
@@ -327,8 +335,16 @@ public enum CameraDockGeometry {
     let compactTray = CameraDockRect(
       x: housing.midX - compactWidth / 2, y: compactBottom, width: compactWidth,
       height: top - compactBottom)
+    // The open surface covers the (possibly nudged) text tray and the controls band on both
+    // sides of the housing, so the in-band controls always have their reserved room.
+    let frame = layout.placement.frame
+    let expandedLeft = max(
+      frame.minX, min(content.minX, housing.minX - controlsBandReserve))
+    let expandedRight = min(
+      frame.maxX, max(content.maxX, housing.maxX + controlsBandReserve))
     let expandedTray = CameraDockRect(
-      x: content.x, y: content.minY, width: content.width, height: top - content.minY)
+      x: expandedLeft, y: content.minY, width: expandedRight - expandedLeft,
+      height: top - content.minY)
     func interpolate(_ start: Double, _ end: Double) -> Double {
       start + (end - start) * amount
     }
@@ -441,6 +457,7 @@ public enum CameraDockGeometry {
     var anchorX = screenFrame.midX
     var top = visibleFrame.maxY - detachedGap
     var panelTopInset = 0.0
+    var housingHalfWidth = 0.0
 
     if hasCameraSafeArea {
       let cameraSafeEdge = screenFrame.maxY - cameraSafeTop
@@ -455,12 +472,12 @@ public enum CameraDockGeometry {
           && area.minY >= cameraSafeEdge - 0.5
       }
       switch (auxiliaryTopLeftArea, auxiliaryTopRightArea) {
-      case (.some(let left), .some(let right)):
-        if isUsableAuxiliaryArea(left), isUsableAuxiliaryArea(right), left.maxX < right.minX {
-          anchorX = left.maxX + (right.minX - left.maxX) / 2
-        }
+      case (.some(let left), .some(let right))
+      where isUsableAuxiliaryArea(left) && isUsableAuxiliaryArea(right) && left.maxX < right.minX:
+        anchorX = left.maxX + (right.minX - left.maxX) / 2
+        housingHalfWidth = (right.minX - left.maxX) / 2
       default:
-        break
+        housingHalfWidth = emulatedHousingWidth(screenWidth: screenFrame.width) / 2
       }
     }
 
@@ -480,8 +497,10 @@ public enum CameraDockGeometry {
       // The panel frame spans the content and the housing-centred position, plus the
       // ears that flare out along the display's top edge.
       let cameraCenteredX = anchorX - fittedWidth / 2
-      let left = min(x, cameraCenteredX) - expandedEarRadius
-      let right = max(x + fittedWidth, cameraCenteredX + fittedWidth) + expandedEarRadius
+      let bandLeft = anchorX - housingHalfWidth - controlsBandReserve
+      let bandRight = anchorX + housingHalfWidth + controlsBandReserve
+      let left = min(x, cameraCenteredX, bandLeft) - expandedEarRadius
+      let right = max(x + fittedWidth, cameraCenteredX + fittedWidth, bandRight) + expandedEarRadius
       frameX = max(visibleFrame.minX, left)
       frameWidth = min(visibleFrame.maxX, right) - frameX
     } else {

@@ -312,6 +312,41 @@ import Testing
     changed?.frame.isContained(in: CameraDockRect(x: 0, y: 0, width: 1728, height: 1117)) == true)
 }
 
+@Test func cameraDockOpenTrayReservesTheControlsBandAtMinimumWidthAndNudgeLimits() throws {
+  // The housing is 212 pt wide (x 650…862); at the minimum width the text tray alone leaves
+  // 74 pt per side, and a full nudge moves it off one side of the housing entirely.
+  let parameters = CameraDockScreenParameters(
+    screenFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 982),
+    visibleFrame: CameraDockRect(x: 0, y: 0, width: 1512, height: 950), safeTop: 32,
+    auxiliaryTopLeftArea: CameraDockRect(x: 0, y: 950, width: 650, height: 32),
+    auxiliaryTopRightArea: CameraDockRect(x: 862, y: 950, width: 650, height: 32))
+  let reserve = CameraDockGeometry.controlsBandReserve
+  for nudge in [
+    CameraDockGeometry.minimumHorizontalNudge, 0.0, CameraDockGeometry.maximumHorizontalNudge,
+  ] {
+    let layout = try #require(
+      CameraDockGeometry.layout(
+        on: parameters, isBuiltIn: true,
+        preferences: CameraDockPreferences(
+          width: CameraDockGeometry.minimumWidth, lineCount: 2, horizontalNudge: nudge),
+        lineAdvance: 40))
+    let housing = try #require(layout.cameraHousing)
+    let content = layout.placement.contentFrame
+    let open = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 1))
+    // Text keeps its nudged tray; the black surface still covers the band beside the housing.
+    #expect(abs(content.midX - (756 + nudge)) < 1e-9)
+    #expect(open.tray.minX <= housing.minX - reserve)
+    #expect(open.tray.maxX >= housing.maxX + reserve)
+    #expect(open.tray.minX <= content.minX && open.tray.maxX >= content.maxX)
+    #expect(open.tray.minX - open.earRadius >= layout.placement.frame.minX)
+    #expect(open.tray.maxX + open.earRadius <= layout.placement.frame.maxX)
+    #expect(layout.placement.frame.isContained(in: parameters.screenFrame))
+    let parked = try #require(CameraDockGeometry.morphMetrics(for: layout, progress: 0))
+    #expect(parked.tray.minX <= housing.minX - CameraDockGeometry.compactChinOverhang)
+    #expect(parked.tray.maxX >= housing.maxX + CameraDockGeometry.compactChinOverhang)
+  }
+}
+
 @Test func cameraDockGeometryClampsWidthAndHorizontalNudge() {
   let screen = CameraDockRect(x: -800, y: 0, width: 800, height: 800)
   let visible = CameraDockRect(x: -800, y: 0, width: 800, height: 760)
