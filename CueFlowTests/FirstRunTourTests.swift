@@ -4,6 +4,10 @@ import Testing
 
 @testable import CueFlow
 
+private final class FocusStandIn: NSView {
+  override var acceptsFirstResponder: Bool { true }
+}
+
 @Suite(.serialized) @MainActor struct FirstRunTourTests {
   init() { _ = NSApplication.shared }
 
@@ -277,6 +281,39 @@ import Testing
     #expect(item.action == #selector(AppDelegate.welcomeTourAction))
     #expect(item.target === delegate)
     #expect(!delegate.validateMenuItem(item))
+  }
+
+  @Test func nextRestoresEditorOnlyWhenPopoverTookFocus() async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a11"
+    let (controller, _, window) = await open(suite)
+    defer { close(controller, suite: suite) }
+    let editor = controller.editor
+    controller.startTourIfFirstRun()
+    #expect(window.firstResponder === editor)
+    #expect(controller.tour.currentStep == .script)
+
+    let stolen = FocusStandIn(frame: NSRect(x: 0, y: 0, width: 40, height: 20))
+    var claimed = false
+    controller.tour.testingInstallStolenResponder = {
+      guard let content = controller.tour.testingPopoverContentView else { return }
+      content.addSubview(stolen)
+      claimed = stolen.isDescendant(of: content) && window.makeFirstResponder(stolen)
+    }
+    controller.tour.next()
+    #expect(claimed)
+    #expect(window.firstResponder === editor)
+    #expect(controller.tour.currentStep == .pace)
+    controller.tour.testingInstallStolenResponder = nil
+
+    let pace = NSTextField(string: "120")
+    pace.frame = NSRect(x: 8, y: 8, width: 80, height: 22)
+    window.contentView?.addSubview(pace)
+    #expect(window.makeFirstResponder(pace))
+    let kept = window.firstResponder
+    controller.tour.next()
+    #expect(window.firstResponder === kept)
+    #expect(kept !== editor)
+    #expect(controller.tour.currentStep == .play)
   }
 
   @Test func completedFlagSurvivesANewTourInstance() async {

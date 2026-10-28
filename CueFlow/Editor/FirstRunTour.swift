@@ -95,7 +95,7 @@ struct TourStepView: View {
   @objc override func cancelOperation(_ sender: Any?) { onCancel?() }
 }
 
-/// Non-modal coachmarks. The editor stays first responder; nothing here is written into a document.
+/// Non-modal coachmarks. Nothing here is written into a document.
 @MainActor final class FirstRunTour: NSObject, NSPopoverDelegate {
   static let completedKey = "firstRunTourCompleted"
   private weak var controller: OperatorWindowController?
@@ -106,6 +106,10 @@ struct TourStepView: View {
   private var savedResponder: NSResponder?
   private(set) var isActive = false
   private(set) var currentStep: TourStep?
+  /// The headless runner never lets the popover take the responder. A test
+  /// installs that state after the popover is shown and before the restore.
+  var testingInstallStolenResponder: (() -> Void)?
+  var testingPopoverContentView: NSView? { popover.contentViewController?.view }
 
   init(controller: OperatorWindowController, defaults: UserDefaults = .standard) {
     self.controller = controller
@@ -209,17 +213,30 @@ struct TourStepView: View {
     popover.contentViewController = host
     popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: step.edge)
     advancing = false
-    // Showing the popover makes its SwiftUI button the operator window's first
-    // responder. Put the saved responder back so the editor keeps the caret.
+    testingInstallStolenResponder?()
+    // Restore the editor only when the popover took the responder. A control
+    // the operator moved to, such as the pace field, keeps focus.
     keepSavedResponder()
   }
 
   private func keepSavedResponder() {
     guard let window = controller?.window, let responder = savedResponder else { return }
     guard window.firstResponder !== responder else { return }
+    guard responderWasTakenByPopover(window) else { return }
     let stillAttached = (responder as? NSView)?.window === window || responder === window
     guard stillAttached else { return }
     window.makeFirstResponder(responder)
+  }
+
+  /// Nil means the popover window took key focus. A descendant of the coachmark
+  /// is the button the popover installed. Any other responder was chosen by the operator.
+  private func responderWasTakenByPopover(_ window: NSWindow) -> Bool {
+    let current = window.firstResponder
+    if current == nil { return true }
+    guard let root = popover.contentViewController?.view, let view = current as? NSView else {
+      return false
+    }
+    return view === root || view.isDescendant(of: root)
   }
 
   private func dismissPopover() {
