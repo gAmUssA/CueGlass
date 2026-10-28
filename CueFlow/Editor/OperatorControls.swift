@@ -3,8 +3,10 @@ import CueFlowCore
 import SwiftUI
 
 struct OperatorControls: View {
-  static let presentTabTitle = "Present"
-  static let previewWhilePresentingTitle = "Preview while presenting"
+  // The tab enum reads these outside the main actor. Stored titles on this
+  // view would be main-actor isolated and fail the warnings-as-errors build.
+  nonisolated static let presentTabTitle = "Present"
+  nonisolated static let previewWhilePresentingTitle = "Preview while presenting"
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
   @State private var selectedCommand = PlaybackCommand.toggle
