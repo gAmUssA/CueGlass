@@ -7,7 +7,7 @@ import os
   static let replaced = Notification.Name("CueFlowDocumentReplaced")
   var source = NSAttributedString(
     string:
-      "Welcome to CueGlass\n\nImport a TXT or RTF script, choose a display, then press Play.\n\nLEFT ← 1. Read at your own pace. → RIGHT\nUP ↑ 2. Adjust speed while playing. ↓ DOWN",
+      "Welcome to CueGlass\n\nType or paste your script here, or choose File ▸ Open…\n\nThen press Play in the toolbar.",
     attributes: [
       .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.textColor,
       .paragraphStyle: ScriptDocument.newParagraphStyle(),

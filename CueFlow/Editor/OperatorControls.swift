@@ -286,7 +286,7 @@ struct OperatorControls: View {
     Section {
       Toggle("Hide controls while playing", isOn: $state.hideControls)
       Picker("Command", selection: $selectedCommand) {
-        ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.title).tag($0) }
       }
       LabeledContent("Shortcut") {
         Text(
@@ -330,7 +330,7 @@ struct OperatorControls: View {
           set: { controller.selectPresentationSurface($0) })
       ) {
         Text("Preview").tag("preview")
-        Text("Display Output").tag("output")
+        Text("Present").tag("output")
         Text("Floating").tag("floating")
         Text(controller.cameraDockMenuTitle).tag("cameraDock")
       }

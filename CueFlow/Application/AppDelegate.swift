@@ -92,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
     add(
       playback, "Slower", #selector(slower), String(UnicodeScalar(NSDownArrowFunctionKey)!),
       modifiers: [.command, .option])
-    add(playback, "Show / Hide Output", #selector(output), "o", modifiers: [.command, .option])
+    add(playback, "Present", #selector(output), "o", modifiers: [.command, .option])
     add(playback, "Restart", #selector(restart), "r", modifiers: [.command, .option])
     add(playback, "Previous Paragraph", #selector(previousParagraph))
     add(playback, "Next Paragraph", #selector(nextParagraph))
@@ -114,10 +114,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
       modifiers: [.command, .control])
     let window = menu("Window")
     add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
+    add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
+    window.addItem(.separator())
+    add(window, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
     NSApp.windowsMenu = window
     NSApp.mainMenu = main
   }
+  /// Local builds leave the container identifier empty and hide the iCloud commands.
+  static func showsICloudMenus(_ identifier: String) -> Bool { !identifier.isEmpty }
+  private var iCloudContainerIdentifier: String {
+    Bundle.main.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
+  }
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == #selector(saveCloudAction)
+      || menuItem.action == #selector(downloadAction)
+      || menuItem.action == #selector(refreshCloudAction)
+    {
+      let shown = Self.showsICloudMenus(iCloudContainerIdentifier)
+      menuItem.isHidden = !shown
+      return shown
+    }
     guard menuItem.action == #selector(cameraDockAction) else { return true }
     return current != nil
   }

@@ -1103,7 +1103,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     for button in toolbarButtons + (panel?.transportButtons ?? []) {
       if let command = button.playbackCommand {
         button.toolTip =
-          command.rawValue + " · "
+          command.title + " · "
           + CommandRouter.map.bindings.filter { $0.command == command }.map { $0.chord.label }
           .joined(separator: " · ")
       }
@@ -1187,6 +1187,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
           "UP ↑\nLEFT ← 1. CueGlass → RIGHT\n2. Read this asymmetric line\n3. ABC 123 →\nDOWN ↓",
         attributes: [.font: NSFont.systemFont(ofSize: 18)]))
   }
+  static let presentOnOperatorScreenNotice =
+    "This screen will be covered. Press Escape or choose Stop Presenting to return."
   func showOutput(confirm: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }) {
     if output != nil {
       hideOutput()
@@ -1204,8 +1206,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     if display.screen == window?.screen {
       let alert = NSAlert()
       alert.messageText = "Present on the operator screen?"
-      alert.informativeText =
-        "Output will cover this screen. Press Escape or use Stop Output to return."
+      alert.informativeText = Self.presentOnOperatorScreenNotice
       alert.addButton(withTitle: "Present")
       alert.addButton(withTitle: "Cancel")
       guard confirm(alert) == .alertFirstButtonReturn else { return }

@@ -25,6 +25,7 @@
 		87814ECFB992B28BBB6848E9 /* VoiceCaptureRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEFCD1AEE105355944D163EC /* VoiceCaptureRouter.swift */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
 		9F152307F21A87AB32F82275 /* VoiceFollowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */; };
+		9FCBE8EB4D96280712037F10 /* PolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEC1D0BECA9E61E3A2555241 /* PolishTests.swift */; };
 		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
 		B1DB5B5EC030C9FBE2A8C3AB /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */; };
 		C63053C54270120DBF9F5A5B /* PresentationBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B91658B74825E5235177DFB /* PresentationBuilder.swift */; };
@@ -72,6 +73,7 @@
 		D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFollowCoordinator.swift; sourceTree = "<group>"; };
 		DA806692FFD5885EB30FF35C /* PlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
 		DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelController.swift; sourceTree = "<group>"; };
+		DEC1D0BECA9E61E3A2555241 /* PolishTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolishTests.swift; sourceTree = "<group>"; };
 		E203A73B8791176DFFD9E89B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		E421E25C07455FA3D80DC323 /* ICloud.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = ICloud.xcconfig; sourceTree = "<group>"; };
 		E8919FB6D4367E607E1C01F5 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 			children = (
 				3798F2E904FA73605AD7462F /* IntegrationTests.swift */,
 				8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */,
+				DEC1D0BECA9E61E3A2555241 /* PolishTests.swift */,
 				A5097F3D3F2B52D4BBB308AA /* VoiceCaptureRouterTests.swift */,
 				1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */,
 			);
@@ -377,6 +380,7 @@
 			files = (
 				6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */,
 				2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */,
+				9FCBE8EB4D96280712037F10 /* PolishTests.swift in Sources */,
 				01EBEABBD1EA38D340CDE3FA /* VoiceCaptureRouterTests.swift in Sources */,
 				64D8D937E071E2C01F23BA0E /* VoiceFollowTests.swift in Sources */,
 			);

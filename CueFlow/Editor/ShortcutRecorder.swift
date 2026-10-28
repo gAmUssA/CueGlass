@@ -1,6 +1,25 @@
 import AppKit
 import CueFlowCore
 
+extension PlaybackCommand {
+  /// Names shown in the shortcut picker and the recorder panel. Raw values stay the stored contract.
+  var title: String {
+    switch self {
+    case .toggle: "Play / Pause"
+    case .faster: "Faster"
+    case .slower: "Slower"
+    case .jumpFaster: "Faster (large step)"
+    case .jumpSlower: "Slower (large step)"
+    case .nextParagraph: "Next Paragraph"
+    case .previousParagraph: "Previous Paragraph"
+    case .restart: "Restart"
+    case .reverse: "Reverse Direction"
+    case .exit: "Stop Presenting"
+    case .cameraDock: "Camera Dock"
+    }
+  }
+}
+
 @MainActor final class ShortcutRecorder: NSView {
   var capture: ((KeyChord) -> Void)?
   override var acceptsFirstResponder: Bool { true }
@@ -32,7 +51,7 @@ extension OperatorWindowController {
     let panel = NSPanel(
       contentRect: CGRect(x: 0, y: 0, width: 340, height: 100), styleMask: [.titled, .closable],
       backing: .buffered, defer: false)
-    panel.title = "Shortcut · \(command.rawValue)"
+    panel.title = "Shortcut · \(command.title)"
     panel.isReleasedWhenClosed = false
     let recorder = ShortcutRecorder(frame: panel.contentView?.bounds ?? .zero)
     panel.contentView = recorder
