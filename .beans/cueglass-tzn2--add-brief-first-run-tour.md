@@ -12,4 +12,4 @@ A brief 'run the app for the first time' tour shown on first launch.
 - [x] Implement
 - [x] Tests and manual-plan entry
 
-Four non-modal coachmarks anchor to the script, pace, Play, and Present. The tour auto-starts once and replays from Help ▸ Welcome Tour. Manual M1–M7 are still for the operator, so this bean stays in progress.
+Four non-modal coachmarks anchor to the script, pace, Play, and Present. The tour auto-starts once and replays from Help ▸ Welcome Tour. Manual T1–T7 are still for the operator, so this bean stays in progress.

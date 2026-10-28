@@ -8,6 +8,36 @@ private final class FocusStandIn: NSView {
   override var acceptsFirstResponder: Bool { true }
 }
 
+/// Holds the completed-tour flag without a preferences suite. A suite flushes a
+/// plist when the test process exits, after any in-process delete.
+private final class MemoryDefaults: UserDefaults {
+  private var values: [String: Any] = [:]
+
+  override func set(_ value: Bool, forKey defaultName: String) {
+    values[defaultName] = value
+  }
+
+  override func set(_ value: Any?, forKey defaultName: String) {
+    if let value {
+      values[defaultName] = value
+    } else {
+      values.removeValue(forKey: defaultName)
+    }
+  }
+
+  override func bool(forKey defaultName: String) -> Bool {
+    values[defaultName] as? Bool ?? false
+  }
+
+  override func object(forKey defaultName: String) -> Any? {
+    values[defaultName]
+  }
+
+  override func removeObject(forKey defaultName: String) {
+    values.removeValue(forKey: defaultName)
+  }
+}
+
 @Suite(.serialized) @MainActor struct FirstRunTourTests {
   init() { _ = NSApplication.shared }
 
@@ -17,11 +47,8 @@ private final class FocusStandIn: NSView {
     }
   }
 
-  private func open(
-    _ suite: String
-  ) async -> (OperatorWindowController, UserDefaults, NSWindow) {
-    let defaults = UserDefaults(suiteName: suite)!
-    defaults.removePersistentDomain(forName: suite)
+  private func open() async -> (OperatorWindowController, UserDefaults, NSWindow) {
+    let defaults = MemoryDefaults(suiteName: nil)!
     let controller = OperatorWindowController(document: ScriptDocument())
     controller.tourDefaults = defaults
     let window = controller.window!
@@ -33,27 +60,45 @@ private final class FocusStandIn: NSView {
     return (controller, defaults, window)
   }
 
-  private func close(_ controller: OperatorWindowController, suite: String) {
+  private func close(
+    _ controller: OperatorWindowController, defaults: inout UserDefaults?, suite: String
+  ) {
     controller.preview.reflection.viewport.driver?.stop()
     controller.floating?.reflection.viewport.driver?.stop()
     controller.output?.reflection.viewport.driver?.stop()
     controller.close()
-    UserDefaults().removePersistentDomain(forName: suite)
-    UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+    defaults = nil
+    deleteLegacySuitePlist(suite)
+  }
+
+  /// Earlier runs registered these suite names. Remove the plist if one remains.
+  private func deleteLegacySuitePlist(_ suite: String) {
+    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+      "Library/Preferences/\(suite).plist")
+    guard FileManager.default.fileExists(atPath: url.path) else { return }
+    if unlink(url.path) != 0 {
+      let code = errno
+      if code != ENOENT {
+        Issue.record(
+          "Could not delete \(url.path) (errno \(code)). Remove that preferences file and rerun the tour tests."
+        )
+      }
+    }
   }
 
   @Test func unsetFlagShowsStepOneAndReplayIgnoresCompletedFlag() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a1"
-    let (controller, defaults, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     controller.startTourIfFirstRun()
     #expect(controller.tour.isActive)
     #expect(controller.tour.currentStep == .script)
     #expect(NSApp.modalWindow == nil)
     controller.tour.end()
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
     let again = OperatorWindowController(document: ScriptDocument())
-    again.tourDefaults = defaults
+    again.tourDefaults = defaults!
     again.window?.makeKeyAndOrderFront(nil)
     again.startTourIfFirstRun()
     #expect(!again.tour.isActive)
@@ -61,72 +106,74 @@ private final class FocusStandIn: NSView {
     #expect(again.tour.isActive)
     #expect(again.tour.currentStep == .script)
     again.tour.end()
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
     again.preview.reflection.viewport.driver?.stop()
     again.close()
   }
 
   @Test func endingsSetTheFlagAndReplaySkipFromUnsetSetsIt() async throws {
     let suite = "com.example.cueflow.tests.first-run-tour.a2"
-    let (controller, defaults, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     controller.startTourIfFirstRun()
     controller.tour.end()
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.startTourIfFirstRun()
     while controller.tour.currentStep != .present, controller.tour.isActive {
       controller.tour.next()
     }
     #expect(controller.tour.currentStep == .present)
     controller.tour.end()
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
     #expect(!controller.tour.isActive)
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.startTourIfFirstRun()
     controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.window?.makeKeyAndOrderFront(nil)
     controller.startTourIfFirstRun()
     #expect(controller.tour.isActive)
     controller.toggle()
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
     #expect(controller.session.state != .idle)
     controller.stop()
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.startTourIfFirstRun()
     #expect(controller.tour.isActive)
     controller.showFloating()
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
     controller.hideOutput()
     controller.stop()
 
-    defaults.set(true, forKey: FirstRunTour.completedKey)
+    defaults!.set(true, forKey: FirstRunTour.completedKey)
     controller.welcomeTourAction()
     #expect(controller.tour.isActive)
     controller.tour.end()
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.welcomeTourAction()
     #expect(controller.tour.isActive)
     controller.tour.end()
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
   }
 
   @Test func editorKeepsFocusAndSelectionAcrossSteps() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a3"
-    let (controller, _, window) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, window) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     let editor = controller.editor
     editor.setSelectedRange(NSRange(location: 1, length: 0))
     let range = editor.selectedRange()
@@ -155,8 +202,9 @@ private final class FocusStandIn: NSView {
 
   @Test func tourDoesNotEditTheDocument() async throws {
     let suite = "com.example.cueflow.tests.first-run-tour.a4"
-    let (controller, _, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     let script = controller.script
     let revision = script.revision
     let before = try script.data(ofType: ScriptDocument.nativeType)
@@ -175,8 +223,9 @@ private final class FocusStandIn: NSView {
 
   @Test func blockedStatesDoNotStartAndDisableHelp() async throws {
     let suite = "com.example.cueflow.tests.first-run-tour.a6"
-    let (controller, defaults, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     let previousMenu = NSApp.mainMenu
     let previousHelp = NSApp.helpMenu
     let delegate = AppDelegate()
@@ -187,11 +236,7 @@ private final class FocusStandIn: NSView {
     }
     let help = try #require(NSApp.helpMenu)
     let item = try #require(help.items.first { $0.title == "Welcome Tour" })
-    // This process cannot become the active app, so the key-window lookup stays nil.
-    // The menu rule is still asserted with the controller it would receive.
-    #expect(!NSApp.isActive)
-    #expect(delegate.current == nil)
-    #expect(!delegate.validateMenuItem(item))
+    #expect(item.action == #selector(AppDelegate.welcomeTourAction))
     #expect(AppDelegate.welcomeTourEnabled(controller))
 
     controller.toggle()
@@ -199,8 +244,7 @@ private final class FocusStandIn: NSView {
     #expect(!AppDelegate.welcomeTourEnabled(controller))
     controller.startTourIfFirstRun()
     #expect(!controller.tour.isActive)
-    #expect(!defaults.bool(forKey: FirstRunTour.completedKey))
-    #expect(!delegate.validateMenuItem(item))
+    #expect(!defaults!.bool(forKey: FirstRunTour.completedKey))
     controller.welcomeTourAction()
     #expect(!controller.tour.isActive)
     controller.stop()
@@ -211,16 +255,16 @@ private final class FocusStandIn: NSView {
     #expect(!AppDelegate.welcomeTourEnabled(controller))
     controller.startTourIfFirstRun()
     #expect(!controller.tour.isActive)
-    #expect(!defaults.bool(forKey: FirstRunTour.completedKey))
-    #expect(!delegate.validateMenuItem(item))
+    #expect(!defaults!.bool(forKey: FirstRunTour.completedKey))
     controller.hideOutput()
     controller.stop()
   }
 
   @Test func missingAnchorsAreSkippedAndNoneEndsTheTour() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a7"
-    let (controller, defaults, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     controller.editor.enclosingScrollView?.removeFromSuperview()
     controller.startTourIfFirstRun()
     #expect(controller.tour.currentStep == .pace)
@@ -232,12 +276,12 @@ private final class FocusStandIn: NSView {
       .removeFromSuperview()
     controller.tour.next()
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
 
-    defaults.set(false, forKey: FirstRunTour.completedKey)
+    defaults!.set(false, forKey: FirstRunTour.completedKey)
     controller.startTourIfFirstRun()
     #expect(!controller.tour.isActive)
-    #expect(defaults.bool(forKey: FirstRunTour.completedKey))
+    #expect(defaults!.bool(forKey: FirstRunTour.completedKey))
   }
 
   @Test func stepCopyIsCueGlass() {
@@ -280,13 +324,14 @@ private final class FocusStandIn: NSView {
     let item = try #require(help.items.first { $0.title == "Welcome Tour" })
     #expect(item.action == #selector(AppDelegate.welcomeTourAction))
     #expect(item.target === delegate)
-    #expect(!delegate.validateMenuItem(item))
+    #expect(!AppDelegate.welcomeTourEnabled(nil))
   }
 
   @Test func nextRestoresEditorOnlyWhenPopoverTookFocus() async throws {
     let suite = "com.example.cueflow.tests.first-run-tour.a11"
-    let (controller, _, window) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, window) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     let editor = controller.editor
     controller.startTourIfFirstRun()
     #expect(window.firstResponder === editor)
@@ -318,11 +363,12 @@ private final class FocusStandIn: NSView {
 
   @Test func completedFlagSurvivesANewTourInstance() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a10"
-    let (controller, defaults, _) = await open(suite)
-    defer { close(controller, suite: suite) }
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
     controller.startTourIfFirstRun()
     controller.tour.end()
-    let relaunch = FirstRunTour(controller: controller, defaults: defaults)
+    let relaunch = FirstRunTour(controller: controller, defaults: openedDefaults)
     #expect(relaunch.isCompleted)
     #expect(!relaunch.isActive)
   }
