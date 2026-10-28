@@ -138,3 +138,17 @@ On 2026-10-15, the operator asked that the remaining Follow Voice checks be cons
 Human acceptance is complete per operator confirmation: AirPods speech following, command handling, false-positive resistance, model and permission flows, pace recovery, silence, ad-libs, skips/rereads, manual takeover, Timed Scrolling separation, and sustained-take teardown are recorded as passed. The standalone generated-speech experiment and automated tests supplement but do not substitute for these human checks.
 
 Latest candidate (2026-10-15): commit `2c3c25761ea5ea8296efcc341abd2de444476039` passed GitHub Actions run [38816562330](https://github.com/gAmUssA/CueGlass/actions/runs/38816562330), and the full independent review found no blocker. The operator confirmed the remaining macOS 26+ manual acceptance rows as checked on 2026-10-15; see the row-level results above.
+
+## First-run tour
+
+These M1–M7 rows belong to the Welcome tour. They are not the Camera Dock rows earlier in this plan. No GUI session was available when the tour was added, so every row below is pending until an operator observes it. Quit any older CueGlass, delete the flag with `defaults delete com.example.cueflow firstRunTourCompleted`, build DebugLocal, and open `.build/Xcode/Build/Products/DebugLocal/CueGlass.app`. The tour must not take typing away from the script.
+
+| Case | Required observation | Status |
+|---|---|---|
+| M1 — once on first launch | With the flag deleted, launch: the tour appears once over the untitled document. Quit and relaunch: it does not. | Pending |
+| M2 — type at each step | Click into the editor and type at each step. Characters appear, the caret stays, and the popover remains. | Pending |
+| M3 — type after Skip or Done | After Skip or Done, with the caret already in the editor, keep typing without clicking. Text still enters the editor. | Pending |
+| M4 — VoiceOver, Tab, and Escape | VoiceOver and Tab reach the popover buttons. Escape inside the popover ends the tour. Escape in the editor does not, unless a presentation is up. | Pending |
+| M5 — resize and inspector | Resize to the 980×640 minimum and collapse the inspector between steps. Popovers re-anchor, or the step is skipped. No popover floats detached from its control. | Pending |
+| M6 — displays and Spaces | On two displays, and in a full-screen Space, the popover stays with the operator window. | Pending |
+| M7 — replay | Help ▸ Welcome Tour replays the tour. The item is disabled while a take is playing. | Pending |

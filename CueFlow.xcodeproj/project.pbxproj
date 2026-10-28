@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01EBEABBD1EA38D340CDE3FA /* VoiceCaptureRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5097F3D3F2B52D4BBB308AA /* VoiceCaptureRouterTests.swift */; };
+		077035DBF7544DF93CD5360C /* FirstRunTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FB057034891C0AA7EE57F9 /* FirstRunTour.swift */; };
 		1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3922ADFD724BB43EC04D013 /* DisplayLinkDriver.swift */; };
 		2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */; };
 		2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */; };
@@ -24,6 +25,7 @@
 		7D7E3B5BF8971BFE5BC0CFB9 /* CueGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8C3DC660FC600F99391B73D1 /* CueGlass.icon */; };
 		87814ECFB992B28BBB6848E9 /* VoiceCaptureRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEFCD1AEE105355944D163EC /* VoiceCaptureRouter.swift */; };
 		98646A8E601A89B88BA6EA54 /* PlaybackSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA806692FFD5885EB30FF35C /* PlaybackSession.swift */; };
+		988E2CC9EE70B30AA530D495 /* FirstRunTourTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42114B6FD506471C75C8AE5D /* FirstRunTourTests.swift */; };
 		9F152307F21A87AB32F82275 /* VoiceFollowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */; };
 		9FCBE8EB4D96280712037F10 /* PolishTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEC1D0BECA9E61E3A2555241 /* PolishTests.swift */; };
 		AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */; };
@@ -53,6 +55,8 @@
 		239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechVoiceSource.swift; sourceTree = "<group>"; };
 		282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputWindowController.swift; sourceTree = "<group>"; };
 		3798F2E904FA73605AD7462F /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
+		41FB057034891C0AA7EE57F9 /* FirstRunTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunTour.swift; sourceTree = "<group>"; };
+		42114B6FD506471C75C8AE5D /* FirstRunTourTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunTourTests.swift; sourceTree = "<group>"; };
 		4B91658B74825E5235177DFB /* PresentationBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationBuilder.swift; sourceTree = "<group>"; };
 		5E331330CF345B398B53267B /* OperatorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorControls.swift; sourceTree = "<group>"; };
 		5F5BF751BC3355979A5962EB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
@@ -144,6 +148,7 @@
 		3A2EAA33A9496AA821AE6691 /* CueFlowTests */ = {
 			isa = PBXGroup;
 			children = (
+				42114B6FD506471C75C8AE5D /* FirstRunTourTests.swift */,
 				3798F2E904FA73605AD7462F /* IntegrationTests.swift */,
 				8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */,
 				DEC1D0BECA9E61E3A2555241 /* PolishTests.swift */,
@@ -237,6 +242,7 @@
 		E9D6B41FBA755BF59B8C7365 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
+				41FB057034891C0AA7EE57F9 /* FirstRunTour.swift */,
 				98CB5A5331CE15CF4689EB65 /* NativeStudio.swift */,
 				5E331330CF345B398B53267B /* OperatorControls.swift */,
 				F75F2E4907A56B5F792C8554 /* OperatorWindowController.swift */,
@@ -355,6 +361,7 @@
 				AFBED4431BF425CBF1A855B9 /* ControlPanelController.swift in Sources */,
 				1540FF0ABC59EF96BE62D7DB /* DisplayLinkDriver.swift in Sources */,
 				737FACBBE59D12FA285541DF /* DocumentStorageService.swift in Sources */,
+				077035DBF7544DF93CD5360C /* FirstRunTour.swift in Sources */,
 				F19343DC6229C8218BB0A154 /* FloatingPrompterWindowController.swift in Sources */,
 				2A2C4DDEF6E0E82126AF5738 /* NativeStudio.swift in Sources */,
 				599C85F894BDD921616C2656 /* OperatorControls.swift in Sources */,
@@ -378,6 +385,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				988E2CC9EE70B30AA530D495 /* FirstRunTourTests.swift in Sources */,
 				6E9A1C62F67BB529A3EF8856 /* IntegrationTests.swift in Sources */,
 				2B5206004F56AAA430ABF4E7 /* OperatorFeatureTests.swift in Sources */,
 				9FCBE8EB4D96280712037F10 /* PolishTests.swift in Sources */,

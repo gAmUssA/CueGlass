@@ -21,6 +21,7 @@ Owner-expanded R01–R16 and Quiet Studio implementation are delivered for devel
 | R15 timing | Direction-aware remaining, playing-only elapsed, cancellable mirrored countdown, timed solve/re-solve and bound hold | Deterministic 300-second finish/reverse/restart/cancel; actual countdown visuals manual |
 | R16 aids | Guide line/triangles/opacity, gradient fade, side margins, text-panel alpha and hide/restore chrome | Static-aid versus margin relayout tests; contrast and accessibility/real backdrops manual |
 | Camera Dock | Opt-in staged shared-session surface; shared live/preview geometry map; paused Ready commit; nonmodal first-use and persistent capture disclosures; attached and detached styles; per-display preferences; app-local menu and command routing | Deterministic geometry/map, preference, panel, and surface tests; M1–M12 physical/runtime and M13–M14 owner checks remain pending |
+| First-run tour | Four non-modal coachmarks anchored to the script, pace, Play, and Present. Auto-starts once when `firstRunTourCompleted` is unset. Replay from Help ▸ Welcome Tour | Native focus, document-isolation, menu, and anchor tests. Manual tour M1–M7 in the manual plan remain pending |
 
 ## Camera Dock implementation (2026-10-16)
 

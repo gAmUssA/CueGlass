@@ -283,6 +283,24 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var editorWidthConstraint: NSLayoutConstraint?
   var inspectorWidthConstraint: NSLayoutConstraint?
   weak var playToolbarButton: NSButton?
+  /// Set before the first tour access. The app uses the standard domain; tests inject a suite.
+  var tourDefaults: UserDefaults = .standard
+  private var tourStorage: FirstRunTour?
+  var tour: FirstRunTour {
+    if let tourStorage { return tourStorage }
+    let created = FirstRunTour(controller: self, defaults: tourDefaults)
+    tourStorage = created
+    return created
+  }
+  /// Idle operator window with no live surface. Camera Dock counts as floating.
+  var canPresentTour: Bool {
+    window != nil && session.state == .idle && output == nil && floating == nil
+  }
+  func startTourIfFirstRun() {
+    guard window?.isVisible == true else { return }
+    tour.start(force: false)
+  }
+  @objc func welcomeTourAction() { tour.start(force: true) }
   var previewAspectConstraint: NSLayoutConstraint?
   let previewCaption = NSTextField(labelWithString: "Output preview · Local 1280 × 720")
   lazy var editorBanner = NSHostingView(rootView: EditorTakeBanner(controller: self))
@@ -1112,6 +1130,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     updateEditorParagraph()
     updateProgressTimer()
     updateFloatingOptions()
+    tourStorage?.stopIfBlocked()
   }
   private func refreshStatus() {
     state.status = session.message + (script.notice.isEmpty ? "" : " · " + script.notice)
@@ -1517,6 +1536,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func windowWillClose(_ notification: Notification) {
+    tourStorage?.end()
     progressTimer?.invalidate()
     progressTimer = nil
     stop()

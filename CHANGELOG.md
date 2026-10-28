@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show a four-step Welcome tour on first launch, anchored to the script, pace, Play, and Present. Replay it from Help ▸ Welcome Tour.
 - Keep a running take's Follow Voice catch-up pace when the Display picker, a closed Camera Dock's placement controls, or a live Dock nudge changes only the placement.
 - Describe the notch-integrated island, the prompt below the housing band, and the plain-tray opt-out in the Camera Dock first-use explainer and the README.
 
