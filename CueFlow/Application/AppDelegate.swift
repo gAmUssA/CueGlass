@@ -134,19 +134,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
   }
   /// Local builds leave the container identifier empty and hide the iCloud commands.
   static func showsICloudMenus(_ identifier: String) -> Bool { !identifier.isEmpty }
+  static func iCloudContainerIdentifier(bundle: Bundle = .main) -> String {
+    bundle.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
+  }
   /// Welcome Tour needs the operator window that would receive the action, idle, with no surface.
   static func welcomeTourEnabled(_ controller: OperatorWindowController?) -> Bool {
     controller?.canPresentTour == true
-  }
-  private var iCloudContainerIdentifier: String {
-    Bundle.main.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
   }
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
     if menuItem.action == #selector(saveCloudAction)
       || menuItem.action == #selector(downloadAction)
       || menuItem.action == #selector(refreshCloudAction)
     {
-      let shown = Self.showsICloudMenus(iCloudContainerIdentifier)
+      let shown = Self.showsICloudMenus(Self.iCloudContainerIdentifier())
       menuItem.isHidden = !shown
       return shown
     }

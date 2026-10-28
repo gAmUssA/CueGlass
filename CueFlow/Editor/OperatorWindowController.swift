@@ -1499,9 +1499,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       [weak self] _, _, error in if let error { self?.present(error) }
     }
   }
-  var containerID: String {
-    Bundle.main.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
-  }
+  var containerID: String { AppDelegate.iCloudContainerIdentifier() }
   func saveICloud() {
     Task { [weak self] in
       guard let self else { return }
