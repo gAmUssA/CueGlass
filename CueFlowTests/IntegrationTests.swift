@@ -15,6 +15,14 @@ import Testing
       Issue.record("Fixture cleanup failed: \(error.code)")
     }
   }
+  func expectCueGlassDomain(_ body: () throws -> Void) {
+    do {
+      try body()
+      Issue.record("expected a CueGlass error")
+    } catch let error as NSError {
+      #expect(error.domain == "CueGlass")
+    }
+  }
   func fixture(_ name: String, _ data: Data) throws -> URL {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let url = root.appendingPathComponent(name)
@@ -71,12 +79,12 @@ import Testing
     #expect(doc.source == previous)
     doc.fileURL = future
     #expect(doc.saveBlockedReason != nil)
-    #expect(throws: (any Error).self) { try doc.checkAutosavingSafety() }
-    #expect(throws: (any Error).self) {
+    expectCueGlassDomain { try doc.checkAutosavingSafety() }
+    expectCueGlassDomain {
       try doc.writeSafely(
         to: future, ofType: ScriptDocument.nativeType, for: .autosaveInPlaceOperation)
     }
-    #expect(throws: (any Error).self) {
+    expectCueGlassDomain {
       try doc.writeSafely(to: future, ofType: ScriptDocument.nativeType, for: .saveToOperation)
     }
     let recovered = root.appendingPathComponent("recovery.cueflow")

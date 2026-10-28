@@ -105,7 +105,7 @@ import os
   }
   override func checkAutosavingSafety() throws {
     if let reason = saveBlockedReason {
-      throw NSError(domain: "CueFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
+      throw NSError(domain: "CueGlass", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }
     try super.checkAutosavingSafety()
   }
@@ -115,7 +115,7 @@ import os
     let overwritesOriginal =
       fileURL.map { $0.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() } ?? false
     if let reason = saveBlockedReason, saveOperation != .saveToOperation || overwritesOriginal {
-      throw NSError(domain: "CueFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
+      throw NSError(domain: "CueGlass", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }
     try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
   }
@@ -174,7 +174,7 @@ import os
         }
       }
       throw NSError(
-        domain: "CueFlow", code: 3,
+        domain: "CueGlass", code: 3,
         userInfo: [
           NSLocalizedDescriptionKey:
             "This script is downloading from iCloud. Open it again when the download finishes. Local scripts remain available offline."

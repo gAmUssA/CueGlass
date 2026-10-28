@@ -4,7 +4,7 @@ This file keeps build instructions and implementation context out of the user-fa
 
 ## Project map
 
-- The product is CueGlass. The Xcode project, scheme, and Swift module retain the internal `CueFlow` name.
+- The product is CueGlass. The built application is `CueGlass.app` with executable `CueGlass`; the Xcode project, scheme, Swift module, bundle identifier, UTI, and `.cueflow` extension retain the internal CueFlow names.
 - `CueFlow/` contains the AppKit document, editor, playback, presentation, and storage layers.
 - `Packages/CueFlowCore/` contains Foundation-only document, command, and timeline contracts.
 - `CueFlowTests/` contains native AppKit integration tests; the core package has its own Swift Testing suite.
@@ -21,7 +21,7 @@ Build the local app and run it:
 ```sh
 xcodebuild -project CueFlow.xcodeproj -scheme CueFlow -configuration DebugLocal \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/Xcode build
-open .build/Xcode/Build/Products/DebugLocal/CueFlow.app
+open .build/Xcode/Build/Products/DebugLocal/CueGlass.app
 ```
 
 Run core and native tests:

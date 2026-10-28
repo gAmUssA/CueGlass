@@ -26,6 +26,7 @@ targets:
   CueFlow:
     type: application
     platform: macOS
+    productName: CueGlass
     sources:
       - path: CueFlow
         excludes: [Resources]
@@ -52,6 +53,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: CueGlass
         GENERATE_INFOPLIST_FILE: NO
         LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/../Frameworks'
+        PRODUCT_NAME: CueGlass
+        PRODUCT_MODULE_NAME: CueFlow
   CueFlowTests:
     type: bundle.unit-test
     platform: macOS
@@ -64,8 +67,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.cueflow.tests
         TEST_HOST: ''
         BUNDLE_LOADER: ''
-        OTHER_LDFLAGS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib'
-        LD_RUNPATH_SEARCH_PATHS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks'
+        OTHER_LDFLAGS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib'
+        LD_RUNPATH_SEARCH_PATHS: '$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks'
 schemes:
   CueFlow:
     build:

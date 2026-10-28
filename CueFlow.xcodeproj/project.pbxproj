@@ -57,7 +57,6 @@
 		5F5BF751BC3355979A5962EB /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		65E97DF94BB53EBAE2B181D4 /* FloatingPrompterWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingPrompterWindowController.swift; sourceTree = "<group>"; };
 		6E59D28065A1EC8A518D087C /* PresentationFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentationFont.swift; sourceTree = "<group>"; };
-		7572426652BF4AE04C6AA016 /* CueFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CueFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8C3DC660FC600F99391B73D1 /* CueGlass.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = CueGlass.icon; sourceTree = "<group>"; };
 		8EC426B8498EC079B13E6588 /* OperatorFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperatorFeatureTests.swift; sourceTree = "<group>"; };
 		914D5D46411C3661C5DB6015 /* DocumentStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStorageService.swift; sourceTree = "<group>"; };
@@ -69,6 +68,7 @@
 		B1B1BC3436071975ED9BDE83 /* ScriptImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptImporter.swift; sourceTree = "<group>"; };
 		C27F804C248326C3E21AB38F /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		CEFCD1AEE105355944D163EC /* VoiceCaptureRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceCaptureRouter.swift; sourceTree = "<group>"; };
+		D7A8A7E29DFF7156EEE37EEC /* CueGlass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CueGlass.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D9C871EFE55053982C953B14 /* VoiceFollowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFollowCoordinator.swift; sourceTree = "<group>"; };
 		DA806692FFD5885EB30FF35C /* PlaybackSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
 		DE1CB6D39DA78958F806B3AB /* ControlPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanelController.swift; sourceTree = "<group>"; };
@@ -106,8 +106,8 @@
 		118CA4BB5FC3623A76C5231E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				7572426652BF4AE04C6AA016 /* CueFlow.app */,
 				96D51AC2AE6DFD1674082B1D /* CueFlowTests.xctest */,
+				D7A8A7E29DFF7156EEE37EEC /* CueGlass.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -270,7 +270,7 @@
 				8F38C200B6595D9AE760A456 /* CueFlowCore */,
 			);
 			productName = CueFlow;
-			productReference = 7572426652BF4AE04C6AA016 /* CueFlow.app */;
+			productReference = D7A8A7E29DFF7156EEE37EEC /* CueGlass.app */;
 			productType = "com.apple.product-type.application";
 		};
 		E171750F78AD831C8819281D /* CueFlowTests */ = {
@@ -402,6 +402,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_MODULE_NAME = CueFlow;
+				PRODUCT_NAME = CueGlass;
 				SDKROOT = macosx;
 			};
 			name = DebugICloud;
@@ -415,6 +417,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Configuration/Info-iCloud.plist";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_MODULE_NAME = CueFlow;
+				PRODUCT_NAME = CueGlass;
 				SDKROOT = macosx;
 			};
 			name = ReleaseICloud;
@@ -487,8 +491,8 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
-				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "";
@@ -501,8 +505,8 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
-				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "";
@@ -518,6 +522,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_MODULE_NAME = CueFlow;
+				PRODUCT_NAME = CueGlass;
 				SDKROOT = macosx;
 			};
 			name = DebugLocal;
@@ -531,6 +537,8 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_MODULE_NAME = CueFlow;
+				PRODUCT_NAME = CueGlass;
 				SDKROOT = macosx;
 			};
 			name = ReleaseLocal;
@@ -610,8 +618,8 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
-				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "";
@@ -693,8 +701,8 @@
 				BUNDLE_LOADER = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
-				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueFlow.app/Contents/MacOS/CueFlow.debug.dylib";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow.tests;
 				SDKROOT = macosx;
 				TEST_HOST = "";
