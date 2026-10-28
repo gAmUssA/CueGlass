@@ -302,7 +302,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   }
   @objc func welcomeTourAction() { tour.start(force: true) }
   var previewAspectConstraint: NSLayoutConstraint?
-  let previewCaption = NSTextField(labelWithString: "Output preview · Local 1280 × 720")
+  let previewCaption = NSTextField(labelWithString: "Present preview · Local 1280 × 720")
   lazy var editorBanner = NSHostingView(rootView: EditorTakeBanner(controller: self))
   var stageView = StudioSurface()
   var transportChrome = NSView()
@@ -1099,7 +1099,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       let live = output != nil || cameraDock != nil || floating != nil
       item.label =
         output != nil
-        ? "Presenting · \(output?.window?.screen?.localizedName ?? "Output")"
+        ? "Presenting · \(output?.window?.screen?.localizedName ?? Self.unnamedPresentSurface)"
         : cameraDock != nil
           ? "Presenting · Camera Dock"
           : floating != nil ? "Presenting · Floating" : "Present"
@@ -1170,11 +1170,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       size: session.logicalSize,
       mirrored: preview.reflection.horizontal || preview.reflection.vertical)
   }
+  static let unnamedPresentSurface = "Present"
+  static let presentDisplayDisconnectedRetained =
+    "Present display disconnected — position retained"
+  static let presentingStoppedRetained = "Presenting stopped — position retained"
+  static let presentDisplayDisconnectedChoose =
+    "Present display disconnected — choose a display"
   /// The stage caption follows the Quiet Studio board: what the stage shows, which display,
   /// the exact logical size, and whether the operator sees it mirrored.
   static func previewCaption(screen: String?, size: CGSize, mirrored: Bool) -> String {
-    "Output preview · \(screen ?? "Local") \(Int(size.width)) × \(Int(size.height))"
-      + " · exact output layout, scaled · shown \(mirrored ? "mirrored" : "unmirrored")"
+    "Present preview · \(screen ?? "Local") \(Int(size.width)) × \(Int(size.height))"
+      + " · exact present layout, scaled · shown \(mirrored ? "mirrored" : "unmirrored")"
   }
   func loadLatest() {
     perform {
@@ -1291,7 +1297,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       case .output(let displayKey, let size, _):
         // The return display was closed with Output when the Dock opened, so display loss
         // no longer tracked it. If it is gone, Preview takes the saved size and anchor.
-        let message = "Output display disconnected — position retained"
+        let message = Self.presentDisplayDisconnectedRetained
         guard displayProvider().contains(where: { $0.selectionKey == displayKey }) else {
           pendingResume = false
           returnToPreview(size: size)
@@ -1328,7 +1334,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func outputClosed() {
-    perform { try session.pauseSafely("Output stopped — position retained") }
+    perform { try session.pauseSafely(Self.presentingStoppedRetained) }
     output?.reflection.viewport.driver?.stop()
     output = nil
     refresh()
@@ -1390,9 +1396,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
     }
     if let output, !ids.contains(output.displayID) {
-      perform { try session.pauseSafely("Output display disconnected — choose a display") }
+      perform { try session.pauseSafely(Self.presentDisplayDisconnectedChoose) }
       hideOutput()
-      state.status = "Output display disconnected — choose a display"
+      state.status = Self.presentDisplayDisconnectedChoose
     }
   }
   func refreshScreens(_ suppliedDisplays: [DisplayDescriptor]? = nil) {

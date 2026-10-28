@@ -62,6 +62,25 @@ import Testing
     #expect(!playback.items.contains { $0.title == "Show / Hide Output" })
   }
 
+  @Test func operatorCopySaysPresent() {
+    #expect(OperatorControls.presentTabTitle == "Present")
+    #expect(OperatorControls.previewWhilePresentingTitle == "Preview while presenting")
+    #expect(OperatorWindowController.unnamedPresentSurface == "Present")
+    #expect(
+      OperatorWindowController.presentDisplayDisconnectedRetained
+        == "Present display disconnected — position retained")
+    #expect(
+      OperatorWindowController.presentingStoppedRetained
+        == "Presenting stopped — position retained")
+    #expect(
+      OperatorWindowController.presentDisplayDisconnectedChoose
+        == "Present display disconnected — choose a display")
+    #expect(
+      OperatorWindowController.previewCaption(
+        screen: nil, size: CGSize(width: 1280, height: 720), mirrored: false)
+        == "Present preview · Local 1280 × 720 · exact present layout, scaled · shown unmirrored")
+  }
+
   @Test func operatorScreenAlertUsesStopPresenting() {
     #expect(
       OperatorWindowController.presentOnOperatorScreenNotice

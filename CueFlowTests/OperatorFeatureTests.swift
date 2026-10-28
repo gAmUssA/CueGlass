@@ -743,7 +743,7 @@ import Testing
       #expect(c.session.logicalSize == outputSize)
       #expect(c.session.snapshot?.id == snapshot)
       #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
-      #expect(c.state.status == "Output display disconnected — position retained")
+      #expect(c.state.status == "Present display disconnected — position retained")
       if disappearsDuringRecovery { #expect(recoveryReads >= 2) }
     }
   }
@@ -1663,7 +1663,7 @@ import Testing
     #expect(c.state.status == "Camera Dock stopped — position retained")
     #expect(c.preview.placementMapView.isHidden)
     #expect(c.preview.placementMapView.map?.caption == expandedMap.caption)
-    #expect(c.previewCaption.stringValue.contains("Output preview · Local "))
+    #expect(c.previewCaption.stringValue.contains("Present preview · Local "))
     #expect(
       abs(
         Double(c.previewAspectConstraint?.multiplier ?? 0) - previewSize.height / previewSize.width)
@@ -1983,7 +1983,7 @@ import Testing
     #expect(c.preview.reflection.viewport.columnWidthFractionOverride == nil)
     #expect(c.preview.placementMapView.map == nil)
     #expect(c.authoritative.captureAnchor()?.utf16Offset == anchor.utf16Offset)
-    #expect(c.state.status.contains("Output display disconnected"))
+    #expect(c.state.status.contains("Present display disconnected"))
   }
 
   @Test func cameraDockReturnsOutputToItsOwnDisplayNotTheNextPickedOne() async throws {
@@ -4583,7 +4583,7 @@ extension OperatorFeatureTests {
         #expect(
           c.session.message
             == (kind == "floating"
-              ? "Floating prompter stopped" : "Output stopped — position retained"))
+              ? "Floating prompter stopped" : "Presenting stopped — position retained"))
         // Timed playback advanced from paragraph 100 before preparation; compare
         // its saved anchor rather than requiring the old paragraph's position.
         let bound = try #require(c.session.timeline.upperBound)

@@ -3,6 +3,8 @@ import CueFlowCore
 import SwiftUI
 
 struct OperatorControls: View {
+  static let presentTabTitle = "Present"
+  static let previewWhilePresentingTitle = "Preview while presenting"
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
   @State private var selectedCommand = PlaybackCommand.toggle
@@ -34,7 +36,7 @@ struct OperatorControls: View {
       switch self {
       case .text: "Text"
       case .playback: "Playback"
-      case .output: "Output"
+      case .output: OperatorControls.presentTabTitle
       }
     }
   }
@@ -358,7 +360,9 @@ struct OperatorControls: View {
         Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
           controller.reflect()
         }
-        Toggle("Preview as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
+        Toggle(Self.previewWhilePresentingTitle, isOn: $state.calibrated).onChange(
+          of: state.calibrated
+        ) {
           controller.reflect()
         }
         HStack {
