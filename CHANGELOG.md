@@ -6,6 +6,7 @@
 - Show human titles for playback shortcuts. Hide Save to iCloud, Request iCloud Download, and Refresh iCloud Status when no container is configured. Add Zoom and Bring All to Front to the Window menu.
 - Start a new document with text that still begins "Welcome to CueGlass" and now says how to open a file and press Play.
 - Show a four-step Welcome tour on first launch, anchored to the script, pace, Play, and Present. Replay it from Help ▸ Welcome Tour. Manual rows for that tour are T1–T7.
+- Keep the Welcome tour popover on its control when the inspector opens or closes and the toolbar shifts.
 - Keep a running take's Follow Voice catch-up pace when the Display picker, a closed Camera Dock's placement controls, or a live Dock nudge changes only the placement.
 - Describe the notch-integrated island, the prompt below the housing band, and the plain-tray opt-out in the Camera Dock first-use explainer and the README.
 

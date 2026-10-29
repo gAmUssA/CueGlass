@@ -104,6 +104,9 @@ struct TourStepView: View {
   private var index = 0
   private var advancing = false
   private var savedResponder: NSResponder?
+  private var anchorScreenRect = NSRect.zero
+  private var anchorObservers: [NSObjectProtocol] = []
+  private var reanchorPending = false
   private(set) var isActive = false
   private(set) var currentStep: TourStep?
   /// The headless runner never lets the popover take the responder. A test
@@ -164,6 +167,8 @@ struct TourStepView: View {
     isActive = false
     currentStep = nil
     dismissPopover()
+    anchorObservers.forEach(NotificationCenter.default.removeObserver)
+    anchorObservers = []
     if popoverWasKey { window?.makeKey() }
     guard window?.firstResponder == nil, let responder else { return }
     let stillAttached = (responder as? NSView)?.window === window || responder === window
@@ -175,6 +180,46 @@ struct TourStepView: View {
     guard isActive, let controller else { return }
     if controller.session.state != .idle || controller.output != nil || controller.floating != nil {
       end()
+    }
+  }
+
+  /// AppKit repositions a popover while the toolbar is still laying out, so a
+  /// control that moves (the inspector toggles) leaves the popover off its control.
+  /// Show it again once the layout has settled.
+  func reanchor() {
+    guard isActive, popover.isShown, let controller, let step = currentStep,
+      let anchor = step.anchor(in: controller), Self.screenRect(of: anchor) != anchorScreenRect
+    else { return }
+    show(step, from: anchor)
+  }
+
+  private static func screenRect(of view: NSView) -> NSRect {
+    view.window?.convertToScreen(view.convert(view.bounds, to: nil)) ?? .zero
+  }
+
+  /// Watches the anchor and every ancestor, since a toolbar item's own frame never changes.
+  private func observeAnchor(_ anchor: NSView) {
+    anchorObservers.forEach(NotificationCenter.default.removeObserver)
+    anchorObservers = []
+    var view: NSView? = anchor
+    while let current = view {
+      current.postsFrameChangedNotifications = true
+      anchorObservers.append(
+        NotificationCenter.default.addObserver(
+          forName: NSView.frameDidChangeNotification, object: current, queue: .main
+        ) { [weak self] _ in
+          MainActor.assumeIsolated { self?.scheduleReanchor() }
+        })
+      view = current.superview
+    }
+  }
+
+  private func scheduleReanchor() {
+    guard !reanchorPending else { return }
+    reanchorPending = true
+    DispatchQueue.main.async { [weak self] in
+      self?.reanchorPending = false
+      self?.reanchor()
     }
   }
 
@@ -212,6 +257,8 @@ struct TourStepView: View {
     if popover.isShown { popover.close() }
     popover.contentViewController = host
     popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: step.edge)
+    anchorScreenRect = Self.screenRect(of: anchor)
+    observeAnchor(anchor)
     advancing = false
     testingInstallStolenResponder?()
     // Restore the editor only when the popover took the responder. A control

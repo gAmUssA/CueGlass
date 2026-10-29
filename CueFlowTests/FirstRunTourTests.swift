@@ -409,6 +409,37 @@ private final class MemoryDefaults: UserDefaults {
     #expect(seen[.present] == ["Back", "Done", "Skip Tour"])
   }
 
+  /// Distance from the popover window to the control it points at. The arrow overlaps the control.
+  private func popoverGap(_ controller: OperatorWindowController, step: TourStep) throws -> CGFloat
+  {
+    let popoverFrame = try #require(controller.tour.testingPopoverContentView?.window).frame
+    let anchor = try #require(step.anchor(in: controller))
+    let target = try #require(anchor.window).convertToScreen(anchor.convert(anchor.bounds, to: nil))
+    let dx = max(0, target.minX - popoverFrame.maxX, popoverFrame.minX - target.maxX)
+    let dy = max(0, target.minY - popoverFrame.maxY, popoverFrame.minY - target.maxY)
+    return hypot(dx, dy)
+  }
+
+  @Test func popoverFollowsItsAnchorWhenTheInspectorToggles() async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a13"
+    let (controller, openedDefaults, window) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
+    controller.startTourIfFirstRun()
+    while controller.tour.currentStep != .present, controller.tour.isActive {
+      controller.tour.next()
+    }
+    #expect(controller.tour.currentStep == .present)
+    #expect(try popoverGap(controller, step: .present) <= 12)
+    for _ in 0..<2 {
+      controller.toggleInspector()
+      for _ in 0..<8 { await turn() }
+      window.contentView?.layoutSubtreeIfNeeded()
+      #expect(controller.tour.isActive)
+      #expect(try popoverGap(controller, step: .present) <= 12)
+    }
+  }
+
   @Test func completedFlagSurvivesANewTourInstance() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a10"
     let (controller, openedDefaults, _) = await open()
