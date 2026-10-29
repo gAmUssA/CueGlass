@@ -361,6 +361,54 @@ private final class MemoryDefaults: UserDefaults {
     #expect(controller.tour.currentStep == .play)
   }
 
+  /// SwiftUI's accessibility nodes answer the NSAccessibility getters but declare no
+  /// Swift-visible conformance, so read them by key.
+  private func property(_ node: NSObject, _ key: String) -> Any? {
+    node.responds(to: NSSelectorFromString(key)) ? node.value(forKey: key) : nil
+  }
+
+  /// Walks the accessibility tree under a node and returns each button's label.
+  private func buttonLabels(in node: NSObject, depth: Int = 0) -> [String] {
+    guard depth < 12 else { return [] }
+    var labels: [String] = []
+    if property(node, "accessibilityRole") as? String == NSAccessibility.Role.button.rawValue {
+      labels.append(property(node, "accessibilityLabel") as? String ?? "")
+    }
+    for child in property(node, "accessibilityChildren") as? [NSObject] ?? [] {
+      labels += buttonLabels(in: child, depth: depth + 1)
+    }
+    return labels
+  }
+
+  @Test func popoverButtonsCarryTheirVisibleTextAsAccessibilityLabels() async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a12"
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
+    // SwiftUI builds its accessibility tree only once an assistive client is attached.
+    func setAssistiveClient(_ attached: Bool) {
+      for name in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
+        _ = (NSApp as NSObject).perform(
+          NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: attached as NSNumber,
+          with: name)
+      }
+    }
+    setAssistiveClient(true)
+    defer { setAssistiveClient(false) }
+    controller.startTourIfFirstRun()
+    for _ in 0..<5 { await turn() }
+    var seen: [TourStep: [String]] = [:]
+    while controller.tour.isActive, let step = controller.tour.currentStep {
+      let content = try #require(controller.tour.testingPopoverContentView)
+      seen[step] = buttonLabels(in: content).sorted()
+      controller.tour.next()
+    }
+    #expect(seen[.script] == ["Next", "Skip Tour"])
+    #expect(seen[.pace] == ["Back", "Next", "Skip Tour"])
+    #expect(seen[.play] == ["Back", "Next", "Skip Tour"])
+    #expect(seen[.present] == ["Back", "Done", "Skip Tour"])
+  }
+
   @Test func completedFlagSurvivesANewTourInstance() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a10"
     let (controller, openedDefaults, _) = await open()
