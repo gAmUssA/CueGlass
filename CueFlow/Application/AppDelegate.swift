@@ -20,6 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
     if NSDocumentController.shared.documents.isEmpty {
       NSDocumentController.shared.newDocument(nil)
     }
+    DispatchQueue.main.async {
+      let controller =
+        NSDocumentController.shared.documents.first?.windowControllers.first
+        as? OperatorWindowController
+      controller?.startTourIfFirstRun()
+    }
     if ProcessInfo.processInfo.environment["CUEGLASS_VISUAL_CHECK"] == "1" {
       DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
         Task { await self.captureVisualEvidence() }
@@ -92,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
     add(
       playback, "Slower", #selector(slower), String(UnicodeScalar(NSDownArrowFunctionKey)!),
       modifiers: [.command, .option])
-    add(playback, "Show / Hide Output", #selector(output), "o", modifiers: [.command, .option])
+    add(playback, "Present", #selector(output), "o", modifiers: [.command, .option])
     add(playback, "Restart", #selector(restart), "r", modifiers: [.command, .option])
     add(playback, "Previous Paragraph", #selector(previousParagraph))
     add(playback, "Next Paragraph", #selector(nextParagraph))
@@ -114,10 +120,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
       modifiers: [.command, .control])
     let window = menu("Window")
     add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
+    add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
+    window.addItem(.separator())
+    add(window, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
+    let help = menu("Help")
+    let welcome = NSMenuItem(
+      title: "Welcome Tour", action: #selector(welcomeTourAction), keyEquivalent: "")
+    welcome.target = self
+    help.addItem(welcome)
+    NSApp.helpMenu = help
     NSApp.windowsMenu = window
     NSApp.mainMenu = main
   }
+  /// Local builds leave the container identifier empty and hide the iCloud commands.
+  static func showsICloudMenus(_ identifier: String) -> Bool { !identifier.isEmpty }
+  static func iCloudContainerIdentifier(bundle: Bundle = .main) -> String {
+    bundle.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
+  }
+  /// Welcome Tour needs the operator window that would receive the action, idle, with no surface.
+  static func welcomeTourEnabled(_ controller: OperatorWindowController?) -> Bool {
+    controller?.canPresentTour == true
+  }
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == #selector(saveCloudAction)
+      || menuItem.action == #selector(downloadAction)
+      || menuItem.action == #selector(refreshCloudAction)
+    {
+      let shown = Self.showsICloudMenus(Self.iCloudContainerIdentifier())
+      menuItem.isHidden = !shown
+      return shown
+    }
+    if menuItem.action == #selector(welcomeTourAction) {
+      return Self.welcomeTourEnabled(current)
+    }
     guard menuItem.action == #selector(cameraDockAction) else { return true }
     return current != nil
   }
@@ -166,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate,
   @objc func nextParagraph() { current?.execute(.nextParagraph) }
   @objc func reverse() { current?.execute(.reverse) }
   @objc func restart() { current?.restart() }
+  @objc func welcomeTourAction() { current?.welcomeTourAction() }
 }
 
 extension AppDelegate {

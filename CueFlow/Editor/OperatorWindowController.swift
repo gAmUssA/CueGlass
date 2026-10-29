@@ -283,8 +283,26 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
   var editorWidthConstraint: NSLayoutConstraint?
   var inspectorWidthConstraint: NSLayoutConstraint?
   weak var playToolbarButton: NSButton?
+  /// Set before the first tour access. The app uses the standard domain; tests inject a suite.
+  var tourDefaults: UserDefaults = .standard
+  private var tourStorage: FirstRunTour?
+  var tour: FirstRunTour {
+    if let tourStorage { return tourStorage }
+    let created = FirstRunTour(controller: self, defaults: tourDefaults)
+    tourStorage = created
+    return created
+  }
+  /// Idle operator window with no live surface. Camera Dock counts as floating.
+  var canPresentTour: Bool {
+    window != nil && session.state == .idle && output == nil && floating == nil
+  }
+  func startTourIfFirstRun() {
+    guard window?.isVisible == true else { return }
+    tour.start(force: false)
+  }
+  @objc func welcomeTourAction() { tour.start(force: true) }
   var previewAspectConstraint: NSLayoutConstraint?
-  let previewCaption = NSTextField(labelWithString: "Output preview · Local 1280 × 720")
+  let previewCaption = NSTextField(labelWithString: "Present preview · Local 1280 × 720")
   lazy var editorBanner = NSHostingView(rootView: EditorTakeBanner(controller: self))
   var stageView = StudioSurface()
   var transportChrome = NSView()
@@ -1081,7 +1099,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       let live = output != nil || cameraDock != nil || floating != nil
       item.label =
         output != nil
-        ? "Presenting · \(output?.window?.screen?.localizedName ?? "Output")"
+        ? "Presenting · \(output?.window?.screen?.localizedName ?? Self.unnamedPresentSurface)"
         : cameraDock != nil
           ? "Presenting · Camera Dock"
           : floating != nil ? "Presenting · Floating" : "Present"
@@ -1103,7 +1121,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     for button in toolbarButtons + (panel?.transportButtons ?? []) {
       if let command = button.playbackCommand {
         button.toolTip =
-          command.rawValue + " · "
+          command.title + " · "
           + CommandRouter.map.bindings.filter { $0.command == command }.map { $0.chord.label }
           .joined(separator: " · ")
       }
@@ -1112,6 +1130,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     updateEditorParagraph()
     updateProgressTimer()
     updateFloatingOptions()
+    tourStorage?.stopIfBlocked()
   }
   private func refreshStatus() {
     state.status = session.message + (script.notice.isEmpty ? "" : " · " + script.notice)
@@ -1151,11 +1170,17 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       size: session.logicalSize,
       mirrored: preview.reflection.horizontal || preview.reflection.vertical)
   }
+  static let unnamedPresentSurface = "Present"
+  static let presentDisplayDisconnectedRetained =
+    "Present display disconnected — position retained"
+  static let presentingStoppedRetained = "Presenting stopped — position retained"
+  static let presentDisplayDisconnectedChoose =
+    "Present display disconnected — choose a display"
   /// The stage caption follows the Quiet Studio board: what the stage shows, which display,
   /// the exact logical size, and whether the operator sees it mirrored.
   static func previewCaption(screen: String?, size: CGSize, mirrored: Bool) -> String {
-    "Output preview · \(screen ?? "Local") \(Int(size.width)) × \(Int(size.height))"
-      + " · exact output layout, scaled · shown \(mirrored ? "mirrored" : "unmirrored")"
+    "Present preview · \(screen ?? "Local") \(Int(size.width)) × \(Int(size.height))"
+      + " · exact present layout, scaled · shown \(mirrored ? "mirrored" : "unmirrored")"
   }
   func loadLatest() {
     perform {
@@ -1187,6 +1212,8 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
           "UP ↑\nLEFT ← 1. CueGlass → RIGHT\n2. Read this asymmetric line\n3. ABC 123 →\nDOWN ↓",
         attributes: [.font: NSFont.systemFont(ofSize: 18)]))
   }
+  static let presentOnOperatorScreenNotice =
+    "This screen will be covered. Press Escape or choose Stop Presenting to return."
   func showOutput(confirm: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }) {
     if output != nil {
       hideOutput()
@@ -1204,8 +1231,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     if display.screen == window?.screen {
       let alert = NSAlert()
       alert.messageText = "Present on the operator screen?"
-      alert.informativeText =
-        "Output will cover this screen. Press Escape or use Stop Output to return."
+      alert.informativeText = Self.presentOnOperatorScreenNotice
       alert.addButton(withTitle: "Present")
       alert.addButton(withTitle: "Cancel")
       guard confirm(alert) == .alertFirstButtonReturn else { return }
@@ -1271,7 +1297,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       case .output(let displayKey, let size, _):
         // The return display was closed with Output when the Dock opened, so display loss
         // no longer tracked it. If it is gone, Preview takes the saved size and anchor.
-        let message = "Output display disconnected — position retained"
+        let message = Self.presentDisplayDisconnectedRetained
         guard displayProvider().contains(where: { $0.selectionKey == displayKey }) else {
           pendingResume = false
           returnToPreview(size: size)
@@ -1308,7 +1334,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func outputClosed() {
-    perform { try session.pauseSafely("Output stopped — position retained") }
+    perform { try session.pauseSafely(Self.presentingStoppedRetained) }
     output?.reflection.viewport.driver?.stop()
     output = nil
     refresh()
@@ -1370,9 +1396,9 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       }
     }
     if let output, !ids.contains(output.displayID) {
-      perform { try session.pauseSafely("Output display disconnected — choose a display") }
+      perform { try session.pauseSafely(Self.presentDisplayDisconnectedChoose) }
       hideOutput()
-      state.status = "Output display disconnected — choose a display"
+      state.status = Self.presentDisplayDisconnectedChoose
     }
   }
   func refreshScreens(_ suppliedDisplays: [DisplayDescriptor]? = nil) {
@@ -1473,9 +1499,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
       [weak self] _, _, error in if let error { self?.present(error) }
     }
   }
-  var containerID: String {
-    Bundle.main.object(forInfoDictionaryKey: "CueFlowICloudContainerIdentifier") as? String ?? ""
-  }
+  var containerID: String { AppDelegate.iCloudContainerIdentifier() }
   func saveICloud() {
     Task { [weak self] in
       guard let self else { return }
@@ -1516,6 +1540,7 @@ final class OperatorWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
   }
   func windowWillClose(_ notification: Notification) {
+    tourStorage?.end()
     progressTimer?.invalidate()
     progressTimer = nil
     stop()

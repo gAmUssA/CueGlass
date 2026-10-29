@@ -74,8 +74,8 @@ jobs:
             label="build-${GITHUB_SHA:0:12}"
           fi
 
-          app_path="$RUNNER_TEMP/CueGlassReleaseDerivedData/Build/Products/ReleaseLocal/CueFlow.app"
-          app_executable="$app_path/Contents/MacOS/CueFlow"
+          app_path="$RUNNER_TEMP/CueGlassReleaseDerivedData/Build/Products/ReleaseLocal/CueGlass.app"
+          app_executable="$app_path/Contents/MacOS/CueGlass"
           if [[ ! -d "$app_path" || ! -x "$app_executable" ]]; then
             echo "Expected built app at $app_path" >&2
             exit 1

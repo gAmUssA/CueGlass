@@ -7,7 +7,7 @@ import os
   static let replaced = Notification.Name("CueFlowDocumentReplaced")
   var source = NSAttributedString(
     string:
-      "Welcome to CueGlass\n\nImport a TXT or RTF script, choose a display, then press Play.\n\nLEFT ← 1. Read at your own pace. → RIGHT\nUP ↑ 2. Adjust speed while playing. ↓ DOWN",
+      "Welcome to CueGlass\n\nType or paste your script here, or choose File ▸ Open…\n\nThen press Play in the toolbar.",
     attributes: [
       .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.textColor,
       .paragraphStyle: ScriptDocument.newParagraphStyle(),
@@ -105,7 +105,7 @@ import os
   }
   override func checkAutosavingSafety() throws {
     if let reason = saveBlockedReason {
-      throw NSError(domain: "CueFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
+      throw NSError(domain: "CueGlass", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }
     try super.checkAutosavingSafety()
   }
@@ -115,7 +115,7 @@ import os
     let overwritesOriginal =
       fileURL.map { $0.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() } ?? false
     if let reason = saveBlockedReason, saveOperation != .saveToOperation || overwritesOriginal {
-      throw NSError(domain: "CueFlow", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
+      throw NSError(domain: "CueGlass", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }
     try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
   }
@@ -174,7 +174,7 @@ import os
         }
       }
       throw NSError(
-        domain: "CueFlow", code: 3,
+        domain: "CueGlass", code: 3,
         userInfo: [
           NSLocalizedDescriptionKey:
             "This script is downloading from iCloud. Open it again when the download finishes. Local scripts remain available offline."

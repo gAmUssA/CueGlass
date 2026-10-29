@@ -3,6 +3,10 @@ import CueFlowCore
 import SwiftUI
 
 struct OperatorControls: View {
+  // The tab enum reads these outside the main actor. Stored titles on this
+  // view would be main-actor isolated and fail the warnings-as-errors build.
+  nonisolated static let presentTabTitle = "Present"
+  nonisolated static let previewWhilePresentingTitle = "Preview while presenting"
   @ObservedObject var state: OperatorState
   unowned let controller: OperatorWindowController
   @State private var selectedCommand = PlaybackCommand.toggle
@@ -34,7 +38,7 @@ struct OperatorControls: View {
       switch self {
       case .text: "Text"
       case .playback: "Playback"
-      case .output: "Output"
+      case .output: OperatorControls.presentTabTitle
       }
     }
   }
@@ -286,7 +290,7 @@ struct OperatorControls: View {
     Section {
       Toggle("Hide controls while playing", isOn: $state.hideControls)
       Picker("Command", selection: $selectedCommand) {
-        ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        ForEach(PlaybackCommand.allCases, id: \.self) { Text($0.title).tag($0) }
       }
       LabeledContent("Shortcut") {
         Text(
@@ -330,7 +334,7 @@ struct OperatorControls: View {
           set: { controller.selectPresentationSurface($0) })
       ) {
         Text("Preview").tag("preview")
-        Text("Display Output").tag("output")
+        Text("Present").tag("output")
         Text("Floating").tag("floating")
         Text(controller.cameraDockMenuTitle).tag("cameraDock")
       }
@@ -358,7 +362,9 @@ struct OperatorControls: View {
         Toggle("Reflect vertically", isOn: $state.vertical).onChange(of: state.vertical) {
           controller.reflect()
         }
-        Toggle("Preview as output", isOn: $state.calibrated).onChange(of: state.calibrated) {
+        Toggle(Self.previewWhilePresentingTitle, isOn: $state.calibrated).onChange(
+          of: state.calibrated
+        ) {
           controller.reflect()
         }
         HStack {

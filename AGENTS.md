@@ -4,7 +4,7 @@ This file keeps build instructions and implementation context out of the user-fa
 
 ## Project map
 
-- The product is CueGlass. The Xcode project, scheme, and Swift module retain the internal `CueFlow` name.
+- The product is CueGlass. The built application is `CueGlass.app` with executable `CueGlass`; the Xcode project, scheme, Swift module, bundle identifier, UTI, and `.cueflow` extension retain the internal CueFlow names.
 - `CueFlow/` contains the AppKit document, editor, playback, presentation, and storage layers.
 - `Packages/CueFlowCore/` contains Foundation-only document, command, and timeline contracts.
 - `CueFlowTests/` contains native AppKit integration tests; the core package has its own Swift Testing suite.
@@ -21,7 +21,7 @@ Build the local app and run it:
 ```sh
 xcodebuild -project CueFlow.xcodeproj -scheme CueFlow -configuration DebugLocal \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/Xcode build
-open .build/Xcode/Build/Products/DebugLocal/CueFlow.app
+open .build/Xcode/Build/Products/DebugLocal/CueGlass.app
 ```
 
 Run core and native tests:
@@ -57,7 +57,7 @@ swift scripts/make-fixtures.swift
 - Display callbacks must not read files, rebuild attributed strings, or dirty a document. Host-time timeline and TextKit 2 fragment layout are the playback/rendering sources of truth.
 - `DebugLocal` and `ReleaseLocal` are local configurations without integrated iCloud entitlements. The source contains iCloud scaffolding, but the initial MVP makes no cross-Mac sync claim. Account setup, signing, notarization, cloud conflict/offline behavior, and two-Mac verification belong to the follow-up milestone.
 
-For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md) and [ADRs 0001–0011](docs/adr/README.md). For file limits, supported imports, interface requirements, and open manual gates, use the [implementation status](docs/IMPLEMENTATION_STATUS.md) and [manual test plan](docs/MANUAL_TEST_PLAN.md) as the current source of truth.
+For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md) and [ADRs 0001–0013](docs/adr/README.md). For file limits, supported imports, interface requirements, and open manual gates, use the [implementation status](docs/IMPLEMENTATION_STATUS.md) and [manual test plan](docs/MANUAL_TEST_PLAN.md) as the current source of truth.
 
 ## CI and release notes
 

@@ -1,5 +1,5 @@
 UP ↑
-LEFT ← 1. CueFlow → RIGHT
+LEFT ← 1. CueGlass → RIGHT
 2. ABC 123 asymmetric reading line →
 3. Left hand / Right hand
 DOWN ↓
