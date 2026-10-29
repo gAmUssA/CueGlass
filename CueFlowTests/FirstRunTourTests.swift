@@ -361,6 +361,119 @@ private final class MemoryDefaults: UserDefaults {
     #expect(controller.tour.currentStep == .play)
   }
 
+  /// SwiftUI's accessibility nodes answer the NSAccessibility getters but declare no
+  /// Swift-visible conformance, so read them by key.
+  private func property(_ node: NSObject, _ key: String) -> Any? {
+    node.responds(to: NSSelectorFromString(key)) ? node.value(forKey: key) : nil
+  }
+
+  /// Walks the accessibility tree under a node and returns each button's label.
+  private func buttonLabels(in node: NSObject, depth: Int = 0) -> [String] {
+    guard depth < 12 else { return [] }
+    var labels: [String] = []
+    if property(node, "accessibilityRole") as? String == NSAccessibility.Role.button.rawValue {
+      labels.append(property(node, "accessibilityLabel") as? String ?? "")
+    }
+    for child in property(node, "accessibilityChildren") as? [NSObject] ?? [] {
+      labels += buttonLabels(in: child, depth: depth + 1)
+    }
+    return labels
+  }
+
+  @Test func popoverButtonsCarryTheirVisibleTextAsAccessibilityLabels() async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a12"
+    let (controller, openedDefaults, _) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
+    // SwiftUI builds its accessibility tree only once an assistive client is attached.
+    let names = ["AXEnhancedUserInterface", "AXManualAccessibility"]
+    let app = NSApp as NSObject
+    let prior = names.map {
+      app.perform(NSSelectorFromString("accessibilityAttributeValue:"), with: $0)?
+        .takeUnretainedValue() as? NSNumber ?? false as NSNumber
+    }
+    func setAssistiveClient(_ values: [NSNumber]) {
+      for (name, value) in zip(names, values) {
+        _ = app.perform(
+          NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: value, with: name)
+      }
+    }
+    setAssistiveClient([true, true])
+    defer { setAssistiveClient(prior) }
+    controller.startTourIfFirstRun()
+    for _ in 0..<5 { await turn() }
+    var seen: [TourStep: [String]] = [:]
+    while controller.tour.isActive, let step = controller.tour.currentStep {
+      let content = try #require(controller.tour.testingPopoverContentView)
+      seen[step] = buttonLabels(in: content).sorted()
+      controller.tour.next()
+    }
+    #expect(seen[.script] == ["Next", "Skip Tour"])
+    #expect(seen[.pace] == ["Back", "Next", "Skip Tour"])
+    #expect(seen[.play] == ["Back", "Next", "Skip Tour"])
+    #expect(seen[.present] == ["Back", "Done", "Skip Tour"])
+  }
+
+  private func anchorScreenRect(_ controller: OperatorWindowController, step: TourStep) throws
+    -> NSRect
+  {
+    let anchor = try #require(step.anchor(in: controller))
+    return try #require(anchor.window).convertToScreen(anchor.convert(anchor.bounds, to: nil))
+  }
+
+  /// Where the operator window sits on the screen. `flush` leaves no room above the
+  /// toolbar, so AppKit has to shift or flip the popover, as it may on a small display.
+  enum Placement: CaseIterable { case roomy, flush }
+
+  private func place(_ window: NSWindow, _ placement: Placement) {
+    guard let visible = window.screen?.visibleFrame else { return }
+    let width = min(1100, visible.width - 40)
+    let height = min(700, visible.height - 40)
+    let top = placement == .flush ? visible.maxY : visible.maxY - 300
+    window.setFrame(
+      NSRect(
+        x: visible.minX + 20, y: max(visible.minY, top - height), width: width, height: height),
+      display: true)
+    window.contentView?.layoutSubtreeIfNeeded()
+  }
+
+  /// A fresh show is the placement AppKit picks for this screen, whatever its size. The
+  /// popover on screen must match it. The bug left it 117 to 125 pt off.
+  private func expectPopoverMatchesFreshPlacement(_ controller: OperatorWindowController)
+    async throws
+  {
+    for _ in 0..<8 { await turn() }
+    let shown = try #require(controller.tour.testingPopoverContentView?.window).frame
+    let fresh = try #require(controller.tour.testingFreshPopoverFrame)
+    #expect(abs(shown.minX - fresh.minX) <= 1 && abs(shown.minY - fresh.minY) <= 1)
+  }
+
+  @Test(arguments: Placement.allCases)
+  func popoverFollowsItsAnchorWhenTheInspectorToggles(placement: Placement) async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a13.\(placement)"
+    let (controller, openedDefaults, window) = await open()
+    var defaults: UserDefaults? = openedDefaults
+    defer { close(controller, defaults: &defaults, suite: suite) }
+    place(window, placement)
+    controller.startTourIfFirstRun()
+    while controller.tour.currentStep != .present, controller.tour.isActive {
+      controller.tour.next()
+    }
+    #expect(controller.tour.currentStep == .present)
+    try await expectPopoverMatchesFreshPlacement(controller)
+    var previous = try anchorScreenRect(controller, step: .present)
+    for _ in 0..<2 {
+      controller.toggleInspector()
+      for _ in 0..<8 { await turn() }
+      window.contentView?.layoutSubtreeIfNeeded()
+      let moved = try anchorScreenRect(controller, step: .present)
+      #expect(moved != previous, "the toggle must reflow the toolbar or the test proves nothing")
+      previous = moved
+      #expect(controller.tour.isActive)
+      try await expectPopoverMatchesFreshPlacement(controller)
+    }
+  }
+
   @Test func completedFlagSurvivesANewTourInstance() async {
     let suite = "com.example.cueflow.tests.first-run-tour.a10"
     let (controller, openedDefaults, _) = await open()
