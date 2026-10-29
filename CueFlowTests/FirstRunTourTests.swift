@@ -386,15 +386,20 @@ private final class MemoryDefaults: UserDefaults {
     var defaults: UserDefaults? = openedDefaults
     defer { close(controller, defaults: &defaults, suite: suite) }
     // SwiftUI builds its accessibility tree only once an assistive client is attached.
-    func setAssistiveClient(_ attached: Bool) {
-      for name in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
-        _ = (NSApp as NSObject).perform(
-          NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: attached as NSNumber,
-          with: name)
+    let names = ["AXEnhancedUserInterface", "AXManualAccessibility"]
+    let app = NSApp as NSObject
+    let prior = names.map {
+      app.perform(NSSelectorFromString("accessibilityAttributeValue:"), with: $0)?
+        .takeUnretainedValue() as? NSNumber ?? false as NSNumber
+    }
+    func setAssistiveClient(_ values: [NSNumber]) {
+      for (name, value) in zip(names, values) {
+        _ = app.perform(
+          NSSelectorFromString("accessibilitySetValue:forAttribute:"), with: value, with: name)
       }
     }
-    setAssistiveClient(true)
-    defer { setAssistiveClient(false) }
+    setAssistiveClient([true, true])
+    defer { setAssistiveClient(prior) }
     controller.startTourIfFirstRun()
     for _ in 0..<5 { await turn() }
     var seen: [TourStep: [String]] = [:]
@@ -409,34 +414,63 @@ private final class MemoryDefaults: UserDefaults {
     #expect(seen[.present] == ["Back", "Done", "Skip Tour"])
   }
 
-  /// Distance from the popover window to the control it points at. The arrow overlaps the control.
-  private func popoverGap(_ controller: OperatorWindowController, step: TourStep) throws -> CGFloat
+  private func anchorScreenRect(_ controller: OperatorWindowController, step: TourStep) throws
+    -> NSRect
   {
-    let popoverFrame = try #require(controller.tour.testingPopoverContentView?.window).frame
     let anchor = try #require(step.anchor(in: controller))
-    let target = try #require(anchor.window).convertToScreen(anchor.convert(anchor.bounds, to: nil))
-    let dx = max(0, target.minX - popoverFrame.maxX, popoverFrame.minX - target.maxX)
-    let dy = max(0, target.minY - popoverFrame.maxY, popoverFrame.minY - target.maxY)
-    return hypot(dx, dy)
+    return try #require(anchor.window).convertToScreen(anchor.convert(anchor.bounds, to: nil))
   }
 
-  @Test func popoverFollowsItsAnchorWhenTheInspectorToggles() async throws {
-    let suite = "com.example.cueflow.tests.first-run-tour.a13"
+  /// Where the operator window sits on the screen. `flush` leaves no room above the
+  /// toolbar, so AppKit has to shift or flip the popover, as it may on a small display.
+  enum Placement: CaseIterable { case roomy, flush }
+
+  private func place(_ window: NSWindow, _ placement: Placement) {
+    guard let visible = window.screen?.visibleFrame else { return }
+    let width = min(1100, visible.width - 40)
+    let height = min(700, visible.height - 40)
+    let top = placement == .flush ? visible.maxY : visible.maxY - 300
+    window.setFrame(
+      NSRect(
+        x: visible.minX + 20, y: max(visible.minY, top - height), width: width, height: height),
+      display: true)
+    window.contentView?.layoutSubtreeIfNeeded()
+  }
+
+  /// A fresh show is the placement AppKit picks for this screen, whatever its size. The
+  /// popover on screen must match it. The bug left it 117 to 125 pt off.
+  private func expectPopoverMatchesFreshPlacement(_ controller: OperatorWindowController)
+    async throws
+  {
+    for _ in 0..<8 { await turn() }
+    let shown = try #require(controller.tour.testingPopoverContentView?.window).frame
+    let fresh = try #require(controller.tour.testingFreshPopoverFrame)
+    #expect(abs(shown.minX - fresh.minX) <= 1 && abs(shown.minY - fresh.minY) <= 1)
+  }
+
+  @Test(arguments: Placement.allCases)
+  func popoverFollowsItsAnchorWhenTheInspectorToggles(placement: Placement) async throws {
+    let suite = "com.example.cueflow.tests.first-run-tour.a13.\(placement)"
     let (controller, openedDefaults, window) = await open()
     var defaults: UserDefaults? = openedDefaults
     defer { close(controller, defaults: &defaults, suite: suite) }
+    place(window, placement)
     controller.startTourIfFirstRun()
     while controller.tour.currentStep != .present, controller.tour.isActive {
       controller.tour.next()
     }
     #expect(controller.tour.currentStep == .present)
-    #expect(try popoverGap(controller, step: .present) <= 12)
+    try await expectPopoverMatchesFreshPlacement(controller)
+    var previous = try anchorScreenRect(controller, step: .present)
     for _ in 0..<2 {
       controller.toggleInspector()
       for _ in 0..<8 { await turn() }
       window.contentView?.layoutSubtreeIfNeeded()
+      let moved = try anchorScreenRect(controller, step: .present)
+      #expect(moved != previous, "the toggle must reflow the toolbar or the test proves nothing")
+      previous = moved
       #expect(controller.tour.isActive)
-      #expect(try popoverGap(controller, step: .present) <= 12)
+      try await expectPopoverMatchesFreshPlacement(controller)
     }
   }
 

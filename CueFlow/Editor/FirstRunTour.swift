@@ -113,6 +113,13 @@ struct TourStepView: View {
   /// installs that state after the popover is shown and before the restore.
   var testingInstallStolenResponder: (() -> Void)?
   var testingPopoverContentView: NSView? { popover.contentViewController?.view }
+  /// Shows the current step afresh and returns where AppKit places it on this screen.
+  var testingFreshPopoverFrame: NSRect? {
+    guard isActive, let controller, let step = currentStep, let anchor = step.anchor(in: controller)
+    else { return nil }
+    show(step, from: anchor)
+    return popover.contentViewController?.view.window?.frame
+  }
 
   init(controller: OperatorWindowController, defaults: UserDefaults = .standard) {
     self.controller = controller
