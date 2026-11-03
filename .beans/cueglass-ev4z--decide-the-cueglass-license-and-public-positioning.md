@@ -1,7 +1,7 @@
 ---
 # cueglass-ev4z
 title: Decide the CueGlass license and public positioning
-status: todo
+status: completed
 type: task
 priority: high
 created_at: 2026-11-03T02:22:20Z
@@ -15,4 +15,8 @@ Public repo has no LICENSE file; the site claims of NotchPrompter's 'open source
 
 License is MIT. Add a LICENSE file and state it in the README. MIT is compatible with Mac App Store distribution; GPL is not.
 
-- [ ] Add LICENSE (MIT) and README statement
+- [x] Add LICENSE (MIT) and README statement
+
+## Summary of Changes
+
+Added a root MIT LICENSE (Copyright (c) 2026 Viktor Gamov) and a README License section. The owner confirms the copyright holder wording.
