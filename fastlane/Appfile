@@ -1,0 +1,3 @@
+# PROVISIONAL: identifiers only. The Team ID is not a secret (ADR 0016). No credential belongs in this file.
+app_identifier("io.gamov.cueglass")
+team_id("3ZMBGR95M8")

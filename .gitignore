@@ -9,3 +9,12 @@ Configuration/Info-iCloud.plist
 !.github/
 !.github/workflows/
 !.github/workflows/*.yml
+
+# fastlane and Bundler (local, never committed)
+fastlane/build/
+fastlane/report.xml
+fastlane/test_output/
+vendor/bundle/
+.bundle/
+.env
+fastlane/README.md

@@ -55,10 +55,22 @@ swift scripts/make-fixtures.swift
 - Preview, selected-display output, and floating presentation share one logical viewport. At most one presentation surface is active. Surface changes preserve the guide anchor and prior play state when preparation succeeds.
 - App-local keyboard commands must preserve normal editing in text fields. Do not add a global event monitor. Keep presentation timing and playback position out of document saves.
 - Display callbacks must not read files, rebuild attributed strings, or dirty a document. Host-time timeline and TextKit 2 fragment layout are the playback/rendering sources of truth.
-- `DebugLocal` and `ReleaseLocal` are local configurations without integrated iCloud entitlements. The source contains iCloud scaffolding, but the initial MVP makes no cross-Mac sync claim. Account setup, signing, notarization, cloud conflict/offline behavior, and two-Mac verification belong to the follow-up milestone.
+- `DebugLocal` and `ReleaseLocal` are local configurations without integrated iCloud entitlements. The source contains iCloud scaffolding, but the initial MVP makes no cross-Mac sync claim. Account setup, signing, cloud conflict/offline behavior, and two-Mac verification belong to the follow-up milestone.
 
 For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md) and [ADRs 0001–0014](docs/adr/README.md). For file limits, supported imports, interface requirements, and open manual gates, use the [implementation status](docs/IMPLEMENTATION_STATUS.md) and [manual test plan](docs/MANUAL_TEST_PLAN.md) as the current source of truth.
 
 ## CI and release notes
 
-`.github/workflows/macos-release.yml` runs the core/native tests, strict Swift formatting, and a universal arm64/x86_64 release build on pull requests and branch pushes. CI only builds and tests; GitHub publishes no binaries, releases, or ZIPs, and pushing a tag triggers nothing. Signed builds are sold on the Mac App Store, the source is free under MIT, and until that signed build exists, install is from source (ADR 0014). Never describe an unsigned build as signed or notarized, and do not add Gatekeeper bypass instructions. Signing and notarization require the later Apple Developer account milestone.
+`.github/workflows/macos-release.yml` runs the core/native tests, strict Swift formatting, and a universal arm64/x86_64 release build on pull requests and branch pushes. CI only builds and tests; GitHub publishes no binaries, releases, or ZIPs, and pushing a tag triggers nothing. Signed builds are sold on the Mac App Store, the source is free under MIT, and until that signed build exists, install is from source (ADR 0014). Never describe an unsigned build as signed or notarized, and do not add Gatekeeper bypass instructions. Signing requires the later Apple Developer account milestone. A separate notarization is the Developer ID path and is not part of the Mac App Store path.
+
+### Provisional App Store configuration (ADR 0016)
+
+PROVISIONAL: the entitlement set is the proposed ADR 0015 set, and `device.microphone` stays unsettled until the owner runs the hardware rows. The `ReleaseAppStore` configuration (`Configuration/AppStore.xcconfig`, `CueFlow/Resources/CueFlow-AppStore.entitlements`) uses bundle identifier `io.gamov.cueglass` and Team ID `3ZMBGR95M8` (an identifier, not a secret). Check it unsigned:
+
+```sh
+scripts/test-app-store-config.sh
+```
+
+The same script also runs `scripts/check-fastfile-shared-values.rb` through `bundle exec` (offline, credential-free, needs the `vendor/bundle` install below); it fails when `fastlane/Fastfile` references a `SharedValues` constant fastlane 2.241.2 does not define.
+
+fastlane (Bundler, pinned in `Gemfile`) holds the App Store lanes. Install it into the gitignored `vendor/bundle` with `bundle config set --local path vendor/bundle && bundle install`; installing Ruby or fastlane machine-wide needs the owner's yes. List the lanes with `bundle exec fastlane lanes`; `mac build`, `mac beta` and `mac release` read the App Store Connect API key from the environment variables in `.env.example`. No lane has run against real credentials, and no signed, notarized or App Store-validated build has been produced; signing and App Store validation need the owner's Apple Developer account. A separate notarization is the Developer ID path and is not a step of `mac build` or `mac release`. Never commit a key, certificate or profile.

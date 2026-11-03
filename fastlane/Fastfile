@@ -1,0 +1,72 @@
+# PROVISIONAL Mac App Store lanes (ADR 0016; the entitlement set is the proposed ADR 0015 set).
+# Credentials come only from the environment; see .env.example. Never commit a key, certificate or profile.
+# NOT RUN with real credentials: no lane here has been run against App Store Connect.
+
+default_platform(:mac)
+
+REQUIRED_API_KEY_VARIABLES = %w[
+  APP_STORE_CONNECT_API_KEY_ID
+  APP_STORE_CONNECT_API_ISSUER_ID
+  APP_STORE_CONNECT_API_KEY_PATH
+].freeze
+
+# Reads the App Store Connect API key from the environment, failing with a fix-it message.
+def app_store_connect_credentials
+  missing = REQUIRED_API_KEY_VARIABLES.select { |name| ENV[name].to_s.empty? }
+  unless missing.empty?
+    UI.user_error!("Missing #{missing.join(', ')}. Copy .env.example to .env, fill in the App Store Connect API key values, and export them.")
+  end
+  path = File.expand_path(ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"))
+  UI.user_error!("No API key file at #{path}. Download the .p8 from App Store Connect and fix APP_STORE_CONNECT_API_KEY_PATH.") unless File.file?(path)
+  { id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"), issuer: ENV.fetch("APP_STORE_CONNECT_API_ISSUER_ID"), path: path }
+end
+
+def app_store_connect_key_for_upload
+  key = app_store_connect_credentials
+  app_store_connect_api_key(key_id: key[:id], issuer_id: key[:issuer], key_filepath: key[:path])
+end
+
+platform :mac do
+  desc "Build the ReleaseAppStore configuration and export a Mac App Store package"
+  lane :build do
+    key = app_store_connect_credentials
+    build_mac_app(
+      project: "CueFlow.xcodeproj",
+      scheme: "CueFlow",
+      configuration: "ReleaseAppStore",
+      export_method: "app-store",
+      output_directory: "fastlane/build",
+      output_name: "CueGlass",
+      clean: true,
+      xcargs: "-allowProvisioningUpdates " \
+              "-authenticationKeyPath #{key[:path].shellescape} " \
+              "-authenticationKeyID #{key[:id]} " \
+              "-authenticationKeyIssuerID #{key[:issuer]}"
+    )
+  end
+
+  desc "Build, then upload the package to TestFlight"
+  lane :beta do
+    build
+    upload_to_testflight(
+      api_key: app_store_connect_key_for_upload,
+      pkg: lane_context[SharedValues::PKG_OUTPUT_PATH] || "fastlane/build/CueGlass.pkg",
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Build, upload, and submit for App Store review (metadata and screenshots skipped, force on, until listing assets exist)"
+  lane :release do
+    build
+    deliver(
+      api_key: app_store_connect_key_for_upload,
+      platform: "osx",
+      pkg: lane_context[SharedValues::PKG_OUTPUT_PATH] || "fastlane/build/CueGlass.pkg",
+      submit_for_review: true,
+      automatic_release: false,
+      skip_metadata: true,
+      skip_screenshots: true,
+      force: true
+    )
+  end
+end

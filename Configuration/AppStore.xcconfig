@@ -1,0 +1,13 @@
+// PROVISIONAL Mac App Store configuration (ADR 0016; entitlement set from proposed ADR 0015).
+// No certificate, profile, password or API key belongs here. The Team ID is an identifier, not a secret.
+DEVELOPMENT_TEAM = 3ZMBGR95M8
+PRODUCT_BUNDLE_IDENTIFIER = io.gamov.cueglass
+CODE_SIGN_STYLE = Automatic
+// Archive signs with the development identity; the app-store export (fastlane gym) re-signs for distribution.
+CODE_SIGN_IDENTITY = Apple Development
+CODE_SIGN_ENTITLEMENTS = CueFlow/Resources/CueFlow-AppStore.entitlements
+// Keep Xcode from adding get-task-allow to the signed entitlements.
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO
+ENABLE_HARDENED_RUNTIME = YES
+INFOPLIST_FILE = CueFlow/Resources/Info.plist
+CUEFLOW_ICLOUD_CONTAINER =
