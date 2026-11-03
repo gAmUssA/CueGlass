@@ -1,0 +1,7 @@
+# Dependency freshness for the fastlane Gemfile (ADR 0016). Bundler only.
+version: 2
+updates:
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: weekly
