@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: high
 created_at: 2026-10-14T13:34:22Z
-updated_at: 2026-11-03T03:47:52Z
+updated_at: 2026-11-03T04:00:19Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-aeqt
@@ -28,3 +28,7 @@ Signed and notarized distribution is the largest install-trust gap versus CueNot
 ## Operator decision (2026-11-03)
 
 Publish on the Mac App Store at 3.99 USD to cover the Apple Developer fee (also needed for notarization of the direct download). The source stays free and MIT. Needs the sandbox spike first, see the epic.
+
+## Update (2026-11-03)
+
+The owner already has an Apple Developer account, so no sign-up step is needed. The v0.3.0 prerelease notes are marked superseded; the release is kept for now.
