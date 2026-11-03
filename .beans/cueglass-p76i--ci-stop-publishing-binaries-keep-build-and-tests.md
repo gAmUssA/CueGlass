@@ -1,7 +1,7 @@
 ---
 # cueglass-p76i
 title: 'CI: stop publishing binaries, keep build and tests'
-status: todo
+status: completed
 type: task
 priority: high
 created_at: 2026-11-03T03:47:52Z
@@ -13,5 +13,9 @@ CI-scope change; announce it as such in the PR. Edit .github/workflows/macos-rel
 
 - [x] Remove publish-release job
 - [x] Add superseding ADR 0014 (replaces ADR 0006)
-- [ ] Confirm PR checks still run build-and-package
-- [ ] Mark the 0.3.0 prerelease notes as superseded (deleting the release needs the owner's yes)
+- [x] Confirm PR checks still run build-and-package
+- [x] Mark the 0.3.0 prerelease notes as superseded (deleting the release needs the owner's yes)
+
+## Summary of Changes
+
+PR #16 run 41579828532 showed job build-and-package (merge commit ebea598). The v0.3.0 release notes now begin with a Superseded notice, edited by the lead on 2026-11-03; the release itself is kept.

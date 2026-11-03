@@ -13,9 +13,9 @@ CueGlass is a native macOS teleprompter for talks, presentations, and recordings
 
 ## Try CueGlass
 
-Download the current build from [GitHub Releases](https://github.com/gAmUssA/CueGlass/releases). The universal macOS app supports Apple silicon and Intel Macs. The current release is unsigned and has not been notarized, so macOS may prevent it from opening. If that happens, wait for a signed and notarized release; this project does not provide instructions for bypassing Gatekeeper.
+GitHub no longer publishes CueGlass binaries. Signed builds will be sold on the Mac App Store; until then, build CueGlass from source, following the commands in [AGENTS.md](AGENTS.md). The universal app supports Apple silicon and Intel Macs. A local build is unsigned and has not been notarized, so macOS may prevent it from opening; this project does not provide instructions for bypassing Gatekeeper.
 
-CueGlass is built for macOS 14 and later; full runtime verification on macOS 14 is still pending. The initial release is local-first: documents stay on your Mac, and iCloud synchronization is planned for a later milestone.
+CueGlass needs macOS 14 or later; full runtime verification on macOS 14 is still pending. Follow Voice (voice-following scroll) needs macOS 26 or later and is hidden on earlier systems; the rest of the app is unaffected. The initial release is local-first: documents stay on your Mac, and iCloud synchronization is planned for a later milestone.
 
 ## Documents
 
@@ -24,3 +24,7 @@ Open `.txt`, `.rtf`, or `.cueflow` files from Finder or from the app. CueGlass p
 ## For contributors
 
 Build and test instructions, implementation notes, and agent guidance are in [AGENTS.md](AGENTS.md). Product architecture and current verification limits are in [Architecture](docs/ARCHITECTURE.md), [Implementation status](docs/IMPLEMENTATION_STATUS.md), and the [Manual test plan](docs/MANUAL_TEST_PLAN.md). Design research and recorded technical decisions are collected under [`docs/design`](docs/design/README.md) and [`docs/adr`](docs/adr/README.md).
+
+## License
+
+CueGlass is free software under the MIT License; see [LICENSE](LICENSE).
