@@ -5,7 +5,7 @@ status: todo
 type: task
 priority: high
 created_at: 2026-10-14T13:34:22Z
-updated_at: 2026-11-03T04:00:19Z
+updated_at: 2026-11-03T17:47:44Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-aeqt
@@ -40,3 +40,7 @@ Proposed entitlements for the App Store configuration (not final): com.apple.sec
 Also needed: LSApplicationCategoryType, ITSAppUsesNonExemptEncryption=NO (inferred), hardened runtime, real bundle identifier (currently com.example.cueflow), no get-task-allow in the distribution signature.
 
 Open hardware rows: open/save/autosave/Versions/Save a Copy, Finder double-click of .cueflow, microphone prompt, speech model download (network.client?), Follow Voice, whether a speech recognition prompt appears.
+
+## Progress (2026-11-03, build-settings half)
+
+Done in ADR 0016 (proposed): ReleaseAppStore configuration with bundle identifier io.gamov.cueglass, Team ID 3ZMBGR95M8, hardened runtime, the three provisional ADR 0015 entitlements without get-task-allow, LSApplicationCategoryType and ITSAppUsesNonExemptEncryption. Remaining: the distribution signing identity and profile, notarization and App Store Connect validation (all NOT RUN, owner-only), which depend on the cueglass-sx4d hardware rows. Follow-up for a CI step: cueglass-nnff.

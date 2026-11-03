@@ -62,3 +62,13 @@ For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md
 ## CI and release notes
 
 `.github/workflows/macos-release.yml` runs the core/native tests, strict Swift formatting, and a universal arm64/x86_64 release build on pull requests and branch pushes. CI only builds and tests; GitHub publishes no binaries, releases, or ZIPs, and pushing a tag triggers nothing. Signed builds are sold on the Mac App Store, the source is free under MIT, and until that signed build exists, install is from source (ADR 0014). Never describe an unsigned build as signed or notarized, and do not add Gatekeeper bypass instructions. Signing and notarization require the later Apple Developer account milestone.
+
+### Provisional App Store configuration (ADR 0016)
+
+PROVISIONAL: the entitlement set is the proposed ADR 0015 set, and `device.microphone` stays unsettled until the owner runs the hardware rows. The `ReleaseAppStore` configuration (`Configuration/AppStore.xcconfig`, `CueFlow/Resources/CueFlow-AppStore.entitlements`) uses bundle identifier `io.gamov.cueglass` and Team ID `3ZMBGR95M8` (an identifier, not a secret). Check it unsigned:
+
+```sh
+scripts/test-app-store-config.sh
+```
+
+fastlane (Bundler, pinned in `Gemfile`) holds the App Store lanes. Install it into the gitignored `vendor/bundle` with `bundle config set --local path vendor/bundle && bundle install`; installing Ruby or fastlane machine-wide needs the owner's yes. List the lanes with `bundle exec fastlane lanes`; `mac build`, `mac beta` and `mac release` read the App Store Connect API key from the environment variables in `.env.example`. No lane has run against real credentials, and signing, notarization and App Store validation have not run. These need the owner's Apple Developer account. Never commit a key, certificate or profile.
