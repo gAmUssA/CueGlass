@@ -5,10 +5,11 @@ status: todo
 type: task
 priority: high
 created_at: 2026-10-14T13:34:22Z
-updated_at: 2026-11-03T03:37:20Z
-parent: cueglass-ffq6
+updated_at: 2026-11-03T03:47:52Z
+parent: cueglass-gzi5
 blocked_by:
     - cueglass-aeqt
+    - cueglass-sx4d
 ---
 
 Integrate the owner’s Apple Developer account and prepare a distributable signed CueGlass build.

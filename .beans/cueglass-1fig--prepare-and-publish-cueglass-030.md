@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-10-17T04:58:08Z
-updated_at: 2026-10-17T19:58:52Z
+updated_at: 2026-11-03T03:47:52Z
 ---
 
 Prepare the completed Claude Camera Dock, microphone continuity, and Quiet Studio work for the next release. User authorization: initiate preparation for merge and cutting next release.
@@ -43,3 +43,7 @@ Local gates pass: 114 Core tests, 162 native tests through both xcodebuild and t
 ## Release landed — 2026-10-17
 
 v0.3.0 is merged and published (details on the checklist above). This Bean stays in progress only for the worktree cleanup, which is the lead's housekeeping; the shipped feature and correction Beans were completed on 2026-10-17 with their unverified hardware rows moved to cueglass-feeg. Follow-up issues #6 and #7 are tracked in cueglass-w4c7.
+
+## Superseded (2026-11-03)
+
+No binaries are published from GitHub any more; distribution is the Mac App Store. See cueglass-lzu7 and cueglass-p76i.

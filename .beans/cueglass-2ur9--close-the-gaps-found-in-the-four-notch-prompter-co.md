@@ -1,11 +1,12 @@
 ---
 # cueglass-2ur9
-title: Close the gaps found in the four notch-prompter competitors
+title: Competitor gap features
 status: todo
 type: epic
 priority: high
 created_at: 2026-11-03T02:22:30Z
-updated_at: 2026-11-03T03:37:20Z
+updated_at: 2026-11-03T03:47:52Z
+parent: cueglass-6l2h
 ---
 
 Research task cueglass-competitor-research (2026-11-03) compared CueNotch, Notchie, NotchPrompter and Notch (notchscript.com) with CueGlass 0.3.x. Reports live in the operator's cp-reports dir, not the repo: /Users/vikgamov/.worktrees/cp-reports/cr1/report-advisor.md and /Users/vikgamov/.worktrees/cp-reports/cr1/report-investigator.md.
