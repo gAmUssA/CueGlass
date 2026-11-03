@@ -7,6 +7,7 @@ options:
 configs:
   DebugLocal: debug
   ReleaseLocal: release
+  ReleaseAppStore: release
   DebugICloud: debug
   ReleaseICloud: release
 packages:
@@ -37,6 +38,7 @@ targets:
     configFiles:
       DebugLocal: Configuration/Local.xcconfig
       ReleaseLocal: Configuration/Local.xcconfig
+      ReleaseAppStore: Configuration/AppStore.xcconfig
       DebugICloud: Configuration/ICloud.xcconfig
       ReleaseICloud: Configuration/ICloud.xcconfig
     settings:
@@ -62,6 +64,9 @@ targets:
     dependencies:
       - target: CueFlow
     settings:
+      configs:
+        ReleaseAppStore:
+          PRODUCT_BUNDLE_IDENTIFIER: io.gamov.cueglass.tests
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.example.cueflow.tests

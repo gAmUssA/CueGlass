@@ -51,6 +51,7 @@
 
 /* Begin PBXFileReference section */
 		1036F295BAEDC173EEB5E72C /* PrompterViewport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrompterViewport.swift; sourceTree = "<group>"; };
+		1680115131EEEAE3ABEA69EA /* AppStore.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppStore.xcconfig; sourceTree = "<group>"; };
 		1B7BE34C8F440128BA885EF5 /* VoiceFollowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFollowTests.swift; sourceTree = "<group>"; };
 		239DCC7F84A3CC52D9D7DE5F /* SpeechVoiceSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechVoiceSource.swift; sourceTree = "<group>"; };
 		282C6E3CF56351A05CB5EBC3 /* OutputWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputWindowController.swift; sourceTree = "<group>"; };
@@ -212,6 +213,7 @@
 		C4EC56993820A587A085EC8C /* Configuration */ = {
 			isa = PBXGroup;
 			children = (
+				1680115131EEEAE3ABEA69EA /* AppStore.xcconfig */,
 				E421E25C07455FA3D80DC323 /* ICloud.xcconfig */,
 				5F5BF751BC3355979A5962EB /* Local.xcconfig */,
 			);
@@ -435,6 +437,21 @@
 			};
 			name = ReleaseICloud;
 		};
+		3EAE9D846ED69DF263A62CBE /* ReleaseAppStore */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1680115131EEEAE3ABEA69EA /* AppStore.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = CueGlass;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CueFlow/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_MODULE_NAME = CueFlow;
+				PRODUCT_NAME = CueGlass;
+				SDKROOT = macosx;
+			};
+			name = ReleaseAppStore;
+		};
 		7C0D1AA9ECA361A1BD38EFEE /* ReleaseLocal */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -555,6 +572,68 @@
 			};
 			name = ReleaseLocal;
 		};
+		A6773F07700C4624F86A704E /* ReleaseAppStore */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 3;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.3.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.cueflow;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = ReleaseAppStore;
+		};
 		AD4C9D71CFCBF137FE38C999 /* DebugICloud */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -637,6 +716,20 @@
 				TEST_HOST = "";
 			};
 			name = ReleaseLocal;
+		};
+		D967A89F3886107ED986D55D /* ReleaseAppStore */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS $(BUILT_PRODUCTS_DIR)/PackageFrameworks";
+				OTHER_LDFLAGS = "$(inherited) $(BUILT_PRODUCTS_DIR)/CueGlass.app/Contents/MacOS/CueGlass.debug.dylib";
+				PRODUCT_BUNDLE_IDENTIFIER = io.gamov.cueglass.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "";
+			};
+			name = ReleaseAppStore;
 		};
 		F47D9F62D169BCD9573BC58B /* DebugLocal */ = {
 			isa = XCBuildConfiguration;
@@ -791,6 +884,7 @@
 			buildConfigurations = (
 				84CC8CFBF7A2F086E75D5C58 /* DebugICloud */,
 				F58BB76EB8A1EE4FE35498F7 /* DebugLocal */,
+				D967A89F3886107ED986D55D /* ReleaseAppStore */,
 				8E0F09C9BB1CCB5BBF2B9CC7 /* ReleaseICloud */,
 				CF70B46503C47A7AF2D5246D /* ReleaseLocal */,
 			);
@@ -802,6 +896,7 @@
 			buildConfigurations = (
 				AD4C9D71CFCBF137FE38C999 /* DebugICloud */,
 				F47D9F62D169BCD9573BC58B /* DebugLocal */,
+				A6773F07700C4624F86A704E /* ReleaseAppStore */,
 				F78665B2365C5851252FAE4A /* ReleaseICloud */,
 				7C0D1AA9ECA361A1BD38EFEE /* ReleaseLocal */,
 			);
@@ -813,6 +908,7 @@
 			buildConfigurations = (
 				00E7781BC1FC024A6B0F0539 /* DebugICloud */,
 				93CE7205EB0A78313098485F /* DebugLocal */,
+				3EAE9D846ED69DF263A62CBE /* ReleaseAppStore */,
 				0540B6FE6222ACC977AFD562 /* ReleaseICloud */,
 				A08889C45475FCBF88C21BC3 /* ReleaseLocal */,
 			);
