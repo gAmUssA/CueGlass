@@ -5,13 +5,13 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-11-03T03:47:52Z
-updated_at: 2026-11-03T18:12:36Z
+updated_at: 2026-11-03T18:32:03Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-sx4d
 ---
 
-Landed (ADR 0016): a Gemfile and lock (Bundler) with fastlane, Dependabot for bundler, and a Fastfile with three lanes (build via gym, beta, release via deliver). Open: whether to adopt match signing (the lanes use automatic signing with the API key). Stated new dependency: fastlane; stdlib alternative xcodebuild plus notarytool scripts rejected because deliver handles metadata and screenshots. Add Dependabot for bundler. Installing Ruby or fastlane on a machine needs the owner's yes.
+Landed (ADR 0016): a Gemfile and lock (Bundler) with fastlane, Dependabot for bundler, and a Fastfile with three lanes (build via gym, beta, release via deliver). Open: whether to adopt match signing (the lanes use automatic signing with the API key). Stated new dependency: fastlane; stdlib alternative xcodebuild plus notarytool scripts rejected because deliver handles metadata and screenshots. Installing Ruby or fastlane on a machine needs the owner's yes.
 
 - [x] Gemfile, lock, Dependabot
 - [x] Fastfile lanes: build, beta (TestFlight), release

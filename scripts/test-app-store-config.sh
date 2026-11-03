@@ -3,7 +3,7 @@ set -euo pipefail
 # PROVISIONAL check of the ReleaseAppStore configuration (ADR 0016; entitlements from proposed ADR 0015).
 # Builds the configuration unsigned, then asserts bundle id, entitlement keys, hardened runtime and Info.plist keys.
 # An unsigned build embeds no entitlements, so the entitlements file is read from CODE_SIGN_ENTITLEMENTS.
-# Signing, notarization and App Store validation are NOT checked here (owner-only).
+# Signing and App Store validation are NOT checked here (owner-only). A separate notarization is not a step of this check.
 EXPECTED_BUNDLE_ID="io.gamov.cueglass"
 EXPECTED_KEYS=$'com.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.files.user-selected.read-write'
 

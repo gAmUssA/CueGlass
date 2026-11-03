@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-10-14T13:34:22Z
-updated_at: 2026-11-03T18:12:36Z
+updated_at: 2026-11-03T18:32:03Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-aeqt
@@ -43,4 +43,4 @@ Open hardware rows: open/save/autosave/Versions/Save a Copy, Finder double-click
 
 ## Progress (2026-11-03, build-settings half)
 
-Done in ADR 0016 (proposed): ReleaseAppStore configuration with bundle identifier io.gamov.cueglass, Team ID 3ZMBGR95M8, hardened runtime, the three provisional ADR 0015 entitlements without get-task-allow, LSApplicationCategoryType and ITSAppUsesNonExemptEncryption. Remaining: the distribution signing identity and profile, and App Store Connect validation (NOT RUN, owner-only). A separate notarization is the Developer ID path and is not a step of mac build or mac release; no signed, notarized or App Store-validated build was produced, which depend on the cueglass-sx4d hardware rows. Follow-up for a CI step: cueglass-nnff.
+Done in ADR 0016 (proposed): ReleaseAppStore configuration with bundle identifier io.gamov.cueglass, Team ID 3ZMBGR95M8, hardened runtime, the three provisional ADR 0015 entitlements without get-task-allow, LSApplicationCategoryType and ITSAppUsesNonExemptEncryption. Remaining: the distribution signing identity and profile, and App Store Connect validation (NOT RUN, owner-only). A separate notarization is the Developer ID path and is not a step of mac build or mac release; no signed, notarized or App Store-validated build was produced. Follow-up for a CI step: cueglass-nnff.
