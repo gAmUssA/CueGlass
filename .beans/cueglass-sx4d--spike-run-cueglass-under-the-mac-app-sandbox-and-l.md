@@ -5,8 +5,8 @@ status: todo
 type: task
 priority: high
 created_at: 2026-11-03T03:37:20Z
-updated_at: 2026-11-03T03:37:20Z
-parent: cueglass-2ur9
+updated_at: 2026-11-03T03:47:52Z
+parent: cueglass-gzi5
 ---
 
 Mac App Store builds require the app sandbox. Verify document open/save, Camera Dock camera, microphone and speech recognition, and the Follow Voice path under the sandbox. List the needed entitlements, then write an ADR.

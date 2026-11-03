@@ -1,11 +1,11 @@
 ---
 # cueglass-ffq6
-title: CueGlass Signed Distribution and iCloud
+title: CueGlass iCloud sync
 status: todo
 type: milestone
-priority: high
+priority: normal
 created_at: 2026-10-14T13:34:21Z
-updated_at: 2026-10-14T13:34:21Z
+updated_at: 2026-11-03T03:47:52Z
 blocked_by:
     - cueglass-aeqt
 ---
