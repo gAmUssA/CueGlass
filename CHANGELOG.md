@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Propose the Mac App Sandbox entitlements for the App Store build (ADR 0015); no code or signing change.
 - Add the MIT license, and rewrite the README install section for build-from-source with signed builds coming to the Mac App Store; state that CueGlass needs macOS 14 and that Follow Voice needs macOS 26 or later.
 - Stop publishing binaries on GitHub: CI now only builds and tests, and signed builds will be distributed through the Mac App Store (ADR 0014). The source stays free under MIT.
 - Name the built app CueGlass.app, including the app inside the release ZIP. The module, scheme, bundle identifier, UTI, and .cueflow extension stay CueFlow.
