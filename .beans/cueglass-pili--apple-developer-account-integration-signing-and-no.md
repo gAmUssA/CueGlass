@@ -35,7 +35,7 @@ The owner already has an Apple Developer account, so no sign-up step is needed. 
 
 ## Sandbox findings (2026-11-03, from cueglass-sx4d, ADR 0015 proposed)
 
-Entitlements for the App Store configuration: com.apple.security.app-sandbox, com.apple.security.files.user-selected.read-write, com.apple.security.device.audio-input. Not requested: network.client, device.camera, bookmarks, folder access. iCloud container entitlements stay out of the first build.
+Proposed entitlements for the App Store configuration (not final): com.apple.security.app-sandbox, com.apple.security.files.user-selected.read-write, com.apple.security.device.audio-input. Open question: Apple documents audio-input as the Hardened Runtime key and com.apple.security.device.microphone as the App Sandbox Hardware Audio Input key; the sandboxed build may also need device.microphone, to be settled on hardware. Not requested: network.client, device.camera, bookmarks, folder access. iCloud container entitlements stay out of the first build.
 
 Also needed: LSApplicationCategoryType, ITSAppUsesNonExemptEncryption=NO (inferred), hardened runtime, real bundle identifier (currently com.example.cueflow), no get-task-allow in the distribution signature.
 
