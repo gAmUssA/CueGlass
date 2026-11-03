@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Stop publishing binaries on GitHub: CI now only builds and tests, and signed builds will be distributed through the Mac App Store. The source stays free under MIT.
+- Stop publishing binaries on GitHub: CI now only builds and tests, and signed builds will be distributed through the Mac App Store (ADR 0014). The source stays free under MIT.
 - Name the built app CueGlass.app, including the app inside the release ZIP. The module, scheme, bundle identifier, UTI, and .cueflow extension stay CueFlow.
 - Show human titles for playback shortcuts. Hide Save to iCloud, Request iCloud Download, and Refresh iCloud Status when no container is configured. Add Zoom and Bring All to Front to the Window menu.
 - Start a new document with text that still begins "Welcome to CueGlass" and now says how to open a file and press Play.
