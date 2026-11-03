@@ -3,6 +3,7 @@ set -euo pipefail
 # PROVISIONAL check of the ReleaseAppStore configuration (ADR 0016; entitlements from proposed ADR 0015).
 # Builds the configuration unsigned, then asserts bundle id, entitlement keys, hardened runtime and Info.plist keys.
 # An unsigned build embeds no entitlements, so the entitlements file is read from CODE_SIGN_ENTITLEMENTS.
+# Also checks that fastlane/Fastfile references only SharedValues constants fastlane defines.
 # Signing and App Store validation are NOT checked here (owner-only). A separate notarization is not a step of this check.
 EXPECTED_BUNDLE_ID="io.gamov.cueglass"
 EXPECTED_KEYS=$'com.apple.security.app-sandbox\ncom.apple.security.device.audio-input\ncom.apple.security.files.user-selected.read-write'
@@ -57,6 +58,20 @@ negative_cases() {
   done
 }
 
+# The Fastfile must reference only SharedValues constants the installed fastlane defines (offline, project-local bundle).
+check_fastfile_shared_values() {
+  local repo_root="$1" dir="$2" bad="$2/undefined-constant.Fastfile"
+  bundle exec ruby scripts/check-fastfile-shared-values.rb "$repo_root/fastlane/Fastfile" \
+    || { fail "fastlane/Fastfile references an undefined SharedValues constant — run bundle install into vendor/bundle if fastlane is missing"; return 1; }
+  mkdir -p "$dir"
+  echo 'pkg = lane_context[SharedValues::PKG_FILE_PATH]' >"$bad"
+  if bundle exec ruby scripts/check-fastfile-shared-values.rb "$bad" 2>/dev/null; then
+    fail "negative case 'undefined SharedValues constant' was accepted; the Fastfile check is broken"
+    return 1
+  fi
+  echo "ok: rejected undefined SharedValues constant"
+}
+
 main() {
   local repo_root products app entitlements plist
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,6 +87,7 @@ main() {
   check_entitlements "$entitlements"
   echo "ok: entitlements are exactly the three provisional keys"
   negative_cases "$repo_root/.build/app-store-config-negative" "$entitlements"
+  check_fastfile_shared_values "$repo_root" "$repo_root/.build/app-store-config-negative"
 
   xcodebuild -project CueFlow.xcodeproj -scheme CueFlow -configuration ReleaseAppStore \
     -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/AppStore \
