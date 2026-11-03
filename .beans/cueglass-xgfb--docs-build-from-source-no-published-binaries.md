@@ -14,5 +14,5 @@ blocked_by:
 Update README and AGENTS.md CI and release notes: the unsigned-ZIP tag flow is gone; install is build from source or the App Store once live. Keep the capture and macOS 26 notes.
 
 - [ ] README install section
-- [ ] AGENTS.md CI and release notes
-- [ ] CHANGELOG entry
+- [x] AGENTS.md CI and release notes
+- [x] CHANGELOG entry

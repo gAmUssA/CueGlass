@@ -61,4 +61,4 @@ For the full ownership and timing model, see [Architecture](docs/ARCHITECTURE.md
 
 ## CI and release notes
 
-`.github/workflows/macos-release.yml` runs the core/native tests, strict Swift formatting, and a universal arm64/x86_64 release build on pull requests and branch pushes. Pushing a `vMAJOR.MINOR.PATCH` tag publishes a GitHub prerelease containing an unsigned, unnotarized ZIP, its checksum, and an explicit notice. Never describe that asset as signed or notarized, and do not add Gatekeeper bypass instructions. Signing and notarization require the later Apple Developer account milestone.
+`.github/workflows/macos-release.yml` runs the core/native tests, strict Swift formatting, and a universal arm64/x86_64 release build on pull requests and branch pushes. CI only builds and tests; GitHub publishes no binaries, releases, or ZIPs, and pushing a tag triggers nothing. Binaries are distributed through the Mac App Store, and the source is free under MIT. Never describe an unsigned build as signed or notarized, and do not add Gatekeeper bypass instructions. Signing and notarization require the later Apple Developer account milestone.
