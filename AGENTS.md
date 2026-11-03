@@ -71,4 +71,6 @@ PROVISIONAL: the entitlement set is the proposed ADR 0015 set, and `device.micro
 scripts/test-app-store-config.sh
 ```
 
+The same script also runs `scripts/check-fastfile-shared-values.rb` through `bundle exec` (offline, credential-free, needs the `vendor/bundle` install below); it fails when `fastlane/Fastfile` references a `SharedValues` constant fastlane 2.241.2 does not define.
+
 fastlane (Bundler, pinned in `Gemfile`) holds the App Store lanes. Install it into the gitignored `vendor/bundle` with `bundle config set --local path vendor/bundle && bundle install`; installing Ruby or fastlane machine-wide needs the owner's yes. List the lanes with `bundle exec fastlane lanes`; `mac build`, `mac beta` and `mac release` read the App Store Connect API key from the environment variables in `.env.example`. No lane has run against real credentials, and no signed, notarized or App Store-validated build has been produced; signing and App Store validation need the owner's Apple Developer account. A separate notarization is the Developer ID path and is not a step of `mac build` or `mac release`. Never commit a key, certificate or profile.
