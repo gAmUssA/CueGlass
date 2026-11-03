@@ -4,7 +4,7 @@ Public GitHub Actions build and unnotarized prerelease assets
 
 # Status
 
-accepted
+superseded by 0014
 
 # Date
 

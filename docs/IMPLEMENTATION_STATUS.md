@@ -61,7 +61,7 @@ Developer current suite: 15 core tests, 53 AppKit tests. Paused 100,000-word mea
 
 Architecture contracts and schema supersession are in [ADRs 0004/0005](adr/README.md). [Design research/concept](design/README.md) persists official-source rationale and explicitly labels proposed art. See [AGENTS.md](../AGENTS.md) for maintainer commands and [manual plan](MANUAL_TEST_PLAN.md) for remaining tests.
 
-The initial MVP distribution path is recorded in [ADR 0006](adr/0006-public-github-actions-release-build.md): a public GitHub Actions workflow builds a universal unsigned/unnotarized prerelease from version tags. Signing/notarization and real iCloud acceptance remain in the next milestone.
+The current distribution path is recorded in [ADR 0014](adr/0014-app-store-distribution-no-github-binaries.md): GitHub Actions only builds and tests, signed builds are sold on the Mac App Store, and GitHub publishes no binaries (it supersedes [ADR 0006](adr/0006-public-github-actions-release-build.md)). Signing/notarization and real iCloud acceptance remain in the next milestone.
 
 ## Optional Follow Voice implementation
 
