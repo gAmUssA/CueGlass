@@ -5,16 +5,16 @@ status: in-progress
 type: task
 priority: high
 created_at: 2026-11-03T03:47:52Z
-updated_at: 2026-11-03T17:47:44Z
+updated_at: 2026-11-03T18:12:36Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-sx4d
 ---
 
-Add a Gemfile and lock (Bundler) with fastlane, a Fastfile with lanes for build_mac_app (gym), match signing and deliver. Stated new dependency: fastlane; stdlib alternative xcodebuild plus notarytool scripts rejected because deliver handles metadata and screenshots. Add Dependabot for bundler. Installing Ruby or fastlane on a machine needs the owner's yes.
+Landed (ADR 0016): a Gemfile and lock (Bundler) with fastlane, Dependabot for bundler, and a Fastfile with three lanes (build via gym, beta, release via deliver). Open: whether to adopt match signing (the lanes use automatic signing with the API key). Stated new dependency: fastlane; stdlib alternative xcodebuild plus notarytool scripts rejected because deliver handles metadata and screenshots. Add Dependabot for bundler. Installing Ruby or fastlane on a machine needs the owner's yes.
 
-- [ ] Gemfile, lock, Dependabot
-- [ ] Fastfile lanes: build, beta (TestFlight), release
+- [x] Gemfile, lock, Dependabot
+- [x] Fastfile lanes: build, beta (TestFlight), release
 - [x] Document secrets in .env.example, none committed
 - [ ] Run the lanes against real App Store Connect credentials (owner-only, NOT RUN)
 - [ ] Decide whether to adopt match; the lanes use automatic signing with the API key instead (ADR 0016)

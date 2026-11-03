@@ -1,11 +1,11 @@
 ---
 # cueglass-pili
 title: Apple Developer account integration, signing, and notarization
-status: todo
+status: in-progress
 type: task
 priority: high
 created_at: 2026-10-14T13:34:22Z
-updated_at: 2026-11-03T17:47:44Z
+updated_at: 2026-11-03T18:12:36Z
 parent: cueglass-gzi5
 blocked_by:
     - cueglass-aeqt
@@ -15,11 +15,11 @@ blocked_by:
 Integrate the owner’s Apple Developer account and prepare a distributable signed CueGlass build.
 
 Acceptance:
-- Record Developer Team ID and real bundle identifier in owner-only configuration.
+- Record Developer Team ID 3ZMBGR95M8 and bundle identifier io.gamov.cueglass in the committed App Store configuration (Configuration/AppStore.xcconfig; the Team ID is an identifier, not a secret). Owner-only secrets are the App Store Connect API key, certificates and provisioning profiles.
 - Configure signing, entitlements, and release build settings without committing secrets.
 - Sign the release with the intended distribution identity.
-- Submit for notarization, staple the ticket, and verify Gatekeeper assessment on a clean machine/install.
-- Document reproducible build and notarization commands and results.
+- Developer ID direct-download path only (not a step of the Mac App Store path, ADR 0016): submit for notarization, staple the ticket, and verify Gatekeeper assessment on a clean machine/install.
+- Document reproducible build commands and results (and notarization commands if the Developer ID path is pursued).
 
 ## Competitor research link (2026-11-03)
 
@@ -37,10 +37,10 @@ The owner already has an Apple Developer account, so no sign-up step is needed. 
 
 Proposed entitlements for the App Store configuration (not final): com.apple.security.app-sandbox, com.apple.security.files.user-selected.read-write, com.apple.security.device.audio-input. Open question: Apple documents audio-input as the Hardened Runtime key and com.apple.security.device.microphone as the App Sandbox Hardware Audio Input key; the sandboxed build may also need device.microphone, to be settled on hardware with a sandboxed build that has the Hardened Runtime enabled (a build without it does not settle it). Not requested: network.client, device.camera, bookmarks, folder access. iCloud container entitlements stay out of the first build.
 
-Also needed: LSApplicationCategoryType, ITSAppUsesNonExemptEncryption=NO (inferred), hardened runtime, real bundle identifier (currently com.example.cueflow), no get-task-allow in the distribution signature.
+Also needed: LSApplicationCategoryType, ITSAppUsesNonExemptEncryption=NO (inferred), hardened runtime, real bundle identifier (com.example.cueflow in DebugLocal and ReleaseLocal; ReleaseAppStore is io.gamov.cueglass, see the progress note), no get-task-allow in the distribution signature.
 
 Open hardware rows: open/save/autosave/Versions/Save a Copy, Finder double-click of .cueflow, microphone prompt, speech model download (network.client?), Follow Voice, whether a speech recognition prompt appears.
 
 ## Progress (2026-11-03, build-settings half)
 
-Done in ADR 0016 (proposed): ReleaseAppStore configuration with bundle identifier io.gamov.cueglass, Team ID 3ZMBGR95M8, hardened runtime, the three provisional ADR 0015 entitlements without get-task-allow, LSApplicationCategoryType and ITSAppUsesNonExemptEncryption. Remaining: the distribution signing identity and profile, notarization and App Store Connect validation (all NOT RUN, owner-only), which depend on the cueglass-sx4d hardware rows. Follow-up for a CI step: cueglass-nnff.
+Done in ADR 0016 (proposed): ReleaseAppStore configuration with bundle identifier io.gamov.cueglass, Team ID 3ZMBGR95M8, hardened runtime, the three provisional ADR 0015 entitlements without get-task-allow, LSApplicationCategoryType and ITSAppUsesNonExemptEncryption. Remaining: the distribution signing identity and profile, and App Store Connect validation (NOT RUN, owner-only). A separate notarization is the Developer ID path and is not a step of mac build or mac release; no signed, notarized or App Store-validated build was produced, which depend on the cueglass-sx4d hardware rows. Follow-up for a CI step: cueglass-nnff.
