@@ -39,7 +39,7 @@ platform :mac do
       output_name: "CueGlass",
       clean: true,
       xcargs: "-allowProvisioningUpdates " \
-              "-authenticationKeyPath #{key[:path]} " \
+              "-authenticationKeyPath #{key[:path].shellescape} " \
               "-authenticationKeyID #{key[:id]} " \
               "-authenticationKeyIssuerID #{key[:issuer]}"
     )
@@ -55,7 +55,7 @@ platform :mac do
     )
   end
 
-  desc "Build, upload, and submit the version for App Store review"
+  desc "Build, upload, and submit for App Store review (metadata and screenshots skipped, force on, until listing assets exist)"
   lane :release do
     build
     deliver(
