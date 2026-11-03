@@ -66,6 +66,7 @@ main() {
     -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/AppStore -showBuildSettings)"
   expect_equal "PRODUCT_BUNDLE_IDENTIFIER" "$(setting PRODUCT_BUNDLE_IDENTIFIER)" "$EXPECTED_BUNDLE_ID"
   expect_equal "ENABLE_HARDENED_RUNTIME" "$(setting ENABLE_HARDENED_RUNTIME)" "YES"
+  expect_equal "CODE_SIGN_INJECT_BASE_ENTITLEMENTS" "$(setting CODE_SIGN_INJECT_BASE_ENTITLEMENTS)" "NO"
   expect_equal "CODE_SIGN_ENTITLEMENTS" "$(setting CODE_SIGN_ENTITLEMENTS)" "CueFlow/Resources/CueFlow-AppStore.entitlements"
   entitlements="$repo_root/$(setting CODE_SIGN_ENTITLEMENTS)"
   check_entitlements "$entitlements"
